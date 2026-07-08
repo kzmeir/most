@@ -134,6 +134,8 @@
   .pf-filter:hover{color:#fff;border-color:var(--line-2)}
   .pf-filter.active{color:#000;background:var(--clay);border-color:var(--clay)}
   .pf-empty{grid-column:1/-1;color:var(--grey);font-size:15px;padding:30px 0}
+  .pf-filter-arch{border-style:dashed;color:var(--grey)}
+  .pf-filter-arch.active{background:var(--grey-2);border-color:var(--grey-2);color:#000}
   @media(max-width:1080px){.portfolio{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:860px){
     .portfolio{grid-template-columns:1fr;gap:40px}
@@ -280,7 +282,6 @@
     <a href="most-studio.html" class="brand" data-hover><span class="logo" data-logo></span></a>
     <nav class="nav-links">
       <a href="most-portfolio.html" data-hover>Портфолио</a>
-      <a href="most-studio.html#process" data-hover>Процесс</a>
       <a href="most-about.html" data-hover>Бюро</a>
       <a href="most-studio.html#contact" data-hover>Контакты</a>
     </nav>
@@ -292,7 +293,6 @@
 <div class="mobile-menu" id="mobileMenu">
   <div class="wrap">
     <a href="most-portfolio.html">Портфолио</a>
-    <a href="most-studio.html#process">Процесс</a>
     <a href="most-about.html">Бюро</a>
     <a href="most-studio.html#contact">Контакты</a>
     <div class="m-lang"><b>RU</b> · KZ · EN</div>
@@ -325,7 +325,6 @@
       <div class="foot-col">
         <h4>Навигация</h4>
         <a href="most-portfolio.html">Портфолио</a>
-        <a href="most-studio.html#process">Процесс</a>
         <a href="most-about.html">Бюро</a>
         <a href="most-studio.html#contact">Контакты</a>
       </div>
@@ -400,8 +399,12 @@ function typesOf(cat){
 }
 function projectTypes(p){return [...new Set([...typesOf(p.cat),...(p.types||[])])];}
 const order=['Все','Жилые комплексы','Коттеджные городки','Гостиницы','Мастер-планы','Общественные'];
+// Админ-режим: откройте страницу с ?admin=1 — тогда виден фильтр «Архив» и архивные проекты.
+// Флаг НЕ запоминается: любой обычный заход (без ?admin=1) архива не показывает.
+let ADMIN=false;try{ADMIN=new URLSearchParams(location.search).get('admin')==='1';localStorage.removeItem('most_admin');}catch(e){}
+const hasArch=projects.some(p=>p.arch);
 const present=order.filter(t=>t==='Все'||projects.some(p=>!p.arch&&projectTypes(p).includes(t)));
-if(projects.some(p=>p.arch))present.push('Архив');
+if(ADMIN&&hasArch)present.push('Архив');
 let active='Все';
 function bindHover(){
   document.querySelectorAll('#ixList [data-hover]').forEach(el=>{
@@ -422,7 +425,7 @@ function card(p,i,feat){return `
   </a>`;}
 function renderList(){
   const vis=projects.map((p,i)=>({p,i})).filter(o=>{
-    if(active==='Архив')return !!o.p.arch;
+    if(active==='Архив')return ADMIN&&!!o.p.arch;
     if(o.p.arch)return false;
     return active==='Все'||projectTypes(o.p).includes(active);
   });
@@ -434,7 +437,7 @@ function renderList(){
   bindHover();
 }
 function renderFilters(){
-  filtersEl.innerHTML=present.map(t=>`<button class="pf-filter${t===active?' active':''}" type="button" data-hover data-t="${t}">${t}</button>`).join('');
+  filtersEl.innerHTML=present.map(t=>`<button class="pf-filter${t===active?' active':''}${t==='Архив'?' pf-filter-arch':''}" type="button" data-hover data-t="${t}">${t}</button>`).join('');
 }
 filtersEl.addEventListener('click',e=>{
   const b=e.target.closest('.pf-filter');
