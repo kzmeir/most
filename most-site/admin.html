@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Админ-панель — MOST Architects</title>
+<style>
+  :root{--bg:#f0efea;--panel:#fff;--ink:#1b1b1b;--mut:#8a8880;--line:#dedcd4;--acc:#d95b2a;--ok:#2e7d43;--err:#c0392b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;padding-bottom:110px}
+  a{color:inherit}
+  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 14px}
+  button:hover{border-color:var(--ink)}
+  button:disabled{opacity:.45;cursor:default}
+  .btn-main{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+  .btn-main:hover{background:#000}
+  .btn-acc{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+  .btn-danger{color:var(--err);border-color:#e5b7b0}
+  .btn-sm{padding:4px 9px;font-size:13px;border-radius:6px}
+  input[type=text],input[type=password],textarea{font:inherit;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+  input:focus,textarea:focus{outline:2px solid #b9b6ab;border-color:transparent}
+  textarea{resize:vertical;min-height:84px}
+  label{display:block;font-size:13px;color:var(--mut);margin:14px 0 5px;font-weight:600;letter-spacing:.02em}
+  .wrap{max-width:980px;margin:0 auto;padding:0 20px}
+  header.top{background:#2f2e2b;color:#fff;padding:14px 0;margin-bottom:26px}
+  header.top .wrap{display:flex;align-items:center;gap:14px}
+  header.top h1{font-size:17px;font-weight:700;letter-spacing:.04em;flex:1}
+  header.top button{background:transparent;color:#ddd;border-color:#555}
+  header.top button:hover{color:#fff;border-color:#aaa}
+  .hint{font-size:13px;color:var(--mut);line-height:1.5}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px}
+  /* auth */
+  .auth{max-width:560px;margin:60px auto}
+  .auth h2{margin-bottom:6px}
+  .auth ol{margin:10px 0 0 20px;font-size:14px;line-height:1.75}
+  .auth details{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+  .auth summary{cursor:pointer;font-weight:600;font-size:14px}
+  .msg-err{color:var(--err);font-size:14px;margin-top:10px;display:none}
+  /* list */
+  .toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  .toolbar h2{flex:1;font-size:22px}
+  .plist{display:flex;flex-direction:column;gap:8px}
+  .prow{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+  .prow.dragover{outline:2px dashed var(--acc)}
+  .prow .thumb{width:86px;height:58px;object-fit:cover;border-radius:8px;background:#e5e3db;flex:none}
+  .prow .pinfo{flex:1;min-width:0}
+  .prow .pname{font-weight:700;font-size:15px}
+  .prow .psub{font-size:12.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:1px}
+  .badge.feat{background:#fdeadd;color:var(--acc)}
+  .badge.arch{background:#e8e6df;color:var(--mut)}
+  .badge.new{background:#e2f0e6;color:var(--ok)}
+  .rowbtns{display:flex;gap:6px;align-items:center;flex:none}
+  .grip{cursor:grab;color:var(--mut);font-size:18px;padding:0 4px;user-select:none}
+  /* editor */
+  .ed-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 22px}
+  .ed-grid .full{grid-column:1/-1}
+  @media(max-width:720px){.ed-grid{grid-template-columns:1fr}}
+  .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}
+  .ph{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .ph img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+  .ph .cover-tag{position:absolute;top:6px;left:6px;background:var(--acc);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:14px}
+  .ph .new-tag{position:absolute;top:6px;right:6px;background:var(--ok);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:14px}
+  .ph .phb{display:flex;gap:4px;padding:6px;justify-content:center;flex-wrap:wrap}
+  .ph.dragover{outline:2px dashed var(--acc)}
+  .dropzone{margin-top:16px;border:2px dashed var(--line);border-radius:12px;padding:26px;text-align:center;color:var(--mut);font-size:14px;cursor:pointer;transition:border-color .15s}
+  .dropzone.on,.dropzone:hover{border-color:var(--acc);color:var(--ink)}
+  .checks{display:flex;gap:26px;margin-top:16px;flex-wrap:wrap}
+  .checks label{display:flex;align-items:center;gap:8px;margin:0;font-size:15px;color:var(--ink);cursor:pointer}
+  .checks input{width:18px;height:18px;accent-color:var(--acc)}
+  /* publish bar */
+  .pubbar{position:fixed;left:0;right:0;bottom:0;background:#2f2e2b;color:#fff;padding:14px 0;box-shadow:0 -4px 18px rgba(0,0,0,.15);display:none;z-index:50}
+  .pubbar .wrap{display:flex;align-items:center;gap:14px}
+  .pubbar .cnt{flex:1;font-size:14.5px}
+  .pubbar .btn-ghost{background:transparent;color:#ccc;border-color:#5a5952}
+  /* overlay */
+  .overlay{position:fixed;inset:0;background:rgba(30,29,26,.72);display:none;align-items:center;justify-content:center;z-index:100}
+  .overlay .obox{background:#fff;border-radius:14px;padding:34px 40px;max-width:440px;text-align:center}
+  .overlay .obox h3{margin-bottom:10px}
+  .spin{display:inline-block;width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:sp 1s linear infinite;margin-bottom:14px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 22px;border-radius:10px;font-size:14.5px;z-index:120;display:none;max-width:90vw}
+  .toast.err{background:var(--err)}
+  .empty-note{color:var(--mut);text-align:center;padding:30px;font-size:15px}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="wrap">
+  <h1>MOST · Админ-панель портфолио</h1>
+  <button id="btnReload" style="display:none">Обновить данные</button>
+  <button id="btnLogout" style="display:none">Выйти</button>
+</div></header>
+
+<div class="wrap" id="app"></div>
+
+<div class="pubbar" id="pubbar"><div class="wrap">
+  <div class="cnt" id="pubCnt"></div>
+  <button class="btn-ghost" id="btnDiscard">Отменить всё</button>
+  <button class="btn-acc" id="btnPublish">Опубликовать</button>
+</div></div>
+
+<div class="overlay" id="overlay"><div class="obox" id="obox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ================= КОНФИГ ================= */
+const OWNER='kzmeir', REPO='most', BRANCH='main';
+const DATA_PATH='most-site/projects.js';
+const IMG_DIR='most-site/';           // пути в imgs относительные (pr/...), в репо — most-site/pr/...
+const MAX_SIDE=2000, JPEG_Q=0.82;
+const LS_KEY='most_admin_token';
+
+/* ================= СОСТОЯНИЕ ================= */
+const state={
+  token:null,
+  baseCommitSha:null, baseTreeSha:null,
+  original:null,      // сериализованный снимок для подсчёта изменений
+  projects:[],        // рабочая копия; img: {path} | {path, blob, url}
+  deletedPaths:new Set(),
+  screen:'auth',      // auth | list | editor
+  editSlug:null,
+  publishing:false,
+};
+
+/* ================= УТИЛИТЫ ================= */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg,err){const t=$('toast');t.textContent=msg;t.className='toast'+(err?' err':'');t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',err?6000:3500);}
+function b64ToUtf8(b64){const bin=atob(b64.replace(/\n/g,''));const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);return new TextDecoder('utf-8').decode(bytes);}
+function utf8ToB64(str){const bytes=new TextEncoder().encode(str);let bin='';const CH=0x8000;for(let i=0;i<bytes.length;i+=CH)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));return btoa(bin);}
+function blobToB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(blob);});}
+const TR={'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya','қ':'k','ғ':'g','ң':'n','ү':'u','ұ':'u','һ':'h','ө':'o','ә':'a','і':'i'};
+function makeSlug(name){
+  let s=String(name).toLowerCase().split('').map(c=>TR[c]!==undefined?TR[c]:c).join('')
+    .replace(/[^a-z0-9]+/g,'').slice(0,40)||'project';
+  let slug=s,i=2;
+  while(state.projects.some(p=>p.slug===slug))slug=s+(i++);
+  return slug;
+}
+
+/* ================= GITHUB API ================= */
+async function gh(path,opts={}){
+  const r=await fetch('https://api.github.com'+path,{
+    ...opts,
+    headers:{'Authorization':'Bearer '+state.token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(opts.body?{'Content-Type':'application/json'}:{}),...(opts.headers||{})}
+  });
+  if(r.status===401){logout('Токен недействителен или истёк. Войдите заново.');throw new Error('401');}
+  if(r.status===403){
+    const reset=r.headers.get('X-RateLimit-Reset');
+    const when=reset?new Date(reset*1000).toLocaleTimeString('ru-RU'):'позже';
+    throw new Error('GitHub ограничил запросы. Попробуйте после '+when+'.');
+  }
+  if(!r.ok&&r.status!==404&&r.status!==409&&r.status!==422){throw new Error('GitHub API: '+r.status);}
+  return r;
+}
+
+/* ================= ДАННЫЕ ================= */
+function normalize(p){
+  return {
+    slug:String(p.slug||''), n:String(p.n||''), cat:String(p.cat||''), loc:String(p.loc||''),
+    desc:[String((p.desc&&p.desc[0])||''),String((p.desc&&p.desc[1])||'')],
+    year:String(p.year||''), status:String(p.status||''), area:String(p.area||''),
+    floors:String(p.floors||''), homes:String(p.homes||''),
+    types:Array.isArray(p.types)?p.types.slice():[], arch:!!p.arch, feat:!!p.feat,
+    imgs:(p.imgs||[]).map(x=>typeof x==='string'?{path:x}:x),
+  };
+}
+function serializable(){
+  return state.projects.map(p=>({
+    slug:p.slug,n:p.n,cat:p.cat,loc:p.loc,
+    desc:p.desc.filter((d,i)=>i===0||d.trim()!==''),
+    year:p.year,status:p.status,area:p.area,floors:p.floors,homes:p.homes,
+    types:p.types,arch:p.arch,feat:p.feat,
+    imgs:p.imgs.map(im=>im.path),
+  }));
+}
+function serializeFile(){
+  return '// Данные проектов MOST. Файл генерируется админ-панелью (admin.html) — не редактируйте структуру вручную.\n'
+    +'window.PROJECTS=\n'+JSON.stringify(serializable(),null,2)+'\n;\n';
+}
+function snapshot(){state.original=JSON.stringify(serializable());state.deletedPaths=new Set();}
+function changesInfo(){
+  const cur=serializable();
+  const origArr=JSON.parse(state.original);
+  const origBy=Object.fromEntries(origArr.map(p=>[p.slug,p]));
+  const curBy=Object.fromEntries(cur.map(p=>[p.slug,p]));
+  let edited=0,added=0,removed=0,newPhotos=0;
+  for(const p of cur){
+    if(!origBy[p.slug]){added++;continue;}
+    if(JSON.stringify(p)!==JSON.stringify(origBy[p.slug]))edited++;
+  }
+  for(const p of origArr)if(!curBy[p.slug])removed++;
+  for(const p of state.projects)for(const im of p.imgs)if(im.blob)newPhotos++;
+  const orderChanged=origArr.length===cur.length&&cur.every(p=>origBy[p.slug])&&JSON.stringify(cur.map(p=>p.slug))!==JSON.stringify(origArr.map(p=>p.slug));
+  const total=edited+added+removed+(orderChanged?1:0);
+  const parts=[];
+  if(edited)parts.push('изменено проектов: '+edited);
+  if(added)parts.push('новых проектов: '+added);
+  if(removed)parts.push('удалено проектов: '+removed);
+  if(newPhotos)parts.push('новых фото: '+newPhotos);
+  if(state.deletedPaths.size)parts.push('удалено фото: '+state.deletedPaths.size);
+  if(orderChanged)parts.push('изменён порядок');
+  return {total:Math.max(total,parts.length?1:0),text:parts.join(' · ')};
+}
+
+async function loadData(){
+  const br=await(await gh(`/repos/${OWNER}/${REPO}/branches/${BRANCH}`)).json();
+  state.baseCommitSha=br.commit.sha;
+  state.baseTreeSha=br.commit.commit.tree.sha;
+  const f=await(await gh(`/repos/${OWNER}/${REPO}/contents/${encodeURIComponent(DATA_PATH)}?ref=${BRANCH}`)).json();
+  const code=b64ToUtf8(f.content);
+  const stub={};
+  new Function('window',code)(stub);
+  if(!Array.isArray(stub.PROJECTS))throw new Error('Не удалось прочитать projects.js');
+  state.projects=stub.PROJECTS.map(normalize);
+  snapshot();
+}
+
+/* ================= ФОТО ================= */
+async function fileToJpeg(file){
+  if(/heic|heif/i.test(file.type)||/\.hei[cf]$/i.test(file.name)){
+    throw new Error('Файл «'+file.name+'» в формате HEIC не поддерживается. Сохраните фото как JPEG и загрузите снова.');
+  }
+  let bmp;
+  try{bmp=await createImageBitmap(file,{imageOrientation:'from-image'});}
+  catch(e){
+    bmp=await new Promise((res,rej)=>{
+      const img=new Image();
+      img.onload=()=>res(img);
+      img.onerror=()=>rej(new Error('Не удалось прочитать файл «'+file.name+'» — сохраните фото как JPEG.'));
+      img.src=URL.createObjectURL(file);
+    });
+  }
+  const w=bmp.width,h=bmp.height;
+  const scale=Math.min(1,MAX_SIDE/Math.max(w,h));
+  // маленький JPEG не пережимаем
+  if(scale===1&&/jpe?g/i.test(file.type)&&file.size<=600*1024)return file;
+  const cw=Math.round(w*scale),ch=Math.round(h*scale);
+  const canvas=document.createElement('canvas');canvas.width=cw;canvas.height=ch;
+  canvas.getContext('2d').drawImage(bmp,0,0,cw,ch);
+  if(bmp.close)bmp.close();
+  const blob=await new Promise(res=>canvas.toBlob(res,'image/jpeg',JPEG_Q));
+  if(!blob)throw new Error('Не удалось обработать «'+file.name+'».');
+  return blob;
+}
+async function addPhotos(project,fileList){
+  const files=Array.from(fileList).filter(f=>f.type.startsWith('image/')||/\.(jpe?g|png|webp|heic|heif)$/i.test(f.name));
+  if(!files.length){toast('Выберите файлы изображений',true);return;}
+  let base=Date.now();
+  for(let i=0;i<files.length;i++){
+    try{
+      toast('Обработка фото '+(i+1)+' из '+files.length+'…');
+      const blob=await fileToJpeg(files[i]);
+      project.imgs.push({path:'pr/'+project.slug+'__'+base+'_'+i+'.jpg',blob,url:URL.createObjectURL(blob)});
+    }catch(e){toast(e.message,true);}
+  }
+  render();
+}
+
+/* ================= ПУБЛИКАЦИЯ ================= */
+function overlay(html){const o=$('overlay');if(html===null){o.style.display='none';return;}$('obox').innerHTML=html;o.style.display='flex';}
+async function publish(){
+  if(state.publishing)return;
+  const info=changesInfo();
+  if(!info.total&&!state.deletedPaths.size&&!info.text){toast('Нет изменений для публикации');return;}
+  // предупреждения про избранное
+  const featN=state.projects.filter(p=>p.feat&&!p.arch).length;
+  if(featN===0&&!confirm('Ни один проект не отмечен «Избранное» — на главной покажутся первые 6 автоматически. Продолжить?'))return;
+  if(featN>8&&!confirm('В «Избранном» '+featN+' проектов — на главной это может выглядеть перегруженно. Продолжить?'))return;
+  state.publishing=true;
+  try{
+    overlay('<div class="spin"></div><h3>Публикация…</h3><p class="hint" id="pubStep">Проверка данных</p>');
+    const step=t=>{const el=$('pubStep');if(el)el.textContent=t;};
+    // 1. конфликт?
+    const ref=await(await gh(`/repos/${OWNER}/${REPO}/git/refs/heads/${BRANCH}`)).json();
+    if(ref.object.sha!==state.baseCommitSha){
+      overlay(null);state.publishing=false;
+      alert('Данные на сайте изменились с момента загрузки страницы. Нажмите «Обновить данные» и внесите правки заново.');
+      return;
+    }
+    // 2. новые фото → blobs
+    const tree=[];
+    const newImgs=[];
+    for(const p of state.projects)for(const im of p.imgs)if(im.blob)newImgs.push(im);
+    for(let i=0;i<newImgs.length;i++){
+      step('Загрузка фото '+(i+1)+' из '+newImgs.length);
+      const b64=await blobToB64(newImgs[i].blob);
+      const r=await(await gh(`/repos/${OWNER}/${REPO}/git/blobs`,{method:'POST',body:JSON.stringify({content:b64,encoding:'base64'})})).json();
+      tree.push({path:IMG_DIR+newImgs[i].path,mode:'100644',type:'blob',sha:r.sha});
+    }
+    // 3. projects.js
+    step('Сохранение данных');
+    const dataBlob=await(await gh(`/repos/${OWNER}/${REPO}/git/blobs`,{method:'POST',body:JSON.stringify({content:utf8ToB64(serializeFile()),encoding:'base64'})})).json();
+    tree.push({path:DATA_PATH,mode:'100644',type:'blob',sha:dataBlob.sha});
+    // 4. удаления
+    for(const path of state.deletedPaths)tree.push({path:IMG_DIR+path,mode:'100644',type:'blob',sha:null});
+    // 5. tree → commit → ref
+    step('Создание коммита');
+    const t=await(await gh(`/repos/${OWNER}/${REPO}/git/trees`,{method:'POST',body:JSON.stringify({base_tree:state.baseTreeSha,tree})})).json();
+    if(!t.sha)throw new Error('Не удалось создать дерево файлов');
+    const c=await(await gh(`/repos/${OWNER}/${REPO}/git/commits`,{method:'POST',body:JSON.stringify({message:'Обновление портфолио (админ-панель)',tree:t.sha,parents:[state.baseCommitSha]})})).json();
+    if(!c.sha)throw new Error('Не удалось создать коммит');
+    const up=await gh(`/repos/${OWNER}/${REPO}/git/refs/heads/${BRANCH}`,{method:'PATCH',body:JSON.stringify({sha:c.sha,force:false})});
+    if(!up.ok){
+      overlay(null);state.publishing=false;
+      alert('Конфликт: данные изменились параллельно. Нажмите «Обновить данные» и повторите правки.');
+      return;
+    }
+    // 6. успех
+    state.baseCommitSha=c.sha;
+    state.baseTreeSha=t.sha;
+    for(const p of state.projects)for(const im of p.imgs){if(im.url)URL.revokeObjectURL(im.url);delete im.blob;delete im.url;im.justUploaded=true;}
+    snapshot();
+    overlay('<h3 style="color:var(--ok)">Опубликовано ✓</h3><p class="hint" style="margin:10px 0 18px">Сайт обновится автоматически через 2–5 минут<br>(Render пересоберёт страницы).</p><button class="btn-main" onclick="document.getElementById(\'overlay\').style.display=\'none\'">Хорошо</button>');
+    render();
+  }catch(e){
+    overlay(null);
+    toast('Ошибка публикации: '+e.message+' — нажмите «Опубликовать» ещё раз.',true);
+  }finally{state.publishing=false;}
+}
+
+/* ================= ЭКРАНЫ ================= */
+function logout(msg){
+  localStorage.removeItem(LS_KEY);
+  state.token=null;state.screen='auth';
+  render();
+  if(msg){const e=$('authErr');if(e){e.textContent=msg;e.style.display='block';}}
+}
+function render(){
+  $('btnReload').style.display=state.screen==='auth'?'none':'';
+  $('btnLogout').style.display=state.screen==='auth'?'none':'';
+  if(state.screen==='auth')renderAuth();
+  else if(state.screen==='editor')renderEditor();
+  else renderList();
+  renderBar();
+}
+function renderBar(){
+  const bar=$('pubbar');
+  if(state.screen==='auth'){bar.style.display='none';return;}
+  const info=changesInfo();
+  const has=info.text!=='';
+  bar.style.display=has?'block':'none';
+  if(has)$('pubCnt').textContent='Несохранённые изменения — '+info.text;
+}
+
+/* ---- Вход ---- */
+function renderAuth(){
+  $('app').innerHTML=`
+  <div class="card auth">
+    <h2>Вход в админ-панель</h2>
+    <p class="hint">Изменения публикуются напрямую в репозиторий сайта. Для входа нужен GitHub-токен.</p>
+    <label>Токен доступа GitHub</label>
+    <input type="password" id="tokIn" placeholder="github_pat_…" autocomplete="off">
+    <div class="msg-err" id="authErr"></div>
+    <div style="margin-top:16px"><button class="btn-main" id="btnLogin" style="width:100%;padding:12px">Войти</button></div>
+    <details>
+      <summary>Как получить токен (один раз, ~2 минуты)</summary>
+      <ol>
+        <li>Откройте <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> (войдите как <b>kzmeir</b>).</li>
+        <li><b>Token name</b>: например «most-admin». <b>Expiration</b>: 1 год (через год создадите новый).</li>
+        <li><b>Repository access</b> → «Only select repositories» → выберите <b>most</b>.</li>
+        <li><b>Permissions → Repository permissions → Contents → Read and write</b>. Больше ничего не включайте.</li>
+        <li>Нажмите «Generate token», скопируйте строку <code>github_pat_…</code> и вставьте её сюда.</li>
+      </ol>
+      <p class="hint" style="margin-top:8px">Токен хранится только в этом браузере. Кнопка «Выйти» удаляет его.</p>
+    </details>
+  </div>`;
+  const go=async()=>{
+    const tok=$('tokIn').value.trim();
+    const err=$('authErr');
+    if(!tok){err.textContent='Вставьте токен';err.style.display='block';return;}
+    $('btnLogin').disabled=true;$('btnLogin').textContent='Проверка…';
+    try{
+      state.token=tok;
+      const r=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`,{headers:{'Authorization':'Bearer '+tok,'Accept':'application/vnd.github+json'}});
+      const j=r.ok?await r.json():null;
+      if(!r.ok||!j.permissions||!j.permissions.push)throw 0;
+      localStorage.setItem(LS_KEY,tok);
+      await loadData();
+      state.screen='list';render();
+      toast('Данные загружены');
+    }catch(e){
+      state.token=null;
+      err.textContent='Токен не подошёл. Проверьте, что выбран репозиторий most и право Contents: Read and write.';
+      err.style.display='block';
+      $('btnLogin').disabled=false;$('btnLogin').textContent='Войти';
+    }
+  };
+  $('btnLogin').onclick=go;
+  $('tokIn').onkeydown=e=>{if(e.key==='Enter')go();};
+}
+
+/* ---- Список проектов ---- */
+function moveProject(i,d){
+  const j=i+d;
+  if(j<0||j>=state.projects.length)return;
+  const a=state.projects;[a[i],a[j]]=[a[j],a[i]];
+  render();
+}
+function thumbSrc(p){const im=p.imgs[0];return im?(im.url||im.path):'';}
+function renderList(){
+  const rows=state.projects.map((p,i)=>`
+    <div class="prow" draggable="true" data-i="${i}">
+      <span class="grip" title="Перетащите, чтобы изменить порядок">⠿</span>
+      ${thumbSrc(p)?`<img class="thumb" src="${esc(thumbSrc(p))}" alt="" loading="lazy">`:'<div class="thumb"></div>'}
+      <div class="pinfo">
+        <div class="pname">${esc(p.n)||'<i>Без названия</i>'}
+          ${p.feat?'<span class="badge feat">Избранное</span>':''}
+          ${p.arch?'<span class="badge arch">Архив</span>':''}
+        </div>
+        <div class="psub">${esc(p.cat)} · ${esc(p.loc)} · фото: ${p.imgs.length}</div>
+      </div>
+      <div class="rowbtns">
+        <button class="btn-sm" data-up="${i}" ${i===0?'disabled':''} title="Выше">↑</button>
+        <button class="btn-sm" data-down="${i}" ${i===state.projects.length-1?'disabled':''} title="Ниже">↓</button>
+        <button class="btn-sm" data-edit="${p.slug}">Изменить</button>
+      </div>
+    </div>`).join('');
+  $('app').innerHTML=`
+    <div class="toolbar">
+      <h2>Проекты <span class="hint">(${state.projects.length})</span></h2>
+      <span class="hint">Порядок в списке = порядок на сайте</span>
+      <button class="btn-main" id="btnAdd">+ Добавить проект</button>
+    </div>
+    <div class="plist" id="plist">${rows||'<div class="empty-note">Проектов пока нет</div>'}</div>`;
+  $('btnAdd').onclick=()=>{
+    const name=prompt('Название нового проекта:');
+    if(!name||!name.trim())return;
+    const slug=makeSlug(name.trim());
+    state.projects.unshift(normalize({slug,n:name.trim(),desc:['','']}));
+    state.editSlug=slug;state.screen='editor';render();
+  };
+  document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveProject(+b.dataset.up,-1));
+  document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveProject(+b.dataset.down,1));
+  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{state.editSlug=b.dataset.edit;state.screen='editor';render();});
+  // drag'n'drop строк
+  let dragFrom=null;
+  document.querySelectorAll('.prow').forEach(row=>{
+    row.addEventListener('dragstart',e=>{dragFrom=+row.dataset.i;e.dataTransfer.effectAllowed='move';});
+    row.addEventListener('dragover',e=>{e.preventDefault();row.classList.add('dragover');});
+    row.addEventListener('dragleave',()=>row.classList.remove('dragover'));
+    row.addEventListener('drop',e=>{
+      e.preventDefault();row.classList.remove('dragover');
+      const to=+row.dataset.i;
+      if(dragFrom===null||dragFrom===to)return;
+      const a=state.projects;const[m]=a.splice(dragFrom,1);a.splice(to,0,m);
+      dragFrom=null;render();
+    });
+  });
+}
+
+/* ---- Редактор проекта ---- */
+function renderEditor(){
+  const p=state.projects.find(x=>x.slug===state.editSlug);
+  if(!p){state.screen='list';renderList();return;}
+  const cats=[...new Set(state.projects.map(x=>x.cat).filter(Boolean))];
+  const knownTypes=['Жилые комплексы','Коттеджные городки','Гостиницы','Мастер-планы','Общественные'];
+  const photoCells=p.imgs.map((im,i)=>`
+    <div class="ph" draggable="true" data-i="${i}">
+      <img src="${esc(im.url||im.path)}" alt="" loading="lazy">
+      ${i===0?'<span class="cover-tag">Обложка</span>':''}
+      ${im.blob?'<span class="new-tag">новое</span>':''}
+      <div class="phb">
+        <button class="btn-sm" data-ml="${i}" ${i===0?'disabled':''} title="Левее">←</button>
+        <button class="btn-sm" data-mr="${i}" ${i===p.imgs.length-1?'disabled':''} title="Правее">→</button>
+        ${i>0?`<button class="btn-sm" data-cov="${i}" title="Сделать первой">Обложка</button>`:''}
+        <button class="btn-sm btn-danger" data-del="${i}" title="Удалить">✕</button>
+      </div>
+    </div>`).join('');
+  $('app').innerHTML=`
+    <div class="toolbar">
+      <button id="btnBack">← К списку</button>
+      <h2 style="flex:1">${esc(p.n)||'Новый проект'}</h2>
+      <button class="btn-danger" id="btnDelPrj">Удалить проект</button>
+    </div>
+    <div class="card">
+      <div class="ed-grid">
+        <div><label>Название</label><input type="text" id="f_n" value="${esc(p.n)}"></div>
+        <div><label>Локация</label><input type="text" id="f_loc" value="${esc(p.loc)}" placeholder="Алматы"></div>
+        <div class="full"><label>Категория (подпись на карточке)</label>
+          <input type="text" id="f_cat" value="${esc(p.cat)}" list="catList" placeholder="Жилой комплекс">
+          <datalist id="catList">${cats.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+        </div>
+        <div class="full"><label>Описание — абзац 1</label><textarea id="f_d0">${esc(p.desc[0])}</textarea></div>
+        <div class="full"><label>Описание — абзац 2</label><textarea id="f_d1">${esc(p.desc[1])}</textarea></div>
+        <div><label>Год</label><input type="text" id="f_year" value="${esc(p.year)}" placeholder="2024"></div>
+        <div><label>Статус</label><input type="text" id="f_status" value="${esc(p.status)}" list="stList" placeholder="Концепция">
+          <datalist id="stList"><option value="Концепция"><option value="Эскизный проект"><option value="Рабочий проект"><option value="Реализован"></datalist>
+        </div>
+        <div><label>Площадь участка</label><input type="text" id="f_area" value="${esc(p.area)}" placeholder="2,5 га"></div>
+        <div><label>Этажность</label><input type="text" id="f_floors" value="${esc(p.floors)}" placeholder="6–9"></div>
+        <div class="full"><label>Состав (квартиры / номера / м²)</label><input type="text" id="f_homes" value="${esc(p.homes)}" placeholder="≈ 500"></div>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="f_feat" ${p.feat?'checked':''}> Показывать на главной («Избранное»)</label>
+        <label><input type="checkbox" id="f_arch" ${p.arch?'checked':''}> Архив (скрыть с сайта)</label>
+      </div>
+      <div class="checks" style="margin-top:10px">
+        <span class="hint" style="align-self:center">Доп. фильтры:</span>
+        ${knownTypes.map(t=>`<label style="font-size:13.5px"><input type="checkbox" class="f_type" value="${esc(t)}" ${p.types.includes(t)?'checked':''}> ${esc(t)}</label>`).join('')}
+      </div>
+      <p class="hint" style="margin-top:14px">Категория сама определяет фильтр на странице портфолио; доп. фильтры нужны, только если проект должен попасть ещё в один раздел.</p>
+    </div>
+    <h3 style="margin:26px 0 4px">Фотографии <span class="hint">(${p.imgs.length}, первая — обложка)</span></h3>
+    <div class="photos" id="photos">${photoCells}</div>
+    <div class="dropzone" id="dz">Перетащите сюда фотографии или нажмите, чтобы выбрать файлы<br><span style="font-size:12.5px">JPEG/PNG · автоматически сожмутся до ${MAX_SIDE}px</span></div>
+    <input type="file" id="fileIn" accept="image/*" multiple style="display:none">`;
+  // bind полей
+  const bind=(id,fn)=>{$(id).addEventListener('input',e=>{fn(e.target);renderBar();});};
+  bind('f_n',t=>p.n=t.value);bind('f_loc',t=>p.loc=t.value);bind('f_cat',t=>p.cat=t.value);
+  bind('f_d0',t=>p.desc[0]=t.value);bind('f_d1',t=>p.desc[1]=t.value);
+  bind('f_year',t=>p.year=t.value);bind('f_status',t=>p.status=t.value);bind('f_area',t=>p.area=t.value);
+  bind('f_floors',t=>p.floors=t.value);bind('f_homes',t=>p.homes=t.value);
+  $('f_feat').onchange=e=>{p.feat=e.target.checked;renderBar();};
+  $('f_arch').onchange=e=>{p.arch=e.target.checked;renderBar();};
+  document.querySelectorAll('.f_type').forEach(c=>c.onchange=()=>{
+    p.types=Array.from(document.querySelectorAll('.f_type:checked')).map(x=>x.value);renderBar();
+  });
+  $('btnBack').onclick=()=>{state.screen='list';render();};
+  $('btnDelPrj').onclick=()=>{
+    if(!confirm('Удалить проект «'+(p.n||p.slug)+'» вместе со всеми фотографиями? Это попадёт на сайт после публикации.'))return;
+    for(const im of p.imgs){if(im.blob){if(im.url)URL.revokeObjectURL(im.url);}else state.deletedPaths.add(im.path);}
+    state.projects=state.projects.filter(x=>x!==p);
+    state.screen='list';render();
+  };
+  // фото: кнопки
+  const movePh=(i,d)=>{const j=i+d;if(j<0||j>=p.imgs.length)return;[p.imgs[i],p.imgs[j]]=[p.imgs[j],p.imgs[i]];render();};
+  document.querySelectorAll('[data-ml]').forEach(b=>b.onclick=()=>movePh(+b.dataset.ml,-1));
+  document.querySelectorAll('[data-mr]').forEach(b=>b.onclick=()=>movePh(+b.dataset.mr,1));
+  document.querySelectorAll('[data-cov]').forEach(b=>b.onclick=()=>{const[m]=p.imgs.splice(+b.dataset.cov,1);p.imgs.unshift(m);render();});
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    const i=+b.dataset.del;const im=p.imgs[i];
+    if(!confirm('Удалить это фото?'))return;
+    if(im.blob){if(im.url)URL.revokeObjectURL(im.url);}else state.deletedPaths.add(im.path);
+    p.imgs.splice(i,1);render();
+  });
+  // фото: drag-order
+  let phFrom=null;
+  document.querySelectorAll('.ph').forEach(cell=>{
+    cell.addEventListener('dragstart',()=>{phFrom=+cell.dataset.i;});
+    cell.addEventListener('dragover',e=>{e.preventDefault();cell.classList.add('dragover');});
+    cell.addEventListener('dragleave',()=>cell.classList.remove('dragover'));
+    cell.addEventListener('drop',e=>{
+      e.preventDefault();cell.classList.remove('dragover');
+      const to=+cell.dataset.i;
+      if(phFrom===null||phFrom===to)return;
+      const[m]=p.imgs.splice(phFrom,1);p.imgs.splice(to,0,m);phFrom=null;render();
+    });
+  });
+  // загрузка
+  const dz=$('dz'),fi=$('fileIn');
+  dz.onclick=()=>fi.click();
+  fi.onchange=()=>{addPhotos(p,fi.files);fi.value='';};
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('on');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('on'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('on');addPhotos(p,e.dataTransfer.files);});
+}
+
+/* ================= КНОПКИ ШАПКИ / БАРА ================= */
+$('btnLogout').onclick=()=>{
+  if(changesInfo().text&&!confirm('Есть неопубликованные изменения — они пропадут. Выйти?'))return;
+  logout();
+};
+$('btnReload').onclick=async()=>{
+  if(changesInfo().text&&!confirm('Есть неопубликованные изменения — они пропадут при обновлении. Продолжить?'))return;
+  try{overlay('<div class="spin"></div><h3>Загрузка…</h3>');await loadData();overlay(null);state.screen='list';render();toast('Данные обновлены');}
+  catch(e){overlay(null);toast('Не удалось загрузить: '+e.message,true);}
+};
+$('btnDiscard').onclick=async()=>{
+  if(!confirm('Отменить все несохранённые изменения?'))return;
+  try{overlay('<div class="spin"></div><h3>Загрузка…</h3>');await loadData();overlay(null);state.screen='list';render();}
+  catch(e){overlay(null);toast('Ошибка: '+e.message,true);}
+};
+$('btnPublish').onclick=publish;
+window.addEventListener('beforeunload',e=>{
+  if(state.screen!=='auth'&&changesInfo().text){e.preventDefault();e.returnValue='';}
+});
+
+/* ================= СТАРТ ================= */
+(async function boot(){
+  const tok=localStorage.getItem(LS_KEY);
+  if(!tok){state.screen='auth';render();return;}
+  state.token=tok;
+  try{
+    overlay('<div class="spin"></div><h3>Загрузка данных…</h3>');
+    await loadData();
+    overlay(null);
+    state.screen='list';render();
+  }catch(e){
+    overlay(null);
+    if(e.message!=='401'){state.screen='auth';render();const el=$('authErr');if(el){el.textContent='Не удалось загрузить данные: '+e.message;el.style.display='block';}}
+  }
+})();
+</script>
+</body>
+</html>

@@ -481,7 +481,7 @@ addEventListener('mousemove',e=>{
 
 // ---- INDEX ----
 const projects=window.PROJECTS;
-const featured=[...projects.slice(0,6), projects.find(p=>p.slug==='exclusive')].filter(Boolean);
+let featured=projects.filter(p=>p.feat&&!p.arch); if(!featured.length)featured=projects.filter(p=>!p.arch).slice(0,6);
 document.getElementById('ixList').innerHTML=featured.map((p,i)=>`
   <a class="pf-card reveal${i===0?' feat':''}" href="most-project.html?slug=${p.slug}" data-hover>
     <div class="pf-frame">

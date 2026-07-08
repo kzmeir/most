@@ -9,6 +9,12 @@ services:
       - path: /*
         name: Cache-Control
         value: public, max-age=3600
+      - path: /projects.js
+        name: Cache-Control
+        value: no-cache, must-revalidate
+      - path: /admin.html
+        name: Cache-Control
+        value: no-cache, must-revalidate
     routes:
       - type: rewrite
         source: /
