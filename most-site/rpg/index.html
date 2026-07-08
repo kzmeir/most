@@ -49,12 +49,14 @@
   }
   .hero-top{display:flex;gap:16px;align-items:center}
   .avatar{
-    width:72px;height:72px;flex:0 0 72px;border-radius:18px;
-    background:var(--card2);border:1px solid var(--border);
-    display:flex;align-items:center;justify-content:center;
-    font-size:40px;cursor:pointer;user-select:none;
+    width:78px;height:96px;flex:0 0 78px;border-radius:18px;
+    background:linear-gradient(180deg,var(--card2),rgba(124,92,255,.12));
+    border:1px solid var(--border);
+    display:flex;align-items:flex-end;justify-content:center;
+    cursor:pointer;user-select:none;overflow:hidden;
     transition:transform .15s;
   }
+  .avatar svg{display:block;margin-bottom:-3px}
   .avatar:active{transform:scale(.92)}
   .hero-info{flex:1;min-width:0}
   .hero-name{
@@ -208,12 +210,17 @@
   .toast.loss{border-color:rgba(255,107,107,.5)}
   @keyframes toastIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
   #levelup{
-    position:fixed;inset:0;background:rgba(10,12,24,.85);z-index:60;
+    position:fixed;inset:0;background:rgba(13,16,30,.93);backdrop-filter:blur(6px);z-index:60;
     display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;
     text-align:center;padding:20px;
   }
   #levelup.show{display:flex;animation:fadeIn .3s}
-  #levelup .lvl-big{font-size:72px;animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+  #levelup .lvl-big{animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+  #levelup .btn{flex:0 0 auto}
+  #levelup .evo-badge{
+    background:rgba(246,196,83,.14);border:1px solid rgba(246,196,83,.45);color:var(--gold);
+    border-radius:10px;padding:6px 14px;font-weight:700;font-size:14px;
+  }
   #levelup h3{font-size:26px}
   #levelup p{color:var(--muted)}
   @keyframes pop{from{transform:scale(.3)}to{transform:scale(1)}}
@@ -238,7 +245,15 @@
   }
   .char-card:hover{transform:translateY(-2px);border-color:var(--xp)}
   .char-card.current{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
-  .char-emoji{font-size:34px}
+  .char-art{
+    display:flex;justify-content:center;align-items:flex-end;height:104px;
+    background:radial-gradient(80px 50px at 50% 85%,rgba(124,92,255,.18),transparent);
+    border-radius:12px;
+  }
+  .char-stage{
+    text-align:center;font-size:10.5px;color:var(--muted);margin-top:6px;letter-spacing:.02em;
+  }
+  .char-stage b{color:var(--gold);font-weight:700}
   .char-name{font-weight:800;font-size:15.5px;margin-top:8px}
   .char-tag{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45;min-height:36px}
   .char-bonus{
@@ -372,14 +387,15 @@
 <div id="charPicker">
   <div class="picker-box">
     <h3>Выбери персонажа</h3>
-    <p class="sub">Класс определяет твою специализацию: за привычки «своей» стихии персонаж получает больше опыта. Сменить можно в любой момент — просто нажми на аватар.</p>
+    <p class="sub">Класс определяет твою специализацию: за привычки «своей» стихии персонаж получает больше опыта. Герой растёт вместе с тобой — от ребёнка до мастера с аурой. Сменить класс можно в любой момент, нажав на аватар.</p>
     <div class="char-grid" id="charGrid"></div>
   </div>
 </div>
 
 <div id="toasts"></div>
 <div id="levelup">
-  <div class="lvl-big">🎉</div>
+  <div class="lvl-big" id="lvlupArt">🎉</div>
+  <div class="evo-badge" id="evoBadge" style="display:none"></div>
   <h3 id="lvlupTitle">Новый уровень!</h3>
   <p id="lvlupText"></p>
   <button class="btn primary" onclick="document.getElementById('levelup').classList.remove('show')">Круто!</button>
@@ -408,6 +424,301 @@ const RANKS = [
   [1,"Новичок"],[3,"Ученик"],[5,"Искатель"],[8,"Адепт"],[12,"Воин привычек"],
   [16,"Ветеран"],[20,"Мастер"],[27,"Герой"],[35,"Чемпион"],[45,"Легенда"],[60,"Бессмертный"]
 ];
+// ===== character art (vector, 4 growth stages) =====
+const STAGE_PARAMS = [
+  {key:0, name:"Ребёнок",   headR:24, bodyW:34, bodyH:26, legH:12, armH:20, eyeR:3.4, cheeks:true},
+  {key:1, name:"Подросток", headR:21, bodyW:36, bodyH:36, legH:18, armH:28, eyeR:2.9, cheeks:false},
+  {key:2, name:"Взрослый",  headR:20, bodyW:42, bodyH:46, legH:23, armH:36, eyeR:2.6, cheeks:false},
+  {key:3, name:"Мастер",    headR:20, bodyW:44, bodyH:48, legH:24, armH:38, eyeR:2.6, cheeks:false, aura:true},
+];
+
+const CHAR_ART = {
+  athlete:    {skin:"#f4c08e", hairC:"#3d2a1a", outfit:["#ff8a5c","#e04b22"], pants:"#3a3f5c", hair:"spiky",
+               aura:"#ff8a5c"},
+  strategist: {skin:"#f2c39a", hairC:"#5d4030", outfit:["#5cc8ff","#2f7fd6"], pants:"#2e3450", hair:"side",
+               aura:"#5cc8ff"},
+  pro:        {skin:"#e5b285", hairC:"#23232b", outfit:["#8a96f0","#4a55b8"], pants:"#23283f", hair:"slick",
+               aura:"#8a96f0"},
+  leader:     {skin:"#f4c08e", hairC:"#7a3326", outfit:["#f6c453","#e0862d"], pants:"#40304f", hair:"wavy",
+               aura:"#f6c453"},
+  zen:        {skin:"#eec39a", hairC:"#2f2f38", outfit:["#3ddc97","#1fa876"], pants:"#274038", hair:"bun",
+               aura:"#3ddc97"},
+  pioneer:    {skin:"#f2c39a", hairC:"#4a3624", outfit:["#e8ecf8","#9aa6d8"], pants:"#3c3357", hair:"helmet",
+               aura:"#b3a1ff"},
+};
+
+function darken(hex, f){ // f 0..1
+  const n = parseInt(hex.slice(1),16);
+  const r=Math.round(((n>>16)&255)*(1-f)), g=Math.round(((n>>8)&255)*(1-f)), b=Math.round((n&255)*(1-f));
+  return `rgb(${r},${g},${b})`;
+}
+
+function charSVG(classId, stage, size){
+  const A = CHAR_ART[classId], P = STAGE_PARAMS[stage];
+  const uid = classId + stage;
+  const cx = 60, ground = 141;
+  const legTop = ground - P.legH;
+  const bodyY = legTop - P.bodyH + 5;
+  const headCy = bodyY - P.headR + 6;
+  const bw = P.bodyW, bx = cx - bw/2;
+  const armW = 9.5;
+  const lX = bx - armW + 2.5, rX = bx + bw - 2.5; // arm x positions
+  const armY = bodyY + 5;
+  const legW = Math.max(10, bw*0.27);
+
+  let s = "";
+  const defs = `
+  <defs>
+    <linearGradient id="o${uid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${A.outfit[0]}"/><stop offset="1" stop-color="${A.outfit[1]}"/>
+    </linearGradient>
+    <radialGradient id="a${uid}" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="${A.aura}" stop-opacity=".55"/>
+      <stop offset=".7" stop-color="${A.aura}" stop-opacity=".18"/>
+      <stop offset="1" stop-color="${A.aura}" stop-opacity="0"/>
+    </radialGradient>
+  </defs>`;
+
+  // aura (master)
+  if(P.aura) s += `<circle cx="60" cy="${(headCy+ground)/2}" r="56" fill="url(#a${uid})"/>`;
+  // ground shadow
+  s += `<ellipse cx="60" cy="${ground+3}" rx="${bw*0.75}" ry="6" fill="#000" opacity=".28"/>`;
+
+  // cape for master (behind body)
+  if(stage===3 && (classId==="leader"||classId==="pro"||classId==="strategist")){
+    s += `<path d="M${bx+3} ${bodyY+4} Q${cx-bw} ${bodyY+P.bodyH*0.8} ${bx-6} ${ground-2}
+          L${bx+bw+6} ${ground-2} Q${cx+bw} ${bodyY+P.bodyH*0.8} ${bx+bw-3} ${bodyY+4} Z"
+          fill="${darken(A.outfit[1],0.35)}"/>`;
+  }
+
+  // legs
+  const legGap = bw*0.16;
+  s += `<rect x="${cx-legGap-legW}" y="${legTop-4}" width="${legW}" height="${P.legH+4}" rx="${legW/2}" fill="${A.pants}"/>
+        <rect x="${cx+legGap}" y="${legTop-4}" width="${legW}" height="${P.legH+4}" rx="${legW/2}" fill="${A.pants}"/>
+        <ellipse cx="${cx-legGap-legW/2}" cy="${ground}" rx="${legW/2+2}" ry="4.5" fill="${darken(A.pants,0.35)}"/>
+        <ellipse cx="${cx+legGap+legW/2}" cy="${ground}" rx="${legW/2+2}" ry="4.5" fill="${darken(A.pants,0.35)}"/>`;
+
+  // arms (sleeve capsule + hand)
+  const sleeveC = darken(A.outfit[1], 0.12);
+  s += `<rect x="${lX}" y="${armY}" width="${armW}" height="${P.armH}" rx="${armW/2}" fill="${sleeveC}"/>
+        <rect x="${rX}" y="${armY}" width="${armW}" height="${P.armH}" rx="${armW/2}" fill="${sleeveC}"/>
+        <circle cx="${lX+armW/2}" cy="${armY+P.armH-2}" r="4.6" fill="${A.skin}"/>
+        <circle cx="${rX+armW/2}" cy="${armY+P.armH-2}" r="4.6" fill="${A.skin}"/>`;
+
+  // body
+  s += `<rect x="${bx}" y="${bodyY}" width="${bw}" height="${P.bodyH}" rx="${Math.min(14,bw/3)}" fill="url(#o${uid})"/>`;
+  // body shine
+  s += `<rect x="${bx+3}" y="${bodyY+3}" width="${bw*0.35}" height="${P.bodyH-8}" rx="8" fill="#fff" opacity=".12"/>`;
+
+  // class body details
+  s += bodyDetails(classId, stage, {cx,bx,bw,bodyY,bodyH:P.bodyH,A});
+
+  // gold belt for master
+  if(stage===3) s += `<rect x="${bx}" y="${bodyY+P.bodyH-11}" width="${bw}" height="7" rx="3.5" fill="#f6c453"/>
+    <rect x="${cx-5}" y="${bodyY+P.bodyH-12.5}" width="10" height="10" rx="2.5" fill="#ffe9a8" stroke="#c98f1e"/>`;
+
+  // head
+  s += `<circle cx="${cx}" cy="${headCy}" r="${P.headR}" fill="${A.skin}"/>
+        <path d="M${cx-P.headR} ${headCy} a${P.headR} ${P.headR} 0 0 0 ${P.headR*2} 0" fill="#000" opacity=".05"/>`;
+
+  // hair / helmet
+  s += hairArt(classId, stage, {cx, headCy, r:P.headR, A});
+
+  // face
+  const eyeY = headCy + 1.5, eyeDx = P.headR*0.42;
+  if(classId==="zen" && stage>=2){
+    // calm closed eyes
+    s += `<path d="M${cx-eyeDx-3} ${eyeY} q3 3 6 0" stroke="#2b2330" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+          <path d="M${cx+eyeDx-3} ${eyeY} q3 3 6 0" stroke="#2b2330" stroke-width="1.8" fill="none" stroke-linecap="round"/>`;
+  } else {
+    s += `<circle cx="${cx-eyeDx}" cy="${eyeY}" r="${P.eyeR}" fill="#2b2330"/>
+          <circle cx="${cx+eyeDx}" cy="${eyeY}" r="${P.eyeR}" fill="#2b2330"/>
+          <circle cx="${cx-eyeDx+1}" cy="${eyeY-1}" r="${P.eyeR*0.35}" fill="#fff"/>
+          <circle cx="${cx+eyeDx+1}" cy="${eyeY-1}" r="${P.eyeR*0.35}" fill="#fff"/>`;
+  }
+  // smile
+  const smY = headCy + P.headR*0.45;
+  s += `<path d="M${cx-4.5} ${smY} q4.5 ${stage===0?5:4} 9 0" stroke="#a05a3c" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  // cheeks
+  if(P.cheeks) s += `<ellipse cx="${cx-P.headR*0.62}" cy="${headCy+P.headR*0.3}" rx="4" ry="2.6" fill="#f28a7d" opacity=".55"/>
+                     <ellipse cx="${cx+P.headR*0.62}" cy="${headCy+P.headR*0.3}" rx="4" ry="2.6" fill="#f28a7d" opacity=".55"/>`;
+
+  // glasses for strategist (teen+)
+  if(classId==="strategist" && stage>=1){
+    s += `<g stroke="#26507a" stroke-width="1.8" fill="rgba(160,210,255,.25)">
+      <circle cx="${cx-eyeDx}" cy="${eyeY}" r="${P.eyeR+3.4}"/>
+      <circle cx="${cx+eyeDx}" cy="${eyeY}" r="${P.eyeR+3.4}"/>
+      <path d="M${cx-eyeDx+P.eyeR+3.4} ${eyeY} L${cx+eyeDx-P.eyeR-3.4} ${eyeY}" fill="none"/>
+    </g>`;
+  }
+
+  // held items / extras
+  s += itemsArt(classId, stage, {cx, bx, bw, bodyY, bodyH:P.bodyH, headCy, r:P.headR,
+                                 lHand:{x:lX+armW/2, y:armY+P.armH-2}, rHand:{x:rX+armW/2, y:armY+P.armH-2}, A});
+
+  // master sparkles
+  if(stage===3){
+    const sp = (x,y,sc)=>`<path transform="translate(${x} ${y}) scale(${sc})" d="M0 -5 L1.3 -1.3 L5 0 L1.3 1.3 L0 5 L-1.3 1.3 L-5 0 L-1.3 -1.3 Z" fill="#ffe9a8"/>`;
+    s += sp(22, headCy-8, 0.9) + sp(98, bodyY+8, 0.7) + sp(30, bodyY+P.bodyH, 0.6);
+  }
+
+  return `<svg viewBox="0 0 120 152" width="${size}" height="${Math.round(size*152/120)}" xmlns="http://www.w3.org/2000/svg">${defs}${s}</svg>`;
+}
+
+function hairArt(classId, stage, {cx, headCy, r, A}){
+  const c = A.hairC;
+  switch(A.hair){
+    case "spiky":{
+      // short spiky top
+      let p = `M${cx-r*0.95} ${headCy-r*0.2} Q${cx-r*0.9} ${headCy-r*1.05} ${cx-r*0.45} ${headCy-r*0.98}`;
+      p += ` L${cx-r*0.38} ${headCy-r*1.28} L${cx-r*0.12} ${headCy-r*1.0}`;
+      p += ` L${cx+r*0.1} ${headCy-r*1.34} L${cx+r*0.3} ${headCy-r*1.0}`;
+      p += ` L${cx+r*0.55} ${headCy-r*1.22} L${cx+r*0.62} ${headCy-r*0.9}`;
+      p += ` Q${cx+r*0.95} ${headCy-r*0.75} ${cx+r*0.95} ${headCy-r*0.2}`;
+      p += ` Q${cx} ${headCy-r*0.55} ${cx-r*0.95} ${headCy-r*0.2} Z`;
+      let out = `<path d="${p}" fill="${c}"/>`;
+      if(stage>=1) out += `<rect x="${cx-r*0.98}" y="${headCy-r*0.52}" width="${r*1.96}" height="${r*0.3}" rx="${r*0.15}" fill="${stage===3?'#f6c453':'#e04b22'}"/>`; // headband
+      return out;
+    }
+    case "side":{
+      return `<path d="M${cx-r*0.98} ${headCy+r*0.05} Q${cx-r*1.05} ${headCy-r*1.1} ${cx} ${headCy-r*1.04}
+        Q${cx+r*1.02} ${headCy-r*1.0} ${cx+r*0.98} ${headCy-r*0.1}
+        Q${cx+r*0.55} ${headCy-r*0.45} ${cx+r*0.2} ${headCy-r*0.6}
+        Q${cx-r*0.3} ${headCy-r*0.8} ${cx-r*0.55} ${headCy-r*0.5}
+        Q${cx-r*0.8} ${headCy-r*0.25} ${cx-r*0.98} ${headCy+r*0.05} Z" fill="${c}"/>`;
+    }
+    case "slick":{
+      return `<path d="M${cx-r*0.97} ${headCy-r*0.1} Q${cx-r*0.9} ${headCy-r*1.12} ${cx+r*0.1} ${headCy-r*1.05}
+        Q${cx+r*1.0} ${headCy-r*0.95} ${cx+r*0.95} ${headCy-r*0.25}
+        Q${cx+r*0.4} ${headCy-r*0.62} ${cx-r*0.2} ${headCy-r*0.68}
+        Q${cx-r*0.75} ${headCy-r*0.6} ${cx-r*0.97} ${headCy-r*0.1} Z" fill="${c}"/>
+        <path d="M${cx-r*0.5} ${headCy-r*0.92} Q${cx} ${headCy-r*1.02} ${cx+r*0.5} ${headCy-r*0.85}"
+          stroke="#565664" stroke-width="1.6" fill="none" opacity=".8"/>`;
+    }
+    case "wavy":{
+      let out = `<path d="M${cx-r*1.05} ${headCy+r*0.45} Q${cx-r*1.25} ${headCy-r*0.3} ${cx-r*0.85} ${headCy-r*0.85}
+        Q${cx-r*0.3} ${headCy-r*1.25} ${cx+r*0.45} ${headCy-r*1.02}
+        Q${cx+r*1.15} ${headCy-r*0.75} ${cx+r*1.05} ${headCy+r*0.45}
+        Q${cx+r*0.9} ${headCy+r*0.1} ${cx+r*0.72} ${headCy-r*0.3}
+        Q${cx+r*0.2} ${headCy-r*0.62} ${cx-r*0.4} ${headCy-r*0.58}
+        Q${cx-r*0.75} ${headCy-r*0.4} ${cx-r*0.78} ${headCy+r*0.05}
+        Q${cx-r*0.85} ${headCy+r*0.3} ${cx-r*1.05} ${headCy+r*0.45} Z" fill="${c}"/>`;
+      return out;
+    }
+    case "bun":{
+      let out = `<path d="M${cx-r*0.96} ${headCy-r*0.15} Q${cx-r*0.8} ${headCy-r*1.02} ${cx} ${headCy-r*1.0}
+        Q${cx+r*0.8} ${headCy-r*1.02} ${cx+r*0.96} ${headCy-r*0.15}
+        Q${cx} ${headCy-r*0.5} ${cx-r*0.96} ${headCy-r*0.15} Z" fill="${c}"/>
+        <circle cx="${cx}" cy="${headCy-r*1.12}" r="${r*0.3}" fill="${c}"/>`;
+      if(stage>=1) out += `<rect x="${cx-r*0.3}" y="${headCy-r*1.02}" width="${r*0.6}" height="${r*0.14}" rx="${r*0.07}" fill="#f6c453"/>`;
+      return out;
+    }
+    case "helmet":{
+      if(stage===0){ // kid: cap with antenna
+        return `<path d="M${cx-r*0.95} ${headCy-r*0.15} Q${cx-r*0.85} ${headCy-r*1.1} ${cx} ${headCy-r*1.05}
+          Q${cx+r*0.85} ${headCy-r*1.1} ${cx+r*0.95} ${headCy-r*0.15} Z" fill="${A.outfit[1]}"/>
+          <line x1="${cx}" y1="${headCy-r*1.05}" x2="${cx}" y2="${headCy-r*1.45}" stroke="${A.outfit[1]}" stroke-width="2"/>
+          <circle cx="${cx}" cy="${headCy-r*1.5}" r="2.6" fill="#ff5c7a"/>`;
+      }
+      // helmet dome with visor
+      return `<path d="M${cx-r*1.08} ${headCy+r*0.25} Q${cx-r*1.15} ${headCy-r*1.15} ${cx} ${headCy-r*1.15}
+        Q${cx+r*1.15} ${headCy-r*1.15} ${cx+r*1.08} ${headCy+r*0.25}
+        L${cx+r*0.8} ${headCy+r*0.25} L${cx+r*0.8} ${headCy-r*0.2} Q${cx} ${headCy-r*0.5} ${cx-r*0.8} ${headCy-r*0.2}
+        L${cx-r*0.8} ${headCy+r*0.25} Z" fill="#dfe5f5" stroke="#9aa6d8" stroke-width="1.5"/>
+        <circle cx="${cx+r*0.9}" cy="${headCy-r*0.7}" r="2.6" fill="${stage===3?'#f6c453':'#7c5cff'}"/>`;
+    }
+  }
+  return "";
+}
+
+function bodyDetails(classId, stage, {cx,bx,bw,bodyY,bodyH,A}){
+  let s = "";
+  if(classId==="pro"){
+    // shirt V + tie from teen
+    s += `<path d="M${cx-7} ${bodyY} L${cx} ${bodyY+9} L${cx+7} ${bodyY} Z" fill="#f5f7ff"/>`;
+    if(stage>=1) s += `<path d="M${cx-3} ${bodyY+7} L${cx+3} ${bodyY+7} L${cx+2} ${bodyY+bodyH*0.55} L${cx} ${bodyY+bodyH*0.62} L${cx-2} ${bodyY+bodyH*0.55} Z" fill="${stage===3?'#f6c453':'#e04b60'}"/>`;
+  }
+  if(classId==="athlete" && stage>=2){
+    // tank top stripes
+    s += `<path d="M${bx+bw*0.18} ${bodyY+2} L${bx+bw*0.3} ${bodyY+bodyH*0.5}" stroke="#fff" stroke-width="3" opacity=".35" stroke-linecap="round"/>
+          <path d="M${bx+bw*0.82} ${bodyY+2} L${bx+bw*0.7} ${bodyY+bodyH*0.5}" stroke="#fff" stroke-width="3" opacity=".35" stroke-linecap="round"/>`;
+  }
+  if(classId==="zen" && stage>=1){
+    // robe wrap
+    s += `<path d="M${bx+bw*0.25} ${bodyY} L${bx+bw*0.62} ${bodyY+bodyH}" stroke="${darken(A.outfit[1],0.25)}" stroke-width="4" opacity=".7"/>`;
+  }
+  if(classId==="leader" && stage>=2){
+    // lapels
+    s += `<path d="M${cx-8} ${bodyY} L${cx-2} ${bodyY+11} L${cx-11} ${bodyY+9} Z" fill="${darken(A.outfit[1],0.3)}"/>
+          <path d="M${cx+8} ${bodyY} L${cx+2} ${bodyY+11} L${cx+11} ${bodyY+9} Z" fill="${darken(A.outfit[1],0.3)}"/>`;
+  }
+  if(classId==="pioneer" && stage>=1){
+    // chest panel
+    s += `<rect x="${cx-8}" y="${bodyY+7}" width="16" height="10" rx="3" fill="#7c5cff" opacity=".85"/>
+          <circle cx="${cx-3.5}" cy="${bodyY+12}" r="1.8" fill="#3ddc97"/>
+          <circle cx="${cx+3.5}" cy="${bodyY+12}" r="1.8" fill="#ff5c7a"/>`;
+  }
+  if(classId==="strategist" && stage>=2){
+    // scarf
+    s += `<rect x="${cx-9}" y="${bodyY-2}" width="18" height="6" rx="3" fill="#26507a"/>`;
+  }
+  return s;
+}
+
+function itemsArt(classId, stage, {cx, bx, bw, bodyY, bodyH, headCy, r, lHand, rHand, A}){
+  let s = "";
+  if(classId==="athlete" && stage>=2){
+    // dumbbell in right hand
+    const y = rHand.y+2;
+    s += `<rect x="${rHand.x-11}" y="${y-2}" width="22" height="4" rx="2" fill="#8b93b8"/>
+          <rect x="${rHand.x-14}" y="${y-6.5}" width="5" height="13" rx="2" fill="#4d5573"/>
+          <rect x="${rHand.x+9}" y="${y-6.5}" width="5" height="13" rx="2" fill="#4d5573"/>`;
+  }
+  if(classId==="strategist" && stage>=1){
+    // book in left hand
+    const y = lHand.y;
+    const glow = stage===3 ? `<circle cx="${lHand.x}" cy="${y}" r="12" fill="#5cc8ff" opacity=".25"/>` : "";
+    s += glow + `<rect x="${lHand.x-9}" y="${y-6}" width="18" height="12" rx="2" fill="${stage===3?'#f6c453':'#c9553e'}"/>
+          <line x1="${lHand.x}" y1="${y-6}" x2="${lHand.x}" y2="${y+6}" stroke="#fff" stroke-width="1.4" opacity=".8"/>`;
+  }
+  if(classId==="pro" && stage>=2){
+    // briefcase
+    const y = rHand.y+3;
+    s += `<rect x="${rHand.x-8}" y="${y}" width="16" height="12" rx="2.5" fill="#6b4a2f"/>
+          <rect x="${rHand.x-3}" y="${y-3}" width="6" height="4" rx="1.5" fill="none" stroke="#6b4a2f" stroke-width="2"/>
+          <rect x="${rHand.x-1.5}" y="${y+4.5}" width="3" height="3" fill="#f6c453"/>`;
+  }
+  if(classId==="leader" && stage>=2){
+    // microphone in right hand
+    s += `<line x1="${rHand.x}" y1="${rHand.y}" x2="${rHand.x+6}" y2="${rHand.y-12}" stroke="#40304f" stroke-width="3.4" stroke-linecap="round"/>
+          <circle cx="${rHand.x+7.5}" cy="${rHand.y-14.5}" r="5" fill="#2b2330"/>
+          <circle cx="${rHand.x+6}" cy="${rHand.y-16}" r="1.6" fill="#8b93b8"/>`;
+  }
+  if(classId==="zen"){
+    if(stage>=1){
+      // beads
+      const y = bodyY+4;
+      let beads = "";
+      for(let i=-2;i<=2;i++) beads += `<circle cx="${cx+i*5}" cy="${y+Math.abs(i)*2+4}" r="2.4" fill="#b3763f"/>`;
+      s += beads;
+    }
+    if(stage===3){
+      // lotus glow at feet
+      s += `<path d="M${cx} 143 q-10 -1 -12 -9 q7 1 9 5 q-1 -8 3 -12 q4 4 3 12 q2 -4 9 -5 q-2 8 -12 9 Z" fill="#3ddc97" opacity=".9"/>`;
+    }
+  }
+  if(classId==="pioneer" && stage>=2){
+    // jetpack tanks behind (peek at sides)
+    s += `<rect x="${bx-7}" y="${bodyY+6}" width="8" height="${bodyH*0.6}" rx="4" fill="#aab4d8"/>
+          <rect x="${bx+bw-1}" y="${bodyY+6}" width="8" height="${bodyH*0.6}" rx="4" fill="#aab4d8"/>`;
+    if(stage===3){
+      s += `<path d="M${bx-3} ${bodyY+6+bodyH*0.6} q0 8 -2 11 q3 -2 4 -6 q1 4 3 6 q-1 -5 -1 -11 Z" fill="#ff9a4d"/>
+            <path d="M${bx+bw+3} ${bodyY+6+bodyH*0.6} q0 8 -2 11 q3 -2 4 -6 q1 4 3 6 q-1 -5 -1 -11 Z" fill="#ff9a4d"/>`;
+    }
+  }
+  return s;
+}
+
 const CHARACTERS = [
   {id:"athlete", emoji:"🏋️", name:"Атлет", stat:"str",
    tag:"Тело — главный проект. Спортзал, бег, форма вместо оправданий.",
@@ -429,6 +740,7 @@ const CHARACTERS = [
    bonus:"+15% XP за любые привычки"},
 ];
 const charById = id => CHARACTERS.find(c=>c.id===id);
+function stageForLevel(l){ return l>=20 ? 3 : l>=12 ? 2 : l>=5 ? 1 : 0; }
 const MAX_HP = 50;
 const ACHIEVEMENTS = [
   {id:"first",    ico:"👣", title:"Первый шаг",      desc:"Выполни привычку впервые",            test:s=>s.totals.done>=1},
@@ -487,6 +799,7 @@ function rankFor(level){
 }
 function gainXp(amount){
   S.hero.xp += amount;
+  const stageBefore = stageForLevel(S.hero.level);
   let leveled = false;
   while(S.hero.xp >= xpNeeded(S.hero.level)){
     S.hero.xp -= xpNeeded(S.hero.level);
@@ -494,7 +807,7 @@ function gainXp(amount){
     leveled = true;
     S.hero.hp = MAX_HP; // level up heals
   }
-  if(leveled) showLevelUp();
+  if(leveled) showLevelUp(stageForLevel(S.hero.level) > stageBefore);
 }
 function loseHp(dmg){
   S.hero.hp -= dmg;
@@ -568,8 +881,19 @@ function toast(msg, cls){
   setTimeout(()=>{ el.style.opacity="0"; el.style.transition="opacity .4s"; }, 2600);
   setTimeout(()=> el.remove(), 3100);
 }
-function showLevelUp(){
+function showLevelUp(evolved){
   const m = document.getElementById("levelup");
+  const ch = charById(S.hero.charId);
+  const stage = stageForLevel(S.hero.level);
+  const art = document.getElementById("lvlupArt");
+  if(ch){ art.innerHTML = charSVG(ch.id, stage, 130); } else { art.textContent = "🎉"; }
+  const evo = document.getElementById("evoBadge");
+  if(evolved && ch){
+    evo.style.display = "";
+    evo.textContent = `⬆ Эволюция: теперь ты ${STAGE_PARAMS[stage].name}!`;
+  } else {
+    evo.style.display = "none";
+  }
   document.getElementById("lvlupTitle").textContent = `Уровень ${S.hero.level}!`;
   document.getElementById("lvlupText").textContent =
     `Ранг: ${rankFor(S.hero.level)} · HP полностью восстановлено`;
@@ -590,11 +914,15 @@ function showLevelUp(){
 function render(){
   const h = S.hero;
   const ch = charById(h.charId);
-  document.getElementById("avatar").textContent = ch ? ch.emoji : "❔";
+  const stage = stageForLevel(h.level);
+  const avatarEl = document.getElementById("avatar");
+  if(ch){ avatarEl.innerHTML = charSVG(ch.id, stage, 66); }
+  else { avatarEl.textContent = "❔"; avatarEl.style.fontSize = "34px"; }
   const nameEl = document.getElementById("heroName");
   if(document.activeElement !== nameEl) nameEl.value = h.name;
   document.getElementById("heroRank").textContent = `🏅 ${rankFor(h.level)}`;
-  document.getElementById("heroClass").textContent = ch ? `${ch.name} · ${ch.bonus}` : "Персонаж не выбран";
+  document.getElementById("heroClass").textContent =
+    ch ? `${ch.name} · ${STAGE_PARAMS[stage].name} · ${ch.bonus}` : "Персонаж не выбран";
   document.getElementById("heroLvl").textContent = `Уровень ${h.level}`;
   document.getElementById("gold").textContent = h.gold;
 
@@ -735,8 +1063,11 @@ function renderCharPicker(){
   for(const c of CHARACTERS){
     const btn = document.createElement("button");
     btn.className = "char-card" + (S.hero.charId===c.id?" current":"");
+    const stage = stageForLevel(S.hero.level);
+    const track = STAGE_PARAMS.map((p,i)=> i===stage ? `<b>${p.name}</b>` : p.name).join(" → ");
     btn.innerHTML = `
-      <div class="char-emoji">${c.emoji}</div>
+      <div class="char-art">${charSVG(c.id, stage, 78)}</div>
+      <div class="char-stage">${track}</div>
       <div class="char-name">${c.name}</div>
       <div class="char-tag">${c.tag}</div>
       <span class="char-bonus">⚡ ${c.bonus}</span>`;
