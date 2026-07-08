@@ -220,6 +220,34 @@
   .confetti{position:fixed;top:-10px;font-size:20px;z-index:61;animation:fall linear forwards;pointer-events:none}
   @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:.2}}
 
+  /* ===== Character picker ===== */
+  #charPicker{
+    position:fixed;inset:0;background:rgba(13,16,30,.97);backdrop-filter:blur(6px);z-index:70;
+    display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 16px 40px;
+  }
+  #charPicker.show{display:flex;animation:fadeIn .25s}
+  .picker-box{width:100%;max-width:560px}
+  .picker-box h3{font-size:22px;text-align:center;margin-bottom:6px}
+  .picker-box .sub{color:var(--muted);text-align:center;font-size:13.5px;margin-bottom:18px;line-height:1.5}
+  .char-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:440px){.char-grid{grid-template-columns:1fr}}
+  .char-card{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:16px;cursor:pointer;text-align:left;color:var(--text);
+    transition:transform .12s, border-color .15s;
+  }
+  .char-card:hover{transform:translateY(-2px);border-color:var(--xp)}
+  .char-card.current{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+  .char-emoji{font-size:34px}
+  .char-name{font-weight:800;font-size:15.5px;margin-top:8px}
+  .char-tag{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45;min-height:36px}
+  .char-bonus{
+    margin-top:9px;display:inline-block;font-size:11.5px;font-weight:700;
+    background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.45);
+    color:#b3a1ff;border-radius:8px;padding:3px 8px;
+  }
+  .hero-class{color:var(--blue);font-size:12.5px;margin-top:2px}
+
   .hint{font-size:12.5px;color:var(--muted);line-height:1.55;margin-top:8px}
   @media(max-width:480px){
     .hero-top{flex-wrap:wrap}
@@ -233,10 +261,11 @@
   <!-- Character -->
   <div class="hero">
     <div class="hero-top">
-      <div class="avatar" id="avatar" title="Сменить аватар"></div>
+      <div class="avatar" id="avatar" title="Сменить персонажа"></div>
       <div class="hero-info">
         <input class="hero-name" id="heroName" maxlength="24" spellcheck="false">
         <div class="hero-rank" id="heroRank"></div>
+        <div class="hero-class" id="heroClass"></div>
         <div class="hero-lvl" id="heroLvl"></div>
       </div>
       <div class="gold-badge">🪙 <span id="gold">0</span></div>
@@ -340,6 +369,14 @@
   </div>
 </div>
 
+<div id="charPicker">
+  <div class="picker-box">
+    <h3>Выбери персонажа</h3>
+    <p class="sub">Класс определяет твою специализацию: за привычки «своей» стихии персонаж получает больше опыта. Сменить можно в любой момент — просто нажми на аватар.</p>
+    <div class="char-grid" id="charGrid"></div>
+  </div>
+</div>
+
 <div id="toasts"></div>
 <div id="levelup">
   <div class="lvl-big">🎉</div>
@@ -371,7 +408,27 @@ const RANKS = [
   [1,"Новичок"],[3,"Ученик"],[5,"Искатель"],[8,"Адепт"],[12,"Воин привычек"],
   [16,"Ветеран"],[20,"Мастер"],[27,"Герой"],[35,"Чемпион"],[45,"Легенда"],[60,"Бессмертный"]
 ];
-const AVATARS = ["🧙","🦸","🥷","🧝","🤺","🐉","🦊","🐺","🦁","🚀","⚡","🔥","🌟","🧗","🏹"];
+const CHARACTERS = [
+  {id:"athlete", emoji:"🏋️", name:"Атлет", stat:"str",
+   tag:"Тело — главный проект. Спортзал, бег, форма вместо оправданий.",
+   bonus:"+50% XP за привычки Силы"},
+  {id:"strategist", emoji:"🧠", name:"Стратег", stat:"int",
+   tag:"Книги, курсы, новые навыки. Инвестирует в голову — она окупается лучше всего.",
+   bonus:"+50% XP за привычки Интеллекта"},
+  {id:"pro", emoji:"💼", name:"Профи", stat:"dis",
+   tag:"Карьера, дедлайны, порядок в делах и финансах. Дисциплина — его суперсила.",
+   bonus:"+50% XP за привычки Дисциплины"},
+  {id:"leader", emoji:"🎤", name:"Лидер", stat:"cha",
+   tag:"Люди, связи, переговоры. Знает, что нетворкинг решает не меньше, чем скиллы.",
+   bonus:"+50% XP за привычки Харизмы"},
+  {id:"zen", emoji:"🧘", name:"Дзен-мастер", stat:"hlt",
+   tag:"Сон, питание, ментальное здоровье. Марафон жизни выигрывает отдохнувший.",
+   bonus:"+50% XP за привычки Здоровья"},
+  {id:"pioneer", emoji:"🚀", name:"Первопроходец", stat:null,
+   tag:"Не выбирает одну колею — прокачивает всё сразу: тело, голову, дело и людей.",
+   bonus:"+15% XP за любые привычки"},
+];
+const charById = id => CHARACTERS.find(c=>c.id===id);
 const MAX_HP = 50;
 const ACHIEVEMENTS = [
   {id:"first",    ico:"👣", title:"Первый шаг",      desc:"Выполни привычку впервые",            test:s=>s.totals.done>=1},
@@ -393,7 +450,7 @@ const ACHIEVEMENTS = [
 // ---------- state ----------
 function defaultState(){
   return {
-    hero:{name:"Герой", avatar:"🧙", level:1, xp:0, hp:MAX_HP, gold:0,
+    hero:{name:"Герой", charId:null, level:1, xp:0, hp:MAX_HP, gold:0,
           stats:{str:0,int:0,dis:0,cha:0,hlt:0}},
     habits:[],
     rewards:[
@@ -464,7 +521,13 @@ function completeHabit(h){
 
     const d = DIFF[h.diff];
     const streakBonus = Math.min(Math.floor((h.streak-1)/3)*5, 25); // +5 xp per 3-day streak step, cap +25
-    const xp = d.xp + streakBonus;
+    let xp = d.xp + streakBonus;
+    const ch = charById(S.hero.charId);
+    let classBonus = false;
+    if(ch){
+      if(ch.stat === null){ xp = Math.round(xp*1.15); classBonus = true; }
+      else if(ch.stat === h.stat){ xp = Math.round(xp*1.5); classBonus = true; }
+    }
     gainXp(xp);
     S.hero.gold += d.gold;
     S.totals.goldEarned += d.gold;
@@ -473,7 +536,7 @@ function completeHabit(h){
     if(h.streak > S.totals.bestStreak) S.totals.bestStreak = h.streak;
     S.activeDays[t] = true;
 
-    toast(`+${xp} XP, +${d.gold} 🪙 · ${STATS[h.stat].ico} ${STATS[h.stat].name} +1` +
+    toast(`+${xp} XP${classBonus?" ⚡":""}, +${d.gold} 🪙 · ${STATS[h.stat].ico} ${STATS[h.stat].name} +1` +
           (h.streak>1?` · 🔥 серия ${h.streak}`:""), "gain");
   } else {
     const d = DIFF[h.diff];
@@ -526,10 +589,12 @@ function showLevelUp(){
 // ---------- render ----------
 function render(){
   const h = S.hero;
-  document.getElementById("avatar").textContent = h.avatar;
+  const ch = charById(h.charId);
+  document.getElementById("avatar").textContent = ch ? ch.emoji : "❔";
   const nameEl = document.getElementById("heroName");
   if(document.activeElement !== nameEl) nameEl.value = h.name;
   document.getElementById("heroRank").textContent = `🏅 ${rankFor(h.level)}`;
+  document.getElementById("heroClass").textContent = ch ? `${ch.name} · ${ch.bonus}` : "Персонаж не выбран";
   document.getElementById("heroLvl").textContent = `Уровень ${h.level}`;
   document.getElementById("gold").textContent = h.gold;
 
@@ -663,11 +728,33 @@ document.querySelectorAll(".tab").forEach(tab=>{
   });
 });
 
-document.getElementById("avatar").addEventListener("click", ()=>{
-  const i = AVATARS.indexOf(S.hero.avatar);
-  S.hero.avatar = AVATARS[(i+1)%AVATARS.length];
-  save(); render();
-});
+// ---------- character picker ----------
+function renderCharPicker(){
+  const grid = document.getElementById("charGrid");
+  grid.innerHTML = "";
+  for(const c of CHARACTERS){
+    const btn = document.createElement("button");
+    btn.className = "char-card" + (S.hero.charId===c.id?" current":"");
+    btn.innerHTML = `
+      <div class="char-emoji">${c.emoji}</div>
+      <div class="char-name">${c.name}</div>
+      <div class="char-tag">${c.tag}</div>
+      <span class="char-bonus">⚡ ${c.bonus}</span>`;
+    btn.addEventListener("click", ()=>{
+      const isSwitch = S.hero.charId && S.hero.charId!==c.id;
+      S.hero.charId = c.id;
+      document.getElementById("charPicker").classList.remove("show");
+      if(isSwitch) toast(`${c.emoji} Теперь ты — ${c.name}!`,"gain");
+      save(); render();
+    });
+    grid.appendChild(btn);
+  }
+}
+function openCharPicker(){
+  renderCharPicker();
+  document.getElementById("charPicker").classList.add("show");
+}
+document.getElementById("avatar").addEventListener("click", openCharPicker);
 document.getElementById("heroName").addEventListener("change", e=>{
   S.hero.name = e.target.value.trim() || "Герой"; save(); render();
 });
@@ -728,6 +815,7 @@ document.getElementById("saveReward").addEventListener("click", ()=>{
 
 // streak decay check on load: if a good habit missed a day, streak resets visually next completion (handled in completeHabit)
 render();
+if(!S.hero.charId) openCharPicker(); // first launch (or old save): pick a character
 })();
 </script>
 </body>
