@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Life RPG — прокачай себя</title>
+<link rel="icon" href="../orange.svg">
+<style>
+  :root{
+    --bg:#0f1220;
+    --bg2:#171b2e;
+    --card:#1e2338;
+    --card2:#262c47;
+    --border:#323a5e;
+    --text:#e8eaf6;
+    --muted:#8b93b8;
+    --gold:#f6c453;
+    --xp:#7c5cff;
+    --hp:#ff5c7a;
+    --green:#3ddc97;
+    --red:#ff6b6b;
+    --blue:#5cc8ff;
+    --radius:16px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:radial-gradient(1200px 800px at 20% -10%, #1c2140 0%, var(--bg) 55%);
+    color:var(--text);
+    min-height:100vh;
+    padding-bottom:80px;
+  }
+  .wrap{max-width:680px;margin:0 auto;padding:16px}
+
+  /* ===== Character card ===== */
+  .hero{
+    background:linear-gradient(145deg,var(--card),var(--bg2));
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px;
+    margin-bottom:16px;
+    position:relative;
+    overflow:hidden;
+  }
+  .hero::after{
+    content:"";position:absolute;top:-60px;right:-60px;width:180px;height:180px;
+    background:radial-gradient(circle,rgba(124,92,255,.25),transparent 70%);
+    pointer-events:none;
+  }
+  .hero-top{display:flex;gap:16px;align-items:center}
+  .avatar{
+    width:72px;height:72px;flex:0 0 72px;border-radius:18px;
+    background:var(--card2);border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    font-size:40px;cursor:pointer;user-select:none;
+    transition:transform .15s;
+  }
+  .avatar:active{transform:scale(.92)}
+  .hero-info{flex:1;min-width:0}
+  .hero-name{
+    font-size:20px;font-weight:700;background:transparent;border:none;color:var(--text);
+    width:100%;outline:none;border-bottom:1px dashed transparent;
+  }
+  .hero-name:focus{border-bottom-color:var(--muted)}
+  .hero-rank{color:var(--gold);font-size:13px;font-weight:600;margin-top:2px}
+  .hero-lvl{color:var(--muted);font-size:13px;margin-top:2px}
+  .gold-badge{
+    display:flex;align-items:center;gap:6px;
+    background:rgba(246,196,83,.12);border:1px solid rgba(246,196,83,.35);
+    color:var(--gold);font-weight:700;font-size:15px;
+    padding:8px 14px;border-radius:12px;white-space:nowrap;
+  }
+  .bars{margin-top:16px;display:flex;flex-direction:column;gap:10px}
+  .bar-row{display:flex;align-items:center;gap:10px;font-size:12px}
+  .bar-label{width:30px;color:var(--muted);font-weight:700}
+  .bar{flex:1;height:12px;background:rgba(0,0,0,.35);border-radius:99px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:99px;transition:width .4s ease}
+  .bar-fill.xp{background:linear-gradient(90deg,#6c4cf0,#9d7bff)}
+  .bar-fill.hp{background:linear-gradient(90deg,#f0396a,#ff7a94)}
+  .bar-val{width:74px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  /* ===== Tabs ===== */
+  .tabs{
+    display:flex;gap:6px;background:var(--card);border:1px solid var(--border);
+    border-radius:14px;padding:5px;margin-bottom:16px;
+  }
+  .tab{
+    flex:1;text-align:center;padding:10px 4px;border-radius:10px;cursor:pointer;
+    color:var(--muted);font-size:13px;font-weight:600;border:none;background:transparent;
+    transition:all .15s;
+  }
+  .tab.active{background:var(--xp);color:#fff}
+
+  /* ===== Sections / cards ===== */
+  .section{display:none}
+  .section.active{display:block;animation:fadeIn .25s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .card{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:var(--radius);padding:16px;margin-bottom:12px;
+  }
+  h2{font-size:15px;margin-bottom:12px;color:var(--muted);font-weight:700;
+     text-transform:uppercase;letter-spacing:.06em}
+
+  /* ===== Habit list ===== */
+  .habit{
+    display:flex;align-items:center;gap:12px;
+    background:var(--card);border:1px solid var(--border);
+    border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;
+    transition:opacity .2s;
+  }
+  .habit.done-today{opacity:.55}
+  .habit-btn{
+    width:46px;height:46px;flex:0 0 46px;border-radius:14px;border:none;cursor:pointer;
+    font-size:22px;display:flex;align-items:center;justify-content:center;
+    transition:transform .12s;
+  }
+  .habit-btn:active{transform:scale(.88)}
+  .habit-btn.good{background:rgba(61,220,151,.15);border:1px solid rgba(61,220,151,.45)}
+  .habit-btn.bad{background:rgba(255,107,107,.13);border:1px solid rgba(255,107,107,.4)}
+  .habit-btn:disabled{opacity:.4;cursor:default}
+  .habit-main{flex:1;min-width:0}
+  .habit-title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .habit-meta{display:flex;gap:8px;margin-top:4px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+  .chip{background:var(--card2);border-radius:8px;padding:2px 8px}
+  .chip.streak{color:#ffa94d}
+  .habit-del{
+    background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;
+    padding:6px;border-radius:8px;opacity:.6;
+  }
+  .habit-del:hover{color:var(--red);opacity:1}
+  .empty{
+    text-align:center;color:var(--muted);padding:40px 16px;font-size:14px;line-height:1.6;
+  }
+  .empty .big{font-size:40px;display:block;margin-bottom:10px}
+
+  /* ===== Forms ===== */
+  .add-btn{
+    width:100%;padding:14px;border-radius:var(--radius);border:1px dashed var(--border);
+    background:transparent;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;
+    transition:all .15s;
+  }
+  .add-btn:hover{border-color:var(--xp);color:var(--text)}
+  .form{display:none;flex-direction:column;gap:10px}
+  .form.open{display:flex}
+  .form input[type=text]{
+    background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+    color:var(--text);padding:12px;font-size:14px;outline:none;width:100%;
+  }
+  .form input[type=text]:focus{border-color:var(--xp)}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{
+    flex:1;min-width:70px;padding:9px 6px;border-radius:10px;cursor:pointer;font-size:12.5px;
+    background:var(--bg2);border:1px solid var(--border);color:var(--muted);font-weight:600;
+  }
+  .seg button.sel{background:var(--xp);border-color:var(--xp);color:#fff}
+  .seg button.sel.bad-sel{background:var(--red);border-color:var(--red)}
+  .form-actions{display:flex;gap:8px}
+  .btn{
+    padding:12px 18px;border-radius:10px;border:none;cursor:pointer;
+    font-size:14px;font-weight:700;
+  }
+  .btn.primary{background:var(--xp);color:#fff;flex:1}
+  .btn.ghost{background:var(--card2);color:var(--muted)}
+  label.small{font-size:12px;color:var(--muted);font-weight:600}
+
+  /* ===== Stats ===== */
+  .stat-row{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .stat-ico{font-size:22px;width:32px;text-align:center}
+  .stat-body{flex:1}
+  .stat-name{font-size:13px;font-weight:600;display:flex;justify-content:space-between;margin-bottom:5px}
+  .stat-name span:last-child{color:var(--muted);font-variant-numeric:tabular-nums}
+  .stat-bar{height:9px;background:rgba(0,0,0,.35);border-radius:99px;overflow:hidden}
+  .stat-fill{height:100%;border-radius:99px;transition:width .4s}
+  .totals{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .total-cell{background:var(--card2);border-radius:12px;padding:14px;text-align:center}
+  .total-num{font-size:22px;font-weight:800}
+  .total-lbl{font-size:11.5px;color:var(--muted);margin-top:3px}
+
+  /* ===== Shop ===== */
+  .reward{display:flex;align-items:center;gap:12px;background:var(--card);
+    border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px}
+  .reward-buy{
+    display:flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;cursor:pointer;
+    background:rgba(246,196,83,.12);border:1px solid rgba(246,196,83,.4);color:var(--gold);
+    font-weight:700;font-size:14px;white-space:nowrap;
+  }
+  .reward-buy:disabled{opacity:.35;cursor:default}
+
+  /* ===== Achievements ===== */
+  .ach{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--border);
+    border-radius:var(--radius);padding:13px 16px;margin-bottom:10px}
+  .ach.locked{opacity:.45;filter:grayscale(.8)}
+  .ach-ico{font-size:26px;width:36px;text-align:center}
+  .ach-title{font-weight:700;font-size:14px}
+  .ach-desc{font-size:12.5px;color:var(--muted);margin-top:2px}
+
+  /* ===== Toast & levelup ===== */
+  #toasts{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:50;
+    display:flex;flex-direction:column;gap:8px;align-items:center;width:min(92vw,420px)}
+  .toast{
+    background:var(--card2);border:1px solid var(--border);color:var(--text);
+    padding:11px 18px;border-radius:12px;font-size:14px;font-weight:600;
+    box-shadow:0 8px 30px rgba(0,0,0,.45);animation:toastIn .25s ease;
+    text-align:center;width:100%;
+  }
+  .toast.gain{border-color:rgba(61,220,151,.5)}
+  .toast.loss{border-color:rgba(255,107,107,.5)}
+  @keyframes toastIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  #levelup{
+    position:fixed;inset:0;background:rgba(10,12,24,.85);z-index:60;
+    display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;
+    text-align:center;padding:20px;
+  }
+  #levelup.show{display:flex;animation:fadeIn .3s}
+  #levelup .lvl-big{font-size:72px;animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+  #levelup h3{font-size:26px}
+  #levelup p{color:var(--muted)}
+  @keyframes pop{from{transform:scale(.3)}to{transform:scale(1)}}
+  .confetti{position:fixed;top:-10px;font-size:20px;z-index:61;animation:fall linear forwards;pointer-events:none}
+  @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:.2}}
+
+  .hint{font-size:12.5px;color:var(--muted);line-height:1.55;margin-top:8px}
+  @media(max-width:480px){
+    .hero-top{flex-wrap:wrap}
+    .gold-badge{margin-left:auto}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Character -->
+  <div class="hero">
+    <div class="hero-top">
+      <div class="avatar" id="avatar" title="Сменить аватар"></div>
+      <div class="hero-info">
+        <input class="hero-name" id="heroName" maxlength="24" spellcheck="false">
+        <div class="hero-rank" id="heroRank"></div>
+        <div class="hero-lvl" id="heroLvl"></div>
+      </div>
+      <div class="gold-badge">🪙 <span id="gold">0</span></div>
+    </div>
+    <div class="bars">
+      <div class="bar-row">
+        <div class="bar-label">XP</div>
+        <div class="bar"><div class="bar-fill xp" id="xpBar"></div></div>
+        <div class="bar-val" id="xpVal"></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">HP</div>
+        <div class="bar"><div class="bar-fill hp" id="hpBar"></div></div>
+        <div class="bar-val" id="hpVal"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="habits">⚔️ Привычки</button>
+    <button class="tab" data-tab="stats">📊 Статы</button>
+    <button class="tab" data-tab="shop">🛍 Магазин</button>
+    <button class="tab" data-tab="ach">🏆 Награды</button>
+  </div>
+
+  <!-- ===== Habits ===== -->
+  <div class="section active" id="sec-habits">
+    <div id="habitList"></div>
+    <button class="add-btn" id="showHabitForm">＋ Новая привычка</button>
+    <div class="card form" id="habitForm">
+      <input type="text" id="habitName" placeholder="Например: 20 минут чтения" maxlength="60">
+      <label class="small">Тип</label>
+      <div class="seg" id="segType">
+        <button data-v="good" class="sel">💚 Полезная</button>
+        <button data-v="bad">💔 Вредная</button>
+      </div>
+      <label class="small">Сложность</label>
+      <div class="seg" id="segDiff">
+        <button data-v="easy">Легко</button>
+        <button data-v="med" class="sel">Средне</button>
+        <button data-v="hard">Сложно</button>
+      </div>
+      <label class="small" id="statLabel">Какую характеристику качает</label>
+      <div class="seg" id="segStat">
+        <button data-v="str" class="sel">💪 Сила</button>
+        <button data-v="int">🧠 Интеллект</button>
+        <button data-v="dis">🎯 Дисциплина</button>
+        <button data-v="cha">✨ Харизма</button>
+        <button data-v="hlt">❤️ Здоровье</button>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="saveHabit">Создать</button>
+        <button class="btn ghost" id="cancelHabit">Отмена</button>
+      </div>
+    </div>
+    <p class="hint">💚 Полезные привычки отмечаются раз в день — дают опыт, золото и качают характеристику. Серия дней подряд даёт бонус к опыту. 💔 Вредные — отмечай, если сорвался: потеряешь HP. Если HP упадёт до нуля — потеряешь уровень.</p>
+  </div>
+
+  <!-- ===== Stats ===== -->
+  <div class="section" id="sec-stats">
+    <div class="card">
+      <h2>Характеристики</h2>
+      <div id="statList"></div>
+    </div>
+    <div class="card">
+      <h2>Статистика</h2>
+      <div class="totals">
+        <div class="total-cell"><div class="total-num" id="tDone">0</div><div class="total-lbl">выполнено всего</div></div>
+        <div class="total-cell"><div class="total-num" id="tStreak">0</div><div class="total-lbl">лучшая серия</div></div>
+        <div class="total-cell"><div class="total-num" id="tGold">0</div><div class="total-lbl">золота заработано</div></div>
+        <div class="total-cell"><div class="total-num" id="tDays">0</div><div class="total-lbl">активных дней</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Shop ===== -->
+  <div class="section" id="sec-shop">
+    <div id="rewardList"></div>
+    <button class="add-btn" id="showRewardForm">＋ Своя награда</button>
+    <div class="card form" id="rewardForm">
+      <input type="text" id="rewardName" placeholder="Например: серия любимого сериала" maxlength="60">
+      <label class="small">Цена (золото)</label>
+      <div class="seg" id="segPrice">
+        <button data-v="15">🪙 15</button>
+        <button data-v="30" class="sel">🪙 30</button>
+        <button data-v="60">🪙 60</button>
+        <button data-v="120">🪙 120</button>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="saveReward">Добавить</button>
+        <button class="btn ghost" id="cancelReward">Отмена</button>
+      </div>
+    </div>
+    <p class="hint">Придумай себе реальные награды и покупай их за золото, заработанное привычками. Так мозг получает честную «зарплату» за дисциплину.</p>
+  </div>
+
+  <!-- ===== Achievements ===== -->
+  <div class="section" id="sec-ach">
+    <div id="achList"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<div id="levelup">
+  <div class="lvl-big">🎉</div>
+  <h3 id="lvlupTitle">Новый уровень!</h3>
+  <p id="lvlupText"></p>
+  <button class="btn primary" onclick="document.getElementById('levelup').classList.remove('show')">Круто!</button>
+</div>
+
+<script>
+(function(){
+"use strict";
+const LS_KEY = "liferpg_v1";
+const todayStr = () => new Date().toISOString().slice(0,10);
+const yesterdayStr = () => { const d=new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); };
+
+const STATS = {
+  str:{name:"Сила",ico:"💪",color:"#ff8a5c"},
+  int:{name:"Интеллект",ico:"🧠",color:"#5cc8ff"},
+  dis:{name:"Дисциплина",ico:"🎯",color:"#7c5cff"},
+  cha:{name:"Харизма",ico:"✨",color:"#f6c453"},
+  hlt:{name:"Здоровье",ico:"❤️",color:"#3ddc97"},
+};
+const DIFF = {
+  easy:{name:"легко", xp:10, gold:5,  dmg:5},
+  med: {name:"средне",xp:20, gold:10, dmg:10},
+  hard:{name:"сложно",xp:40, gold:20, dmg:18},
+};
+const RANKS = [
+  [1,"Новичок"],[3,"Ученик"],[5,"Искатель"],[8,"Адепт"],[12,"Воин привычек"],
+  [16,"Ветеран"],[20,"Мастер"],[27,"Герой"],[35,"Чемпион"],[45,"Легенда"],[60,"Бессмертный"]
+];
+const AVATARS = ["🧙","🦸","🥷","🧝","🤺","🐉","🦊","🐺","🦁","🚀","⚡","🔥","🌟","🧗","🏹"];
+const MAX_HP = 50;
+const ACHIEVEMENTS = [
+  {id:"first",    ico:"👣", title:"Первый шаг",      desc:"Выполни привычку впервые",            test:s=>s.totals.done>=1},
+  {id:"ten",      ico:"🔟", title:"Десятка",          desc:"10 выполненных привычек",             test:s=>s.totals.done>=10},
+  {id:"fifty",    ico:"💯", title:"Полсотни",         desc:"50 выполненных привычек",             test:s=>s.totals.done>=50},
+  {id:"twoH",     ico:"🏔", title:"Восхождение",      desc:"200 выполненных привычек",            test:s=>s.totals.done>=200},
+  {id:"streak7",  ico:"🔥", title:"Неделя огня",      desc:"Серия 7 дней подряд",                 test:s=>s.totals.bestStreak>=7},
+  {id:"streak30", ico:"🌋", title:"Железная воля",    desc:"Серия 30 дней подряд",                test:s=>s.totals.bestStreak>=30},
+  {id:"lvl5",     ico:"⭐", title:"Пятый уровень",    desc:"Достигни 5 уровня",                   test:s=>s.hero.level>=5},
+  {id:"lvl10",    ico:"🌟", title:"Двузначный",       desc:"Достигни 10 уровня",                  test:s=>s.hero.level>=10},
+  {id:"lvl25",    ico:"👑", title:"Четверть сотни",   desc:"Достигни 25 уровня",                  test:s=>s.hero.level>=25},
+  {id:"rich",     ico:"💰", title:"Богач",            desc:"Заработай 500 золота за всё время",   test:s=>s.totals.goldEarned>=500},
+  {id:"buyer",    ico:"🛍", title:"Умеешь отдыхать",  desc:"Купи первую награду в магазине",      test:s=>s.totals.bought>=1},
+  {id:"habits5",  ico:"📜", title:"Стратег",          desc:"Заведи 5 привычек одновременно",      test:s=>s.habits.filter(h=>h.type==="good").length>=5},
+  {id:"stat25",   ico:"🏋️", title:"Специалист",       desc:"Прокачай любую характеристику до 25", test:s=>Object.values(s.hero.stats).some(v=>v>=25)},
+  {id:"days30",   ico:"📅", title:"Месяц в игре",     desc:"30 активных дней",                    test:s=>Object.keys(s.activeDays).length>=30},
+];
+
+// ---------- state ----------
+function defaultState(){
+  return {
+    hero:{name:"Герой", avatar:"🧙", level:1, xp:0, hp:MAX_HP, gold:0,
+          stats:{str:0,int:0,dis:0,cha:0,hlt:0}},
+    habits:[],
+    rewards:[
+      {id:rid(), name:"Час игр или сериала", price:30},
+      {id:rid(), name:"Вкусняшка без чувства вины", price:15},
+      {id:rid(), name:"Выходной от всех привычек", price:120},
+    ],
+    achieved:{},
+    activeDays:{},
+    totals:{done:0, bestStreak:0, goldEarned:0, bought:0},
+  };
+}
+function rid(){ return Math.random().toString(36).slice(2,10); }
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return defaultState();
+    const s = JSON.parse(raw);
+    // merge with defaults for forward-compat
+    const d = defaultState();
+    return Object.assign(d, s, {hero:Object.assign(d.hero, s.hero||{}, {stats:Object.assign(d.hero.stats,(s.hero||{}).stats||{})}),
+                                totals:Object.assign(d.totals, s.totals||{})});
+  }catch(e){ return defaultState(); }
+}
+let S = load();
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(S)); }
+
+// ---------- leveling ----------
+function xpNeeded(level){ return 100 + (level-1)*50; }
+function rankFor(level){
+  let r = RANKS[0][1];
+  for(const [lvl,name] of RANKS){ if(level>=lvl) r=name; }
+  return r;
+}
+function gainXp(amount){
+  S.hero.xp += amount;
+  let leveled = false;
+  while(S.hero.xp >= xpNeeded(S.hero.level)){
+    S.hero.xp -= xpNeeded(S.hero.level);
+    S.hero.level++;
+    leveled = true;
+    S.hero.hp = MAX_HP; // level up heals
+  }
+  if(leveled) showLevelUp();
+}
+function loseHp(dmg){
+  S.hero.hp -= dmg;
+  if(S.hero.hp <= 0){
+    if(S.hero.level > 1){
+      S.hero.level--;
+      toast("💀 HP на нуле! Ты потерял уровень…","loss");
+    } else {
+      toast("💀 HP на нуле! Держись, начинаем заново.","loss");
+    }
+    S.hero.xp = 0;
+    S.hero.hp = MAX_HP;
+  }
+}
+
+// ---------- habit actions ----------
+function completeHabit(h){
+  const t = todayStr();
+  if(h.type === "good"){
+    if(h.lastDone === t) return;
+    h.streak = (h.lastDone === yesterdayStr()) ? (h.streak||0)+1 : 1;
+    h.lastDone = t;
+    h.count = (h.count||0)+1;
+
+    const d = DIFF[h.diff];
+    const streakBonus = Math.min(Math.floor((h.streak-1)/3)*5, 25); // +5 xp per 3-day streak step, cap +25
+    const xp = d.xp + streakBonus;
+    gainXp(xp);
+    S.hero.gold += d.gold;
+    S.totals.goldEarned += d.gold;
+    S.hero.stats[h.stat] = (S.hero.stats[h.stat]||0)+1;
+    S.totals.done++;
+    if(h.streak > S.totals.bestStreak) S.totals.bestStreak = h.streak;
+    S.activeDays[t] = true;
+
+    toast(`+${xp} XP, +${d.gold} 🪙 · ${STATS[h.stat].ico} ${STATS[h.stat].name} +1` +
+          (h.streak>1?` · 🔥 серия ${h.streak}`:""), "gain");
+  } else {
+    const d = DIFF[h.diff];
+    h.count = (h.count||0)+1;
+    h.lastDone = t;
+    loseHp(d.dmg);
+    toast(`−${d.dmg} HP · честность тоже прокачка 💔`,"loss");
+  }
+  checkAchievements();
+  save(); render();
+}
+
+function checkAchievements(){
+  for(const a of ACHIEVEMENTS){
+    if(!S.achieved[a.id] && a.test(S)){
+      S.achieved[a.id] = todayStr();
+      toast(`🏆 Достижение: ${a.title}!`,"gain");
+    }
+  }
+}
+
+// ---------- UI helpers ----------
+function toast(msg, cls){
+  const box = document.getElementById("toasts");
+  const el = document.createElement("div");
+  el.className = "toast " + (cls||"");
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(()=>{ el.style.opacity="0"; el.style.transition="opacity .4s"; }, 2600);
+  setTimeout(()=> el.remove(), 3100);
+}
+function showLevelUp(){
+  const m = document.getElementById("levelup");
+  document.getElementById("lvlupTitle").textContent = `Уровень ${S.hero.level}!`;
+  document.getElementById("lvlupText").textContent =
+    `Ранг: ${rankFor(S.hero.level)} · HP полностью восстановлено`;
+  m.classList.add("show");
+  for(let i=0;i<24;i++){
+    const c = document.createElement("div");
+    c.className="confetti";
+    c.textContent=["🎉","✨","⭐","🎊","💜"][i%5];
+    c.style.left = Math.random()*100+"vw";
+    c.style.animationDuration = (2+Math.random()*2)+"s";
+    c.style.animationDelay = (Math.random()*0.6)+"s";
+    document.body.appendChild(c);
+    setTimeout(()=>c.remove(), 4500);
+  }
+}
+
+// ---------- render ----------
+function render(){
+  const h = S.hero;
+  document.getElementById("avatar").textContent = h.avatar;
+  const nameEl = document.getElementById("heroName");
+  if(document.activeElement !== nameEl) nameEl.value = h.name;
+  document.getElementById("heroRank").textContent = `🏅 ${rankFor(h.level)}`;
+  document.getElementById("heroLvl").textContent = `Уровень ${h.level}`;
+  document.getElementById("gold").textContent = h.gold;
+
+  const need = xpNeeded(h.level);
+  document.getElementById("xpBar").style.width = Math.min(100, h.xp/need*100)+"%";
+  document.getElementById("xpVal").textContent = `${h.xp} / ${need}`;
+  document.getElementById("hpBar").style.width = Math.max(0, h.hp/MAX_HP*100)+"%";
+  document.getElementById("hpVal").textContent = `${h.hp} / ${MAX_HP}`;
+
+  renderHabits(); renderStats(); renderShop(); renderAch();
+}
+
+function renderHabits(){
+  const box = document.getElementById("habitList");
+  box.innerHTML = "";
+  if(!S.habits.length){
+    box.innerHTML = `<div class="empty"><span class="big">🗺</span>
+      Твоё приключение начинается здесь.<br>Добавь первую полезную привычку!</div>`;
+    return;
+  }
+  const t = todayStr();
+  for(const hb of S.habits){
+    const doneToday = hb.type==="good" && hb.lastDone===t;
+    const el = document.createElement("div");
+    el.className = "habit" + (doneToday?" done-today":"");
+    const d = DIFF[hb.diff];
+    const meta = hb.type==="good"
+      ? `<span class="chip">${STATS[hb.stat].ico} ${STATS[hb.stat].name}</span>
+         <span class="chip">+${d.xp} XP · +${d.gold} 🪙</span>
+         ${hb.streak>1?`<span class="chip streak">🔥 ${hb.streak}</span>`:""}`
+      : `<span class="chip">💔 вредная</span><span class="chip">−${d.dmg} HP</span>
+         ${hb.count?`<span class="chip">срывов: ${hb.count}</span>`:""}`;
+    el.innerHTML = `
+      <button class="habit-btn ${hb.type}" ${doneToday?"disabled":""}
+              title="${hb.type==="good"?"Выполнено!":"Сорвался"}">${hb.type==="good"?(doneToday?"✅":"⚔️"):"💥"}</button>
+      <div class="habit-main">
+        <div class="habit-title">${esc(hb.name)}</div>
+        <div class="habit-meta">${meta}</div>
+      </div>
+      <button class="habit-del" title="Удалить">✕</button>`;
+    el.querySelector(".habit-btn").addEventListener("click", ()=>completeHabit(hb));
+    el.querySelector(".habit-del").addEventListener("click", ()=>{
+      if(confirm(`Удалить «${hb.name}»?`)){
+        S.habits = S.habits.filter(x=>x.id!==hb.id); save(); render();
+      }
+    });
+    box.appendChild(el);
+  }
+}
+
+function renderStats(){
+  const box = document.getElementById("statList");
+  box.innerHTML = "";
+  const max = Math.max(10, ...Object.values(S.hero.stats));
+  for(const [k,meta] of Object.entries(STATS)){
+    const v = S.hero.stats[k]||0;
+    const row = document.createElement("div");
+    row.className="stat-row";
+    row.innerHTML = `
+      <div class="stat-ico">${meta.ico}</div>
+      <div class="stat-body">
+        <div class="stat-name"><span>${meta.name}</span><span>${v}</span></div>
+        <div class="stat-bar"><div class="stat-fill" style="width:${v/max*100}%;background:${meta.color}"></div></div>
+      </div>`;
+    box.appendChild(row);
+  }
+  document.getElementById("tDone").textContent = S.totals.done;
+  document.getElementById("tStreak").textContent = S.totals.bestStreak;
+  document.getElementById("tGold").textContent = S.totals.goldEarned;
+  document.getElementById("tDays").textContent = Object.keys(S.activeDays).length;
+}
+
+function renderShop(){
+  const box = document.getElementById("rewardList");
+  box.innerHTML = "";
+  if(!S.rewards.length){
+    box.innerHTML = `<div class="empty"><span class="big">🛍</span>Добавь награды, ради которых стоит стараться!</div>`;
+  }
+  for(const r of S.rewards){
+    const el = document.createElement("div");
+    el.className="reward";
+    el.innerHTML = `
+      <div class="habit-main">
+        <div class="habit-title">${esc(r.name)}</div>
+      </div>
+      <button class="reward-buy" ${S.hero.gold<r.price?"disabled":""}>🪙 ${r.price}</button>
+      <button class="habit-del" title="Удалить">✕</button>`;
+    el.querySelector(".reward-buy").addEventListener("click", ()=>{
+      if(S.hero.gold < r.price) return;
+      S.hero.gold -= r.price;
+      S.totals.bought++;
+      toast(`🎁 Награда куплена: ${r.name}. Наслаждайся — честно заработано!`,"gain");
+      checkAchievements(); save(); render();
+    });
+    el.querySelector(".habit-del").addEventListener("click", ()=>{
+      if(confirm(`Удалить награду «${r.name}»?`)){
+        S.rewards = S.rewards.filter(x=>x.id!==r.id); save(); render();
+      }
+    });
+    box.appendChild(el);
+  }
+}
+
+function renderAch(){
+  const box = document.getElementById("achList");
+  box.innerHTML = "";
+  const sorted = [...ACHIEVEMENTS].sort((a,b)=>(!!S.achieved[b.id])-(!!S.achieved[a.id]));
+  for(const a of sorted){
+    const got = !!S.achieved[a.id];
+    const el = document.createElement("div");
+    el.className = "ach" + (got?"":" locked");
+    el.innerHTML = `
+      <div class="ach-ico">${a.ico}</div>
+      <div>
+        <div class="ach-title">${a.title}</div>
+        <div class="ach-desc">${a.desc}${got?` · получено ${S.achieved[a.id]}`:""}</div>
+      </div>`;
+    box.appendChild(el);
+  }
+}
+
+function esc(s){ const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+
+// ---------- events ----------
+document.querySelectorAll(".tab").forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("sec-"+tab.dataset.tab).classList.add("active");
+  });
+});
+
+document.getElementById("avatar").addEventListener("click", ()=>{
+  const i = AVATARS.indexOf(S.hero.avatar);
+  S.hero.avatar = AVATARS[(i+1)%AVATARS.length];
+  save(); render();
+});
+document.getElementById("heroName").addEventListener("change", e=>{
+  S.hero.name = e.target.value.trim() || "Герой"; save(); render();
+});
+
+// segmented controls
+function segValue(id){ return document.querySelector(`#${id} button.sel`).dataset.v; }
+document.querySelectorAll(".seg").forEach(seg=>{
+  seg.addEventListener("click", e=>{
+    const btn = e.target.closest("button"); if(!btn) return;
+    seg.querySelectorAll("button").forEach(b=>b.classList.remove("sel","bad-sel"));
+    btn.classList.add("sel");
+    if(seg.id==="segType"){
+      if(btn.dataset.v==="bad") btn.classList.add("bad-sel");
+      const isBad = btn.dataset.v==="bad";
+      document.getElementById("segStat").style.display = isBad?"none":"";
+      document.getElementById("statLabel").style.display = isBad?"none":"";
+    }
+  });
+});
+
+// habit form
+const habitForm = document.getElementById("habitForm");
+document.getElementById("showHabitForm").addEventListener("click", ()=>{
+  habitForm.classList.add("open");
+  document.getElementById("habitName").focus();
+});
+document.getElementById("cancelHabit").addEventListener("click", ()=>habitForm.classList.remove("open"));
+document.getElementById("saveHabit").addEventListener("click", ()=>{
+  const name = document.getElementById("habitName").value.trim();
+  if(!name){ document.getElementById("habitName").focus(); return; }
+  S.habits.push({
+    id:rid(), name,
+    type:segValue("segType"),
+    diff:segValue("segDiff"),
+    stat:segValue("segStat"),
+    streak:0, count:0, lastDone:null, created:todayStr(),
+  });
+  document.getElementById("habitName").value="";
+  habitForm.classList.remove("open");
+  checkAchievements(); save(); render();
+});
+
+// reward form
+const rewardForm = document.getElementById("rewardForm");
+document.getElementById("showRewardForm").addEventListener("click", ()=>{
+  rewardForm.classList.add("open");
+  document.getElementById("rewardName").focus();
+});
+document.getElementById("cancelReward").addEventListener("click", ()=>rewardForm.classList.remove("open"));
+document.getElementById("saveReward").addEventListener("click", ()=>{
+  const name = document.getElementById("rewardName").value.trim();
+  if(!name){ document.getElementById("rewardName").focus(); return; }
+  S.rewards.push({id:rid(), name, price:parseInt(segValue("segPrice"),10)});
+  document.getElementById("rewardName").value="";
+  rewardForm.classList.remove("open");
+  save(); render();
+});
+
+// streak decay check on load: if a good habit missed a day, streak resets visually next completion (handled in completeHabit)
+render();
+})();
+</script>
+</body>
+</html>
