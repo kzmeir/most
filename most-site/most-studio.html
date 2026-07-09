@@ -581,7 +581,7 @@ document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 // ---- contact form (Web3Forms — заявки уходят на info@most-a.com) ----
 // Публичный access-key Web3Forms — его безопасно держать в коде: он умеет только
 // отправить письмо на подтверждённую почту, прочитать/удалить что-либо им нельзя.
-const WEB3FORMS_KEY='a059134a-99a5-476c-ac90-cc85777b730b';
+const WEB3FORMS_KEY='4547e25d-c2bd-4f5e-8387-4a0aaaff5a51';
 const cform=document.getElementById('cform');
 if(cform)cform.addEventListener('submit',async e=>{
   e.preventDefault();
@@ -599,9 +599,13 @@ if(cform)cform.addEventListener('submit',async e=>{
       headers:{'Content-Type':'application/json',Accept:'application/json'},
       body:JSON.stringify({
         access_key:WEB3FORMS_KEY,
-        subject:'Новая заявка с сайта — MOST Architects',
-        from_name:'Сайт MOST Architects',
-        'Имя':name, 'Телефон/e-mail':contact, 'О проекте':message||'—'
+        subject:'Новая заявка с сайта — '+name,
+        from_name:'MOST Architects',
+        replyto:/@/.test(contact)?contact:undefined,
+        'Имя':name,
+        'Телефон / e-mail':contact,
+        'О проекте':message||'—',
+        'Страница':location.href
       })
     });
     const data=await res.json();
