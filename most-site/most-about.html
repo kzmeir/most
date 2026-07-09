@@ -296,6 +296,25 @@
   .val h3{font-family:var(--disp);font-weight:500;font-size:clamp(21px,2.1vw,28px);letter-spacing:-.01em;color:var(--ivory);margin:18px 0 12px}
   .val p{color:var(--grey-2);font-size:15px;line-height:1.72;margin:0}
   @media(max-width:860px){.val-grid{grid-template-columns:1fr;gap:36px}.about-cols{grid-template-columns:1fr;margin-left:0;gap:28px}}
+  /* FOUNDERS (two people) */
+  .tp-founders{align-items:center}
+  .tp-founders .tp-text .founder{margin-top:26px}
+  .tp-founders .tp-text .founder h3{font-family:var(--disp);font-weight:600;font-size:clamp(22px,2.4vw,32px);color:var(--ivory);letter-spacing:-.01em;margin:0 0 7px}
+  .tp-founders .tp-text .founder .role{font-family:var(--txt);font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--clay);margin:0 0 9px}
+  .tp-founders .tp-text .founder p{margin:0;max-width:38ch}
+  /* CLIENTS */
+  .clients{background:#e7e3da;color:#14140f}
+  .clients-inner{padding-top:clamp(58px,7vw,104px);padding-bottom:clamp(58px,7vw,104px)}
+  .clients-eyebrow{display:inline-flex;align-items:center;gap:14px;font-family:var(--txt);font-size:11px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:#8b8677}
+  .clients-eyebrow::before{content:"";width:30px;height:1px;background:var(--clay)}
+  .clients-title{font-family:var(--disp);font-weight:800;font-size:clamp(28px,4.4vw,58px);letter-spacing:-.02em;color:#14140f;margin:18px 0 0;line-height:.98}
+  .clients-lead{font-family:var(--txt);font-size:15px;line-height:1.7;color:#5f5a4f;max-width:48ch;margin:16px 0 0}
+  .clients-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(12px,1.4vw,18px);margin-top:clamp(30px,4vw,52px)}
+  .client{background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:14px;aspect-ratio:3/2;display:grid;place-items:center;padding:clamp(16px,2.4vw,34px);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .client img{max-width:100%;max-height:100%;object-fit:contain;filter:grayscale(1);opacity:.68;transition:filter .45s ease,opacity .45s ease}
+  .client:hover img{filter:grayscale(0);opacity:1}
+  @media(max-width:900px){.clients-grid{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:560px){.clients-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -352,11 +371,19 @@
   </div>
   <div class="team-photos" style="margin-top:clamp(40px,6vw,80px)">
     <figure class="tp tp-founders reveal">
-      <div class="frame"><img src="p/founders.jpg" alt="Основатели MOST Architects"></div>
+      <div class="frame"><img src="p/founders.jpg" alt="Основатели MOST Architects — Ильяс Иманкулов и Меиржан Иманбеков"></div>
       <div class="tp-text">
         <div class="e">основатели</div>
-        <h3>Основатели бюро</h3>
-        <p>Основатели бюро — действующие архитекторы с опытом работы более 15 лет.</p>
+        <div class="founder">
+          <h3>Иманкулов Ильяс</h3>
+          <div class="role">Директор</div>
+          <p>Выпускник КазГАСА, 2013. В архитектуре с 2010 года — более 16 лет практики.</p>
+        </div>
+        <div class="founder">
+          <h3>Иманбеков Меиржан</h3>
+          <div class="role">Технический директор</div>
+          <p>Выпускник КазГАСА, 2013. В архитектуре с 2010 года — более 16 лет практики.</p>
+        </div>
       </div>
     </figure>
   </div>
@@ -382,6 +409,26 @@
     <div class="val reveal"><div class="vn">04</div><h3>Технологичность</h3><p>BIM и точная документация с ранней стадии — меньше потерь на площадке, предсказуемый результат.</p></div>
     <div class="val reveal"><div class="vn">05</div><h3>Контроль на стройке</h3><p>Авторский надзор до сдачи. То, что нарисовано, должно быть построено без компромиссов.</p></div>
     <div class="val reveal"><div class="vn">06</div><h3>Долговечность</h3><p>Решения, которые не устаревают за один цикл моды. Ясность стареет медленнее, чем тренд.</p></div>
+  </div>
+</section>
+
+<!-- CLIENTS -->
+<section class="clients">
+  <div class="clients-inner wrap">
+    <span class="clients-eyebrow reveal">заказчики</span>
+    <h2 class="clients-title reveal">Наши заказчики</h2>
+    <p class="clients-lead reveal">Проектируем для ведущих девелоперов и строительных компаний Казахстана.</p>
+    <div class="clients-grid">
+      <div class="client"><img src="clients/bi.png" alt="BI Group" loading="lazy"></div>
+      <div class="client"><img src="clients/everest.png" alt="Everest Development" loading="lazy"></div>
+      <div class="client"><img src="clients/mirva.png" alt="Mirva Group" loading="lazy"></div>
+      <div class="client"><img src="clients/enterprise.jpg" alt="Enterprise Development Group" loading="lazy"></div>
+      <div class="client"><img src="clients/edg.jpg" alt="EDG" loading="lazy"></div>
+      <div class="client"><img src="clients/hayat.jpg" alt="Hayat Construction Group" loading="lazy"></div>
+      <div class="client"><img src="clients/exclusive.jpg" alt="Exclusive Qurylys" loading="lazy"></div>
+      <div class="client"><img src="clients/iks.png" alt="IKS Group" loading="lazy"></div>
+      <div class="client"><img src="clients/saba.png" alt="Saba Group KZ" loading="lazy"></div>
+    </div>
   </div>
 </section>
 
