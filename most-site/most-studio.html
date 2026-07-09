@@ -404,6 +404,7 @@
     <div class="field"><label for="f-name">Имя</label><input id="f-name" name="name" type="text" placeholder="Как к вам обращаться" required></div>
     <div class="field"><label for="f-contact">Телефон или e-mail</label><input id="f-contact" name="contact" type="text" placeholder="+7 ··· или you@mail.com" required></div>
     <div class="field"><label for="f-msg">О проекте</label><textarea id="f-msg" name="message" placeholder="Тип объекта, площадь, сроки, ссылки" rows="2"></textarea></div>
+    <input type="checkbox" name="botcheck" tabindex="-1" autocomplete="off" aria-hidden="true" style="display:none">
     <button class="submit" type="submit" data-hover>Отправить заявку</button>
   </form>
 </section>
@@ -577,14 +578,42 @@ document.getElementById('archStages').innerHTML=stages.map(s=>`
 const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{threshold:.15});
 document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 
-// ---- contact form (no backend yet) ----
+// ---- contact form (Web3Forms — заявки уходят на info@most-a.com) ----
+// Публичный access-key Web3Forms — его безопасно держать в коде: он умеет только
+// отправить письмо на подтверждённую почту, прочитать/удалить что-либо им нельзя.
+const WEB3FORMS_KEY='a059134a-99a5-476c-ac90-cc85777b730b';
 const cform=document.getElementById('cform');
-if(cform)cform.addEventListener('submit',e=>{
+if(cform)cform.addEventListener('submit',async e=>{
   e.preventDefault();
   const name=cform.querySelector('#f-name').value.trim();
   const contact=cform.querySelector('#f-contact').value.trim();
-  if(!name||!contact){cform.querySelector('#f-contact').focus();return;}
-  cform.innerHTML='<p class="ok">Спасибо! Заявка отправлена — свяжемся в течение рабочего дня.</p>';
+  const message=cform.querySelector('#f-msg').value.trim();
+  if(!name||!contact){cform.querySelector(name?'#f-contact':'#f-name').focus();return;}
+  if(cform.querySelector('[name=botcheck]')?.checked)return; // ловушка для ботов
+  const btn=cform.querySelector('.submit'), label=btn.textContent;
+  const prev=cform.querySelector('.form-err'); if(prev)prev.remove();
+  btn.disabled=true; btn.textContent='Отправляем…';
+  try{
+    const res=await fetch('https://api.web3forms.com/submit',{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Accept:'application/json'},
+      body:JSON.stringify({
+        access_key:WEB3FORMS_KEY,
+        subject:'Новая заявка с сайта — MOST Architects',
+        from_name:'Сайт MOST Architects',
+        'Имя':name, 'Телефон/e-mail':contact, 'О проекте':message||'—'
+      })
+    });
+    const data=await res.json();
+    if(!data.success)throw new Error(data.message||'error');
+    cform.innerHTML='<p class="ok">Спасибо! Заявка отправлена — свяжемся в течение рабочего дня.</p>';
+  }catch(err){
+    btn.disabled=false; btn.textContent=label;
+    const m=document.createElement('p');
+    m.className='ok form-err'; m.style.color='#ff6a4d';
+    m.textContent='Не удалось отправить. Напишите на info@most-a.com или позвоните +7 (771) 733 77 00.';
+    cform.appendChild(m);
+  }
 });
 </script>
 </body>
