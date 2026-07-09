@@ -287,7 +287,8 @@
   .client{display:flex;align-items:center;justify-content:center;height:clamp(38px,4.4vw,52px)}
   .client img{max-height:100%;max-width:clamp(104px,13vw,158px);width:auto;object-fit:contain;opacity:.92;transition:opacity .3s ease}
   .client:hover img{opacity:1}
-  @media(max-width:560px){.clients-grid{gap:30px 36px}.client{height:34px}}
+  .client-tall{height:clamp(56px,6.6vw,82px)}
+  @media(max-width:560px){.clients-grid{gap:30px 36px}.client{height:34px}.client-tall{height:52px}}
 </style>
 </head>
 <body>
@@ -386,6 +387,8 @@
       <div class="client"><img src="clients/hayat.png" alt="Hayat Construction Group" loading="lazy"></div>
       <div class="client"><img src="clients/mirva.png" alt="Mirva Group" loading="lazy"></div>
       <div class="client"><img src="clients/saba.png" alt="Saba Group KZ" loading="lazy"></div>
+      <div class="client client-tall"><img src="clients/raaf.svg" alt="RAAF Group" loading="lazy"></div>
+      <div class="client"><img src="clients/iks.png" alt="IKS Group" loading="lazy"></div>
       <div class="client"><img src="clients/arcon.svg" alt="Arcon Development" loading="lazy"></div>
     </div>
   </div>
