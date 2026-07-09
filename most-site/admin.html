@@ -331,16 +331,17 @@ function logout(msg){
   if(msg){const e=$('authErr');if(e){e.textContent=msg;e.style.display='block';}}
 }
 function render(){
-  $('btnReload').style.display=state.screen==='auth'?'none':'';
-  $('btnLogout').style.display=state.screen==='auth'?'none':'';
+  $('btnReload').style.display=state.token?'':'none';
+  $('btnLogout').style.display=state.token?'':'none';
   if(state.screen==='auth')renderAuth();
+  else if(state.screen==='utm')renderUtm();
   else if(state.screen==='editor')renderEditor();
   else renderList();
   renderBar();
 }
 function renderBar(){
   const bar=$('pubbar');
-  if(state.screen==='auth'){bar.style.display='none';return;}
+  if(state.screen==='auth'||state.screen==='utm'){bar.style.display='none';return;}
   const info=changesInfo();
   const has=info.text!=='';
   bar.style.display=has?'block':'none';
@@ -368,7 +369,9 @@ function renderAuth(){
       </ol>
       <p class="hint" style="margin-top:8px">Токен хранится только в этом браузере. Кнопка «Выйти» удаляет его.</p>
     </details>
+    <p style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px"><a href="#" id="toUtm" style="font-weight:600;color:var(--acc)">🔗 Генератор рекламных ссылок (UTM)</a> <span class="hint">— вход не требуется</span></p>
   </div>`;
+  const utmA=$('toUtm'); if(utmA)utmA.onclick=e=>{e.preventDefault();state.screen='utm';render();};
   const go=async()=>{
     const tok=$('tokIn').value.trim();
     const err=$('authErr');
@@ -392,6 +395,57 @@ function renderAuth(){
   };
   $('btnLogin').onclick=go;
   $('tokIn').onkeydown=e=>{if(e.key==='Enter')go();};
+}
+
+/* ---- Генератор рекламных ссылок (UTM) ---- */
+function renderUtm(){
+  const SITE='https://most-a.com/';
+  const norm=s=>String(s||'').trim().toLowerCase().split('').map(ch=>TR[ch]!==undefined?TR[ch]:ch).join('').replace(/\s+/g,'_').replace(/[^a-z0-9_\-]/g,'');
+  $('app').innerHTML=`
+    <div class="toolbar">
+      <button id="utmBack">← Назад</button>
+      <h2 style="flex:1">Ссылки для рекламы</h2>
+    </div>
+    <div class="card">
+      <p class="hint" style="margin-bottom:6px">Заполните поля — получите готовую ссылку с UTM-метками. Вставьте её в объявление (поле «Сайт» / Website URL). Тогда по каждой заявке в письме будет виден источник.</p>
+      <div class="ed-grid">
+        <div><label>Площадка (source)</label><input type="text" id="u_source" list="u_source_l" placeholder="instagram"><datalist id="u_source_l"><option value="instagram"><option value="facebook"><option value="google"><option value="tiktok"><option value="youtube"><option value="telegram"><option value="2gis"></datalist></div>
+        <div><label>Тип (medium)</label><input type="text" id="u_medium" list="u_medium_l" placeholder="cpc"><datalist id="u_medium_l"><option value="cpc"><option value="stories"><option value="reels"><option value="post"><option value="blogger"><option value="banner"><option value="email"></datalist></div>
+        <div><label>Кампания (campaign)</label><input type="text" id="u_campaign" placeholder="vesna_zhk"></div>
+        <div><label>Объявление / креатив (content)</label><input type="text" id="u_content" placeholder="video_1"></div>
+        <div class="full"><label>Куда ведёт ссылка</label>
+          <select id="u_page" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)">
+            <option value="">Главная</option>
+            <option value="most-portfolio.html">Портфолио</option>
+            <option value="most-about.html">Бюро</option>
+          </select>
+        </div>
+      </div>
+      <label style="margin-top:18px">Готовая ссылка</label>
+      <div style="display:flex;gap:10px;align-items:stretch">
+        <input type="text" id="u_out" readonly style="flex:1;font-size:13px;color:var(--acc)">
+        <button class="btn-main" id="u_copy" style="white-space:nowrap">Копировать</button>
+      </div>
+      <p class="hint" style="margin-top:10px">Правило: разным объявлениям — разный «Объявление», разным кампаниям — разная «Кампания». Пишите латиницей, пробелы заменяются на «_».</p>
+    </div>`;
+  const build=()=>{
+    const s=norm($('u_source').value),m=norm($('u_medium').value),c=norm($('u_campaign').value),ct=norm($('u_content').value);
+    const q=[];
+    if(s)q.push('utm_source='+s);
+    if(m)q.push('utm_medium='+m);
+    if(c)q.push('utm_campaign='+c);
+    if(ct)q.push('utm_content='+ct);
+    $('u_out').value=SITE+($('u_page').value||'')+(q.length?'?'+q.join('&'):'');
+  };
+  ['u_source','u_medium','u_campaign','u_content'].forEach(id=>$(id).addEventListener('input',build));
+  $('u_page').addEventListener('change',build);
+  build();
+  $('u_copy').onclick=async()=>{
+    const v=$('u_out').value;
+    try{await navigator.clipboard.writeText(v);}catch(e){const el=$('u_out');el.select();try{document.execCommand('copy');}catch(_){}}
+    $('u_copy').textContent='Скопировано ✓';setTimeout(()=>{const b=$('u_copy');if(b)b.textContent='Копировать';},1500);
+  };
+  $('utmBack').onclick=()=>{state.screen=state.token?'list':'auth';render();};
 }
 
 /* ---- Список проектов ---- */
@@ -424,6 +478,7 @@ function renderList(){
     <div class="toolbar">
       <h2>Проекты <span class="hint">(${state.projects.length})</span></h2>
       <span class="hint">Порядок в списке = порядок на сайте</span>
+      <button id="btnUtm">🔗 Ссылки для рекламы</button>
       <button class="btn-main" id="btnAdd">+ Добавить проект</button>
     </div>
     <div class="plist" id="plist">${rows||'<div class="empty-note">Проектов пока нет</div>'}</div>`;
@@ -434,6 +489,7 @@ function renderList(){
     state.projects.unshift(normalize({slug,n:name.trim(),desc:['','']}));
     state.editSlug=slug;state.screen='editor';render();
   };
+  $('btnUtm').onclick=()=>{state.screen='utm';render();};
   document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveProject(+b.dataset.up,-1));
   document.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveProject(+b.dataset.down,1));
   document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{state.editSlug=b.dataset.edit;state.screen='editor';render();});
