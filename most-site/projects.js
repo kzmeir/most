@@ -923,7 +923,7 @@ window.PROJECTS=
     ],
     "year": "2023",
     "status": "Концепция",
-    "area": "3,2 га",
+    "area": "1,2 Га",
     "floors": "2–3",
     "homes": "12 500 м²",
     "types": [],
