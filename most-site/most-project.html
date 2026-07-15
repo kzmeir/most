@@ -502,9 +502,9 @@ if(idx<0||!projects[idx]){
     p.status&&{k:'Статус',v:`<span class="pj-status">${p.status}</span>`},
     {k:'Тип',v:p.cat},
     {k:'Локация',v:p.loc},
-    p.area&&{k:'Площадь',v:p.area},
+    p.area&&{k:'Площадь участка',v:p.area},
     p.floors&&{k:'Этажность',v:p.floors},
-    p.homes&&{k:'Состав',v:p.homes}
+    p.homes&&{k:'Общая площадь',v:p.homes}
   ].filter(Boolean);
   const specsHtml=specRows.map(s=>`<div><div class="k">${s.k}</div><div class="v">${s.v}</div></div>`).join('');
 
