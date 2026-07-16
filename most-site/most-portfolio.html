@@ -397,7 +397,7 @@ function typesOf(cat){
   const out=[];
   if(c.includes('коттедж')||c.includes('таунхаус')||c.includes('посёлок')||c.includes('поселок'))out.push('Коттеджные городки');
   if(c.includes('гостиниц')||c.includes('гостиничн'))out.push('Гостиницы');
-  if(c.includes('мастер')||c.includes('градострои')||c.includes('концепция города'))out.push('Мастер-планы');
+  if(c.includes('мастер')||c.includes('градострои')||c.includes('концепция города')||c.trim()==='городок')out.push('Мастер-планы');
   if(c.includes('офис')||c.includes('спорт')||c.includes('физкультур')||c.includes('фок')||c.includes('обществ')||c.includes('коммерц'))out.push('Общественные');
   if(c.includes('жк')||c.includes('жиль')||c.includes('жилой')||c.includes('жилая'))out.push('Жилые комплексы');
   if(!out.length)out.push('Жилые комплексы');

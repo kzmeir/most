@@ -29,20 +29,38 @@ window.PROJECTS=
       "pr/meliora__7.jpg",
       "pr/meliora__8.jpg",
       "pr/meliora__9.jpg",
-      "pr/meliora__10.jpg",
-      "pr/meliora__11.jpg",
-      "pr/meliora__12.jpg",
-      "pr/meliora__13.jpg",
-      "pr/meliora__14.jpg",
-      "pr/meliora__15.jpg",
-      "pr/meliora__16.jpg",
-      "pr/meliora__17.jpg",
-      "pr/meliora__18.jpg",
-      "pr/meliora__19.jpg",
-      "pr/meliora__20.jpg",
-      "pr/meliora__21.jpg",
-      "pr/meliora__22.jpg",
-      "pr/meliora__23.jpg"
+      "pr/meliora__10.jpg"
+    ]
+  },
+  {
+    "slug": "vignette",
+    "n": "Vignette Collection Meliora",
+    "cat": "Гостиница",
+    "loc": "Алматы",
+    "desc": [
+      "Гостиница международной коллекции Vignette Collection в составе квартала Meliora. Объём с арочным цоколем и панорамным верхним этажом держит угол квартала и формирует его парадный фасад.",
+      "Номерной фонд дополнен ресторанами, террасами и общественными пространствами первых этажей, раскрытыми к городу."
+    ],
+    "year": "2022",
+    "status": "Рабочий проект",
+    "area": "0,67 га",
+    "floors": "6",
+    "homes": "21 943 м²",
+    "types": [],
+    "arch": false,
+    "feat": false,
+    "imgs": [
+      "pr/vignette__0.jpg",
+      "pr/vignette__1.jpg",
+      "pr/vignette__2.jpg",
+      "pr/vignette__3.jpg",
+      "pr/vignette__4.jpg",
+      "pr/vignette__5.jpg",
+      "pr/vignette__6.jpg",
+      "pr/vignette__7.jpg",
+      "pr/vignette__8.jpg",
+      "pr/vignette__9.jpg",
+      "pr/vignette__10.jpg"
     ]
   },
   {
