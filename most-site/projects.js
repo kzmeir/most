@@ -992,6 +992,25 @@ window.PROJECTS=
       "pr/judo__11.jpg",
       "pr/judo__12.jpg"
     ]
+  },
+  {
+    "slug": "terekti",
+    "n": "Теректі",
+    "cat": "Жилой комплекс",
+    "loc": "",
+    "desc": [
+      "",
+      ""
+    ],
+    "year": "",
+    "status": "Рабочий проект",
+    "area": "",
+    "floors": "",
+    "homes": "",
+    "types": [],
+    "arch": true,
+    "feat": false,
+    "imgs": []
   }
 ]
 ;
