@@ -1004,7 +1004,7 @@ window.PROJECTS=
     ],
     "year": "2026",
     "status": "Эскизный проект",
-    "area": "",
+    "area": "4,16 га",
     "floors": "",
     "homes": "",
     "types": [],
