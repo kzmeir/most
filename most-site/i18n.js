@@ -73,7 +73,7 @@
     },
     'бюро': { kz: 'бюро', en: 'studio' },
     'Команда архитекторов, инженеров и проектировщиков под одной задачей.': {
-      kz: 'Сәулетшілер, инженерлер мен жобалаушылар командасы бір мақсатқа жұмылған.',
+      kz: 'Сәулетшілер мен инженерлер командасы бір мақсатпен жұмыс атқаруда.',
       en: 'A team of architects, engineers and designers working toward one goal.'
     },
     'Работаем полным циклом — от концепции до авторского надзора на площадке — и отвечаем за результат на каждой стадии. Архитектура для нас — это логика, а не декор.': {
@@ -87,7 +87,7 @@
     'сотрудников в штате': { kz: 'штаттағы маман', en: 'team members' },
     'сотрудников': { kz: 'маман', en: 'team members' },
     'заказчики': { kz: 'тапсырыс берушілер', en: 'clients' },
-    'Наши заказчики': { kz: 'Біздің тапсырыс берушілер', en: 'Our clients' },
+    'Наши заказчики': { kz: 'Тапсырыс берушілер', en: 'Our clients' },
     'Проектируем для ведущих девелоперов и строительных компаний Казахстана.': {
       kz: 'Қазақстанның жетекші девелоперлері мен құрылыс компаниялары үшін жобалаймыз.',
       en: 'We design for Kazakhstan’s leading developers and construction companies.'
@@ -140,8 +140,8 @@
       en: 'We establish the project’s foundation: its meaning, atmosphere and character. Not merely a sketch, but an architectural logic that defines everything that follows.'
     },
     'Разработка концепции генерального плана': { kz: 'Бас жоспар тұжырымдамасын әзірлеу', en: 'Master plan concept development' },
-    'Разработка предварительных планировочных схем': { kz: 'Алдын ала жоспарлау схемаларын әзірлеу', en: 'Preliminary planning layouts' },
-    'Предварительные технико-экономические показатели (ТЭП)': { kz: 'Алдын ала техникалық-экономикалық көрсеткіштер (ТЭК)', en: 'Preliminary technical and economic indicators' },
+    'Разработка предварительных планировочных схем': { kz: 'Жоспар схемаларын әзірлеу', en: 'Preliminary planning layouts' },
+    'Предварительные технико-экономические показатели (ТЭП)': { kz: 'Техникалық-экономикалық көрсеткіштер (ТЭК)', en: 'Preliminary technical and economic indicators' },
     'Разработка концепций фасадов с визуализацией': { kz: 'Визуализациямен қасбет тұжырымдамаларын әзірлеу', en: 'Facade concepts with visualisations' },
     'Анализ мировых трендов и аналогов': { kz: 'Әлемдік трендтер мен аналогтарды талдау', en: 'Analysis of global trends and precedents' },
     'Концептуальный альбом с основными фасадными решениями и предварительными просчётами.': {
@@ -156,7 +156,7 @@
       en: 'We design not an isolated object, but an ecosystem of movement, transport, nature and patterns of use.'
     },
     'Разработка эффективного генерального плана': { kz: 'Тиімді бас жоспар әзірлеу', en: 'Efficient master plan development' },
-    'Разработка планировочных решений': { kz: 'Жоспарлау шешімдерін әзірлеу', en: 'Planning solutions' },
+    'Разработка планировочных решений': { kz: 'Жоспар шешімдерін әзірлеу', en: 'Planning solutions' },
     'Разработка фасадных решений': { kz: 'Қасбет шешімдерін әзірлеу', en: 'Facade design' },
     'Эскиз наружного фасадного освещения': { kz: 'Сыртқы қасбет жарығының эскизі', en: 'Exterior facade lighting concept' },
     'Разработка визуализации здания': { kz: 'Ғимарат визуализациясын әзірлеу', en: 'Building visualisation' },
@@ -275,7 +275,7 @@
       kz: 'Тұрғын кварталдар, мастер-жоспарлар, қоғамдық және коммерциялық нысандар — алғашқы тұжырымдамадан құрылыс алаңындағы авторлық қадағалауға дейін.',
       en: 'Residential quarters, master plans, public and commercial buildings — from the first concept through on-site architectural supervision.'
     },
-    'проектов · Алматы и Казахстан': { kz: 'жоба · Алматы және Қазақстан', en: 'projects · Almaty and Kazakhstan' },
+    'Алматы и Казахстан': { kz: 'Алматы және Қазақстан', en: 'Almaty and Kazakhstan' },
     'Все': { kz: 'Барлығы', en: 'All' },
     'Жилые комплексы': { kz: 'Тұрғын үй кешендері', en: 'Residential' },
     'Коттеджные городки': { kz: 'Коттедж қалашықтары', en: 'Low-rise communities' },
