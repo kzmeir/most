@@ -7,30 +7,31 @@
   @page { size: 1280px 720px; margin: 0; }
   :root{
     --orange:#FF4D23;
-    --bg:#0a0a0c;
-    --panel:#121216;
-    --grey:#8b8c91;
-    --grey-2:#b6b7bb;
-    --ivory:#ECE8E1;
-    --line:rgba(255,255,255,.14);
-    --line-2:rgba(255,255,255,.28);
+    --accent:#D93C13;
+    --bg:#FFFFFF;
+    --panel:#F5F4F2;
+    --ink:#111114;
+    --grey:#75767b;
+    --grey-2:#4a4b50;
+    --line:rgba(0,0,0,.13);
+    --line-2:rgba(0,0,0,.26);
     --txt:'Liberation Sans',Arial,'DejaVu Sans',sans-serif;
   }
   *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  html,body{margin:0;padding:0;background:#000}
-  body{font-family:var(--txt);color:#fff}
+  html,body{margin:0;padding:0;background:#fff}
+  body{font-family:var(--txt);color:var(--ink)}
 
   .slide{position:relative;width:1280px;height:720px;overflow:hidden;background:var(--bg);
     padding:48px 66px 58px;display:flex;flex-direction:column;page-break-after:always;break-after:page}
   .slide:last-child{page-break-after:auto;break-after:auto}
 
   .eyebrow{display:inline-flex;align-items:center;gap:12px;font-size:11px;font-weight:700;
-    letter-spacing:.22em;text-transform:uppercase;color:var(--grey-2);margin:0 0 16px}
+    letter-spacing:.22em;text-transform:uppercase;color:var(--grey);margin:0 0 16px}
   .eyebrow::before{content:"";width:28px;height:1px;background:var(--orange)}
-  h1{font-size:80px;line-height:.94;letter-spacing:-.03em;font-weight:700;margin:0}
-  h2{font-size:38px;line-height:1.06;letter-spacing:-.02em;font-weight:700;margin:0}
+  h1{font-size:74px;line-height:.94;letter-spacing:-.03em;font-weight:700;margin:0;color:var(--ink)}
+  h2{font-size:38px;line-height:1.06;letter-spacing:-.02em;font-weight:700;margin:0;color:var(--ink)}
   p{margin:0;font-size:15px;line-height:1.6;color:var(--grey-2)}
-  .lead{font-size:19px;line-height:1.55;color:var(--ivory)}
+  .lead{font-size:19px;line-height:1.55;color:var(--ink)}
   .accent{color:var(--orange)}
 
   .rail{position:absolute;left:66px;right:66px;bottom:22px;display:flex;justify-content:space-between;
@@ -42,106 +43,82 @@
 
   .fig{background:#fff;border:1px solid var(--line);overflow:hidden;position:relative}
   .fig img{display:block;width:100%;height:100%;object-fit:cover}
-  .fig.contain{background:#f1f1ef}
+  .fig.contain{background:#fafaf9}
   .fig.contain img{object-fit:contain}
-  .cap{position:absolute;left:0;bottom:0;background:rgba(10,10,12,.9);color:var(--grey-2);
-    font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;padding:5px 12px}
+  .cap{position:absolute;left:0;bottom:0;background:rgba(255,255,255,.94);color:var(--grey);
+    font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;padding:5px 12px;
+    border-top:1px solid var(--line);border-right:1px solid var(--line)}
 
   .facts{list-style:none;margin:0;padding:0}
   .facts li{display:flex;gap:14px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;line-height:1.4}
   .facts li:first-child{border-top:1px solid var(--line)}
   .facts .k{flex:0 0 124px;color:var(--grey);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding-top:2px}
-  .facts .v{color:#fff;flex:1}
+  .facts .v{color:var(--ink);flex:1}
   .facts .v small{display:block;color:var(--grey);font-size:12px;letter-spacing:0;text-transform:none;margin-top:2px}
 
   .tep{border:1px solid var(--line);background:var(--panel)}
   .tep .hd{padding:11px 18px;border-bottom:1px solid var(--line);font-size:10.5px;
-    letter-spacing:.18em;text-transform:uppercase;color:var(--grey-2)}
+    letter-spacing:.18em;text-transform:uppercase;color:var(--grey)}
   .tep .row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
-    padding:9px 18px;border-bottom:1px solid rgba(255,255,255,.07);font-size:14px}
+    padding:9px 18px;border-bottom:1px solid rgba(0,0,0,.07);font-size:14px}
   .tep .row:last-child{border-bottom:none}
   .tep .row span{color:var(--grey-2)}
-  .tep .row b{color:#fff;font-weight:700;font-size:15.5px;white-space:nowrap}
+  .tep .row b{color:var(--ink);font-weight:700;font-size:15.5px;white-space:nowrap}
   .tep .row.sub span{padding-left:14px;color:var(--grey)}
   .tep .row.sub b{font-size:14px;color:var(--grey-2)}
-  .tep .row.total{background:rgba(255,77,35,.1);border-top:1px solid var(--line)}
-  .tep .row.total b{color:var(--orange);font-size:18px}
+  .tep .row.total{background:rgba(255,77,35,.12);border-top:1px solid var(--line)}
+  .tep .row.total span{color:var(--ink)}
+  .tep .row.total b{color:var(--accent);font-size:18px}
 
   .kpi{display:flex;gap:1px;background:var(--line);border:1px solid var(--line)}
-  .kpi div{flex:1;background:var(--bg);padding:13px 15px}
-  .kpi b{display:block;font-size:27px;letter-spacing:-.02em;line-height:1;margin-bottom:7px;white-space:nowrap}
+  .kpi div{flex:1;background:#fff;padding:13px 15px}
+  .kpi b{display:block;font-size:26px;letter-spacing:-.02em;line-height:1;margin-bottom:7px;
+    white-space:nowrap;color:var(--ink)}
   .kpi span{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--grey);line-height:1.3;display:block}
 
-  .note{border-left:2px solid var(--orange);background:rgba(255,77,35,.08);padding:13px 16px}
-  .note > b{display:block;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--orange);margin-bottom:5px}
-  .note p b{display:inline;color:#fff;font-size:inherit;letter-spacing:normal;text-transform:none}
-  .note p{font-size:13.5px;line-height:1.5;color:var(--ivory)}
+  .note{border-left:2px solid var(--orange);background:rgba(255,77,35,.07);padding:13px 16px}
+  .note > b{display:block;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:5px}
+  .note p b{display:inline;color:var(--ink);font-size:inherit;letter-spacing:normal;text-transform:none}
+  .note p{font-size:13.5px;line-height:1.5;color:var(--grey-2)}
 
-  .hold{border:1px dashed var(--line-2);background:repeating-linear-gradient(-45deg,
-      rgba(255,255,255,.02) 0 12px, transparent 12px 24px);display:flex;flex-direction:column;
-    align-items:center;justify-content:center;gap:12px;height:100%;text-align:center;padding:40px}
-  .hold b{font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--orange)}
-  .hold p{max-width:38ch;font-size:14px}
-
-  table.cmp{width:100%;border-collapse:collapse;font-size:13.5px}
-  table.cmp th,table.cmp td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
-  table.cmp thead th{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--grey);
-    border-bottom:1px solid var(--line-2);padding-bottom:9px}
-  table.cmp thead th.v1{color:var(--orange)}
-  table.cmp thead th.v2{color:#e8e8ea}
-  table.cmp td.zone b{color:var(--orange)}
-  table.cmp td.p{color:var(--grey-2);width:30%}
-  table.cmp td b{font-weight:700;font-size:15px}
-  table.cmp td.wait{color:var(--grey)}
-  table.cmp tr:last-child td{border-bottom:none}
-
-  .qs{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
-    border:1px solid var(--line);height:100%}
-  .qs > div{background:var(--bg);padding:17px 20px}
-  .qs h4{margin:0 0 6px;font-size:15px;font-weight:700;letter-spacing:-.01em}
-  .qs h4 em{font-style:normal;color:var(--orange);font-size:10px;letter-spacing:.12em;
-    text-transform:uppercase;display:block;margin-bottom:5px}
-  .qs p{font-size:13px;line-height:1.48}
-
-  .cover{padding:0;justify-content:flex-end}
-  .cover .bgimg{position:absolute;inset:0}
-  .cover .bgimg img{width:100%;height:100%;object-fit:cover;opacity:.95}
-  .cover .bgimg::after{content:"";position:absolute;inset:0;
-    background:linear-gradient(to top,#0a0a0c 5%,rgba(10,10,12,.72) 30%,rgba(10,10,12,0) 62%),
-      linear-gradient(to right,rgba(10,10,12,.82) 0%,rgba(10,10,12,.35) 42%,rgba(10,10,12,0) 68%)}
-  .cover .inner{position:relative;padding:0 66px 56px}
-  .cover .topline{position:absolute;top:48px;left:66px;right:66px;display:flex;justify-content:space-between;
-    font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#f2f2f4;
-    text-shadow:0 1px 10px rgba(0,0,0,.75)}
-  .cover h1{font-size:88px}
-  .cover .sub{display:flex;gap:44px;margin-top:30px;padding-top:22px;border-top:1px solid var(--line)}
-  .cover .sub div{font-size:13px;color:var(--grey-2);line-height:1.45}
-  .cover .sub b{display:block;color:#fff;font-size:21px;font-weight:700;margin-bottom:5px}
-
-  .mark{font-size:11px;letter-spacing:.24em;text-transform:uppercase;font-weight:700}
-  .mark i{font-style:normal;color:var(--orange)}
   .foot{font-size:11.5px;color:var(--grey);line-height:1.45}
+  .mark{font-size:11px;letter-spacing:.24em;text-transform:uppercase;font-weight:700;color:var(--ink)}
+  .mark i{font-style:normal;color:var(--orange)}
+
+  .cover{padding:0;flex-direction:row}
+  .cover .left{width:47%;padding:48px 44px 54px 66px;display:flex;flex-direction:column}
+  .cover .left .top{display:flex;justify-content:space-between;align-items:baseline;
+    font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--grey)}
+  .cover .mid{margin-top:auto}
+  .cover .sub{margin-top:30px;padding-top:20px;border-top:1px solid var(--line);
+    display:grid;grid-template-columns:1fr 1fr;gap:16px 24px}
+  .cover .sub div{font-size:12px;color:var(--grey);line-height:1.4}
+  .cover .sub b{display:block;color:var(--ink);font-size:21px;font-weight:700;margin-bottom:4px;letter-spacing:-.01em}
+  .cover .right{flex:1;position:relative;overflow:hidden}
+  .cover .right img{width:100%;height:100%;object-fit:cover}
 </style>
 </head>
 <body>
 
 <!-- 01 ОБЛОЖКА -->
 <section class="slide cover">
-  <div class="bgimg"><img src="img/facade_v1.jpg" alt=""></div>
-  <div class="topline">
-    <span class="mark">MOST<i>.</i> Architects</span>
-    <span>Астана · 31.07.2026</span>
-  </div>
-  <div class="inner">
-    <p class="eyebrow">Р-н Есиль · с. Пригородное · ул. Нового Аэропорта</p>
-    <h1>Отель<br>в Астане<span class="accent">.</span></h1>
-    <div class="sub">
-      <div><b>1,296 га</b>площадь участка</div>
-      <div><b>25 000 м²</b>общая площадь<br>по варианту 1</div>
-      <div><b>17 000 м²</b>номерной фонд</div>
-      <div><b>8 000 м²</b>коммерция</div>
+  <div class="left">
+    <div class="top">
+      <span class="mark">MOST<i>.</i> Architects</span>
+      <span>31.07.2026</span>
+    </div>
+    <div class="mid">
+      <p class="eyebrow">Астана · р-н Есиль · с. Пригородное</p>
+      <h1>Отель<br>в Астане<span class="accent">.</span></h1>
+      <div class="sub">
+        <div><b>1,296 га</b>площадь участка</div>
+        <div><b>2</b>варианта посадки</div>
+        <div><b>30 000 м²</b>общая площадь,<br>вариант 1</div>
+        <div><b>25 100 м²</b>общая площадь,<br>вариант 2</div>
+      </div>
     </div>
   </div>
+  <div class="right"><img src="img/facade_v1.jpg" alt=""></div>
 </section>
 
 <!-- 02 ЛОКАЦИЯ -->
@@ -168,7 +145,7 @@
       </ul>
     </div>
   </div>
-  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>02 / 10</span></div>
+  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>02 / 08</span></div>
 </section>
 
 <!-- 03 ИСХОДНЫЕ -->
@@ -195,10 +172,10 @@
       </div>
     </div>
   </div>
-  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>03 / 10</span></div>
+  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>03 / 08</span></div>
 </section>
 
-<!-- 04 РЕФЕРЕНС -->
+<!-- 04 ТИПОЛОГИЯ -->
 <section class="slide">
   <p class="eyebrow">03 · Типология</p>
   <h2>Гранёные объёмы вокруг двора с бассейном</h2>
@@ -215,10 +192,10 @@
       <p>Такая типология даёт короткие коридоры, широкий фронт по улице и максимум номеров с видом наружу при плотной посадке.</p>
     </div>
   </div>
-  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>04 / 10</span></div>
+  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>04 / 08</span></div>
 </section>
 
-<!-- 05 ВАРИАНТ 1 -->
+<!-- 05 ВАРИАНТ 1 · ПОСАДКА -->
 <section class="slide">
   <p class="eyebrow">04 · Вариант 1 · посадка</p>
   <h2>Восемь корпусов 3–7 этажей вокруг двора</h2>
@@ -235,20 +212,21 @@
         <div class="row"><span>Площадь участка</span><b>1,296 га</b></div>
         <div class="row"><span>Площадь застройки</span><b>5 639,4 м²</b></div>
         <div class="row"><span>Этажность</span><b>3–7 эт.</b></div>
-        <div class="row total"><span>Общая площадь</span><b>25 000 м²</b></div>
-        <div class="row sub"><span>площадь номеров</span><b>17 000 м²</b></div>
-        <div class="row sub"><span>площадь коммерции</span><b>8 000 м²</b></div>
+        <div class="row total"><span>Общая площадь</span><b>30 000 м²</b></div>
+        <div class="row sub"><span>площадь номеров</span><b>20 500 м²</b></div>
+        <div class="row sub"><span>площадь коммерции</span><b>9 500 м²</b></div>
         <div class="row"><span>Подземный паркинг</span><b>50 м/мест</b></div>
       </div>
       <div class="kpi">
         <div><b>43,5 %</b><span>застройки участка</span></div>
-        <div><b>1,93</b><span>общая площадь / участок</span></div>
-        <div><b>≈ 585</b><span>номеров расчётно</span></div>
+        <div><b>2,31</b><span>общая площадь / участок</span></div>
+        <div><b>&asymp; 705</b><span>номеров расчётно</span></div>
       </div>
       <p style="font-size:13px;line-height:1.45">Восемь объёмов по 22 м глубиной, с разрывами 27,7–27,9 м, образуют замкнутый двор с бассейном длиной около 100 м. Понижение от семи этажей на севере до трёх на западе раскрывает двор к солнцу и держит фронт по улице.</p>
+      <p class="foot">Площади посчитаны с коэффициентами 0,85 для номеров и 0,9 для коммерции.</p>
     </div>
   </div>
-  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>05 / 10</span></div>
+  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>05 / 08</span></div>
 </section>
 
 <!-- 06 ВАРИАНТ 1 · ФАСАД -->
@@ -272,7 +250,7 @@
       <p style="font-size:13px">Ступенчатая высота на фасаде — то же понижение от семи этажей к пяти, что и в посадке варианта 1.</p>
     </div>
   </div>
-  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>06 / 10</span></div>
+  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>06 / 08</span></div>
 </section>
 
 <!-- 07 ВАРИАНТ 2 · ПОСАДКА -->
@@ -292,20 +270,21 @@
         <div class="row"><span>Площадь участка</span><b>1,296 га</b></div>
         <div class="row"><span>Площадь застройки</span><b>5 137,3 м²</b></div>
         <div class="row"><span>Этажность</span><b>3–7 эт.</b></div>
-        <div class="row total"><span>Общая площадь</span><b>21 000 м²</b></div>
-        <div class="row sub"><span>площадь номеров</span><b>16 700 м²</b></div>
-        <div class="row sub"><span>площадь коммерции</span><b>4 300 м²</b></div>
+        <div class="row total"><span>Общая площадь</span><b>25 100 м²</b></div>
+        <div class="row sub"><span>площадь номеров</span><b>20 400 м²</b></div>
+        <div class="row sub"><span>площадь коммерции</span><b>4 700 м²</b></div>
         <div class="row"><span>Подземный паркинг</span><b>60 м/мест</b></div>
       </div>
       <div class="kpi">
         <div><b>39,6 %</b><span>застройки участка</span></div>
-        <div><b>1,62</b><span>общая площадь / участок</span></div>
-        <div><b>≈ 575</b><span>номеров расчётно</span></div>
+        <div><b>1,94</b><span>общая площадь / участок</span></div>
+        <div><b>&asymp; 705</b><span>номеров расчётно</span></div>
       </div>
       <p style="font-size:13px;line-height:1.45">Три пластины со скруглёнными торцами стоят с разрывами 24–25 м и связаны низкими вставками в 3–4 этажа. Получаются два внутренних двора, а юго-восточный корпус остановлен ровно по границе охранной зоны.</p>
+      <p class="foot">Площади посчитаны с коэффициентами 0,85 для номеров и 0,9 для коммерции.</p>
     </div>
   </div>
-  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>07 / 10</span></div>
+  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>07 / 08</span></div>
 </section>
 
 <!-- 08 ВАРИАНТ 2 · ФАСАД -->
@@ -329,73 +308,7 @@
       </ul>
     </div>
   </div>
-  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>08 / 10</span></div>
-</section>
-
-
-
-<!-- 09 СРАВНЕНИЕ -->
-<section class="slide">
-  <p class="eyebrow">08 · Сравнение</p>
-  <h2>Два варианта на одном участке</h2>
-  <div class="body" style="flex-direction:column;gap:16px">
-    <table class="cmp">
-      <thead>
-        <tr><th>Показатель</th><th class="v1">Вариант 1</th><th class="v2">Вариант 2</th><th>Комментарий</th></tr>
-      </thead>
-      <tbody>
-        <tr><td class="p">Композиция</td><td><b>8 корпусов вокруг двора</b></td><td><b>3 пластины со вставками</b></td><td>бассейн во дворе / на кровле</td></tr>
-        <tr><td class="p">Этажность</td><td><b>3–7 эт.</b></td><td><b>3–7 эт.</b></td><td>по эскизу застройки — 2–3 эт.</td></tr>
-        <tr><td class="p">Площадь застройки</td><td><b>5 639,4 м² · 43,5 %</b></td><td><b>5 137,3 м² · 39,6 %</b></td><td>вариант 2 плотнее не идёт</td></tr>
-        <tr><td class="p">Общая площадь</td><td><b>25 000 м²</b></td><td><b>21 000 м²</b></td><td>разница 4 000 м²</td></tr>
-        <tr><td class="p">Номерной фонд</td><td><b>17 000 м² · ≈ 585 н.</b></td><td><b>16 700 м² · ≈ 575 н.</b></td><td>практически одинаково</td></tr>
-        <tr><td class="p">Коммерция</td><td><b>8 000 м²</b></td><td><b>4 300 м²</b></td><td>вся разница — в коммерции</td></tr>
-        <tr><td class="p">Плотность</td><td><b>1,93</b></td><td><b>1,62</b></td><td>общая площадь к участку</td></tr>
-        <tr><td class="p">Подземный паркинг</td><td><b>50 м/мест</b></td><td><b>60 м/мест</b></td><td>одно место на 500 и 350 м²</td></tr>
-        <tr class="zone"><td class="p">Охранная зона R 27 м</td><td class="zone"><b>574 м² застройки внутри</b></td><td><b>обойдена</b></td><td>вариант 2 остановлен по границе</td></tr>
-      </tbody>
-    </table>
-    <div class="note" style="margin-top:auto">
-      <b>Как считалось</b>
-        <p>Показатели — по чертежам посадок. Контур участка, пятна застройки и охранные зоны сверены обмером чертежей: зоны садятся на окружности R&nbsp;27,4 и 102,5&nbsp;м с общим центром у южной границы, невязка 0,4&nbsp;м. Габаритный массинг по нарисованной этажности даёт около 31 500&nbsp;м² в варианте 1 и 28 700&nbsp;м² в варианте 2 — заявленные 25 000 и 21 000&nbsp;м² составляют 79&nbsp;% и 73&nbsp;% от него. Коэффициенты полезной площади стоит привести к единому, тогда разрыв между вариантами сократится. Количество номеров — расчёт при средней площади номера 29&nbsp;м².</p>
-    </div>
-  </div>
-  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>09 / 10</span></div>
-</section>
-
-<!-- 10 К УТОЧНЕНИЮ -->
-<section class="slide">
-  <p class="eyebrow">09 · Дальше</p>
-  <h2>Что нужно закрыть по обоим вариантам</h2>
-  <div class="body">
-    <div class="qs">
-      <div>
-        <h4><em>Приоритет</em>Паркинг</h4>
-        <p>50 машиномест на 25 000 м² в варианте 1 и 60 на 21 000 м² во втором — одно место на 500 и на 350 м². Потребность считаем по нормам: при нехватке нужен второй подземный уровень или наземная стоянка в восточной части участка.</p>
-      </div>
-      <div>
-        <h4><em>Приоритет</em>Корректировка эскиза застройки</h4>
-        <p>Действующий эскиз — коммерция 2–3 этажа. Смена назначения на гостиничную функцию и выход на 7 этажей требуют отдельной процедуры; сроки стоит заложить в график заранее.</p>
-      </div>
-      <div>
-        <h4><em>Ограничения</em>Зоны у южной границы</h4>
-        <p>Обмер даёт две окружности R&nbsp;27,4 и 102,5&nbsp;м с общим центром у южной границы. Вариант 2 остановлен ровно по малой зоне, вариант 1 заходит в неё на 574&nbsp;м². Режим зон нужно подтвердить документально: если это запрет застройки, юго-восточный корпус варианта 1 придётся сдвигать.</p>
-      </div>
-      <div>
-        <h4><em>Нормы</em>Инсоляция и проезды</h4>
-        <p>Разрывы между корпусами 27,7–27,9 м в варианте 1 и 24–25 м во втором при высоте до 22 м — проверить инсоляцию дворов. Отдельно — противопожарные проезды по периметру и подъезд к каждому корпусу.</p>
-      </div>
-      <div>
-        <h4><em>Земля</em>Объединение участков</h4>
-        <p>Посадка идёт единым пятном поверх двух кадастровых участков. Требуется объединение или единое землепользование до выхода на проектирование.</p>
-      </div>
-      <div>
-        <h4><em>Модель</em>Оператор и структура фонда</h4>
-        <p>Номерной фонд в обоих вариантах почти одинаков — около 580 номеров. Отличаются они объёмом коммерции: 8 000 против 4 300 м². Нужно решение по оператору и по наполнению коммерции — от него и зависит выбор варианта.</p>
-      </div>
-    </div>
-  </div>
-  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>10 / 10</span></div>
+  <div class="rail"><span><b>Отель в Астане</b> · посадка на участке 1,296 га</span><span>08 / 08</span></div>
 </section>
 
 </body>
