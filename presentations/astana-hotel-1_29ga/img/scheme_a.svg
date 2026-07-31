@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="983" height="724" viewBox="0 0 983 724" font-family="Liberation Sans, Arial, sans-serif">
+<rect width="983" height="724" fill="#0f0f13"/>
+<defs><marker id="ah" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#fff"/></marker><clipPath id="site"><path d="M 151.2,86.4 L 935.3,68.6 L 949.9,367.2 L 760.9,574.0 L 159.8,585.4 Z"/></clipPath></defs>
+<rect x="0" y="0" width="76" height="605" fill="#191920"/>
+<line x1="64.8" y1="0" x2="64.8" y2="604.8" stroke="#c0392b" stroke-width="1.8" stroke-dasharray="13 8"/>
+<text x="32.4" y="334.8" fill="#8b8c91" font-size="12.5" letter-spacing="2.4" text-anchor="middle" transform="rotate(-90 32.4 334.8)">УЛ. НОВЫЙ АЭРОПОРТ</text>
+<rect x="820.8" y="421.2" width="81.0" height="59.4" fill="#25252b"/>
+<rect x="820.8" y="502.2" width="97.2" height="48.6" fill="#25252b"/>
+<rect x="475.2" y="626.4" width="162.0" height="48.6" fill="#25252b"/>
+<rect x="691.2" y="615.6" width="118.8" height="48.6" fill="#25252b"/>
+<circle cx="680.4" cy="572.9" r="553.5" fill="none" stroke="#b05aa8" stroke-width="1.3" stroke-dasharray="10 9" opacity=".55"/>
+<circle cx="680.4" cy="572.9" r="148.0" fill="#b05aa8" opacity=".13"/>
+<circle cx="680.4" cy="572.9" r="148.0" fill="none" stroke="#b05aa8" stroke-width="1.8" stroke-dasharray="7 6"/>
+<text x="756.0" y="604.8" fill="#c274ba" font-size="11" letter-spacing="1.3">ЗОНА R 27 М</text>
+<text x="162.0" y="702.0" fill="#8d5c88" font-size="11" letter-spacing="1.3">ПУНКТИР ПО ДУГЕ — ВНЕШНИЙ КОНТУР ЗОНЫ R 103 М, РЕЖИМ УТОЧНЯЕТСЯ</text>
+<path d="M 151.2,86.4 L 935.3,68.6 L 949.9,367.2 L 760.9,574.0 L 159.8,585.4 Z" fill="#16161b" stroke="#fff" stroke-width="1.9" stroke-dasharray="16 5 3 5" opacity=".9"/>
+<path d="M 550.8,399.6 L 777.6,399.6 L 777.6,550.8 L 550.8,550.8 Z" fill="#3c5c38" opacity=".6" clip-path="url(#site)"/>
+<path d="M 280.8,226.8 L 540.0,226.8 L 540.0,486.0 L 280.8,486.0 Z" fill="#3c5c38" opacity=".38"/>
+<path d="M 583.2,129.6 L 853.2,129.6 L 853.2,302.4 L 583.2,302.4 Z" fill="#212127" stroke="#37373f" stroke-width="1.1" clip-path="url(#site)"/>
+<text x="718.2" y="216.0" fill="#8b8c91" font-size="12" text-anchor="middle" letter-spacing="1.5">НАЗЕМНЫЙ ПАРКИНГ</text>
+<text x="718.2" y="233.0" fill="#c9cacd" font-size="14" text-anchor="middle" font-weight="bold">60 м/м</text>
+<path d="M 183.6,129.6 L 545.4,129.6 L 545.4,486.0 L 183.6,486.0 Z" fill="none" stroke="#5b9bd5" stroke-width="1.6" stroke-dasharray="9 6"/>
+<text x="415.8" y="356.4" fill="#5b9bd5" font-size="12" text-anchor="middle" letter-spacing="1.4">ПОДЗЕМНЫЙ ПАРКИНГ</text>
+<text x="415.8" y="373.4" fill="#cfe0f0" font-size="14" text-anchor="middle" font-weight="bold">135 м/м</text>
+<path d="M 183.6,129.6 L 280.8,129.6 L 280.8,486.0 L 183.6,486.0 Z" fill="#FF4D23" stroke="#0f0f13" stroke-width="1.6"/>
+<text x="232.2" y="313.8" fill="#14140f" font-size="16" font-weight="bold" text-anchor="middle" letter-spacing=".5">7 эт.</text>
+<path d="M 280.8,129.6 L 545.4,129.6 L 545.4,226.8 L 280.8,226.8 Z" fill="#FF4D23" stroke="#0f0f13" stroke-width="1.6"/>
+<text x="413.1" y="184.2" fill="#14140f" font-size="16" font-weight="bold" text-anchor="middle" letter-spacing=".5">7 эт.</text>
+<line x1="129.6" y1="302.4" x2="178.2" y2="302.4" stroke="#fff" stroke-width="2.2" marker-end="url(#ah)"/>
+<g transform="translate(901.8,140.4)"><path d="M0,-19 L5.5,9 L0,3.5 L-5.5,9 Z" fill="#fff"/><text x="0" y="24" fill="#8b8c91" font-size="11.5" text-anchor="middle">С</text></g>
+<text x="529.2" y="43.2" fill="#8b8c91" font-size="11.5" text-anchor="middle" letter-spacing="1.6">145 м</text>
+<text x="118.8" y="334.8" fill="#8b8c91" font-size="11.5" text-anchor="middle" letter-spacing="1.6" transform="rotate(-90 118.8 334.8)">92 м</text>
+<line x1="183.6" y1="610.2" x2="453.6" y2="610.2" stroke="#fff" stroke-width="1.8"/>
+<line x1="183.6" y1="606.2" x2="183.6" y2="614.2" stroke="#fff" stroke-width="1.8"/>
+<line x1="318.6" y1="606.2" x2="318.6" y2="614.2" stroke="#fff" stroke-width="1.8"/>
+<line x1="453.6" y1="606.2" x2="453.6" y2="614.2" stroke="#fff" stroke-width="1.8"/>
+<text x="463.6" y="614.2" fill="#fff" font-size="11.5" letter-spacing="1.4">50 м</text>
+<rect x="162.0" y="653.4" width="13" height="13" fill="#FF4D23"/>
+<text x="181.0" y="664.4" fill="#8b8c91" font-size="11.5">номерной фонд</text>
+<rect x="269.2" y="653.4" width="13" height="13" fill="#9c6350"/>
+<text x="288.2" y="664.4" fill="#8b8c91" font-size="11.5">общественные функции</text>
+<rect x="421.2" y="653.4" width="13" height="13" fill="#3c5c38"/>
+<text x="440.2" y="664.4" fill="#8b8c91" font-size="11.5">двор и озеленение</text>
+<rect x="554.0" y="653.4" width="13" height="13" fill="#2b2b33"/>
+<text x="573.0" y="664.4" fill="#8b8c91" font-size="11.5">наземный паркинг</text>
+<line x1="682.4" y1="660.4" x2="700.4" y2="660.4" stroke="#5b9bd5" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="706.4" y="664.4" fill="#8b8c91" font-size="11.5">контур подземного паркинга</text>
+</svg>

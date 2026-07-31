@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Посадка · Астана, отель 1,29 га</title>
+<style>
+  @page { size: 1280px 720px; margin: 0; }
+  :root{
+    --orange:#FF4D23;
+    --bg:#0a0a0c;
+    --panel:#121216;
+    --grey:#8b8c91;
+    --grey-2:#b6b7bb;
+    --ivory:#ECE8E1;
+    --line:rgba(255,255,255,.14);
+    --line-2:rgba(255,255,255,.28);
+    --brick:#9c6350;
+    --blue:#5b9bd5;
+    --zone:#c274ba;
+    --txt:'Liberation Sans',Arial,'DejaVu Sans',sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  html,body{margin:0;padding:0;background:#000}
+  body{font-family:var(--txt);color:#fff}
+
+  .slide{position:relative;width:1280px;height:720px;overflow:hidden;background:var(--bg);
+    padding:46px 64px 56px;display:flex;flex-direction:column;page-break-after:always;break-after:page}
+  .slide:last-child{page-break-after:auto;break-after:auto}
+
+  .eyebrow{display:inline-flex;align-items:center;gap:12px;font-size:11px;font-weight:700;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--grey-2);margin:0 0 14px}
+  .eyebrow::before{content:"";width:28px;height:1px;background:var(--orange)}
+  h1{font-size:78px;line-height:.94;letter-spacing:-.03em;font-weight:700;margin:0}
+  h2{font-size:35px;line-height:1.06;letter-spacing:-.02em;font-weight:700;margin:0}
+  p{margin:0;font-size:14.5px;line-height:1.6;color:var(--grey-2)}
+  .lead{font-size:18px;line-height:1.55;color:var(--ivory)}
+  .accent{color:var(--orange)}
+
+  .rail{position:absolute;left:64px;right:64px;bottom:22px;display:flex;justify-content:space-between;
+    align-items:center;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--grey);
+    border-top:1px solid var(--line);padding-top:11px}
+  .rail b{color:var(--grey-2);font-weight:700}
+  .body{flex:1;min-height:0;display:flex;gap:30px;margin-top:20px}
+  .col{min-width:0}
+
+  .fig{background:#fff;border:1px solid var(--line);overflow:hidden;position:relative}
+  .fig img{display:block;width:100%;height:100%;object-fit:cover}
+  .fig.contain{background:#f4f4f2}
+  .fig.contain img{object-fit:contain}
+  .fig.dark{background:#0f0f13}
+  .cap{position:absolute;left:0;bottom:0;background:rgba(10,10,12,.9);color:var(--grey-2);
+    font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;padding:5px 11px}
+
+  .facts{list-style:none;margin:0;padding:0}
+  .facts li{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px;line-height:1.4}
+  .facts li:first-child{border-top:1px solid var(--line)}
+  .facts .k{flex:0 0 120px;color:var(--grey);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding-top:2px}
+  .facts .v{color:#fff;flex:1}
+  .facts .v small{display:block;color:var(--grey);font-size:11.5px;letter-spacing:0;text-transform:none;margin-top:2px}
+
+  .tep{border:1px solid var(--line);background:var(--panel)}
+  .tep .hd{padding:10px 16px;border-bottom:1px solid var(--line);font-size:10.5px;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--grey-2)}
+  .tep .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    padding:8px 16px;border-bottom:1px solid rgba(255,255,255,.07);font-size:13.5px}
+  .tep .row:last-child{border-bottom:none}
+  .tep .row span{color:var(--grey-2)}
+  .tep .row b{color:#fff;font-weight:700;font-size:15px;white-space:nowrap}
+  .tep .row.total{background:rgba(255,77,35,.1);border-top:1px solid var(--line)}
+  .tep .row.total b{color:var(--orange);font-size:17px}
+
+  .kpi{display:flex;gap:1px;background:var(--line);border:1px solid var(--line)}
+  .kpi div{flex:1;background:var(--bg);padding:11px 13px}
+  .kpi b{display:block;font-size:25px;letter-spacing:-.02em;line-height:1;margin-bottom:6px;white-space:nowrap}
+  .kpi span{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--grey);line-height:1.3;display:block}
+
+  .note{border-left:2px solid var(--orange);background:rgba(255,77,35,.08);padding:12px 15px}
+  .note.blue{border-color:var(--blue);background:rgba(91,155,213,.09)}
+  .note.blue > b{color:var(--blue)}
+  .note.zone{border-color:var(--zone);background:rgba(194,116,186,.1)}
+  .note.zone > b{color:var(--zone)}
+  .note > b{display:block;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--orange);margin-bottom:5px}
+  .note p b{display:inline;color:#fff;font-size:inherit;letter-spacing:normal;text-transform:none}
+  .note p{font-size:13px;line-height:1.5;color:var(--ivory)}
+
+  table.cmp{width:100%;border-collapse:collapse;font-size:13px}
+  table.cmp th,table.cmp td{text-align:left;padding:13px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  table.cmp thead th{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--grey);
+    border-bottom:1px solid var(--line-2);padding-bottom:8px}
+  table.cmp thead th.now{color:var(--grey-2)}
+  table.cmp thead th.new{color:var(--orange)}
+  table.cmp td.p{color:var(--grey-2);width:20%}
+  table.cmp td b{font-weight:700;font-size:14px}
+  table.cmp td.old{color:var(--grey-2)}
+  table.cmp td.old b{color:var(--grey-2)}
+  table.cmp .win b{color:var(--orange)}
+  table.cmp tr:last-child td{border-bottom:none}
+
+  .crit{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--line);
+    border:1px solid var(--line);height:100%}
+  .crit > div{background:var(--bg);padding:15px 17px}
+  .crit h4{margin:0 0 6px;font-size:14.5px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+  .crit h4 em{font-style:normal;color:var(--orange);font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;display:block;margin-bottom:5px}
+  .crit p{font-size:12.5px;line-height:1.48}
+
+  .three{display:flex;gap:18px;height:100%}
+  .three > div{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0}
+  .three .fig{flex:1}
+  .three h4{margin:0;font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .three h4 em{font-style:normal;color:var(--orange);margin-right:8px}
+  .three p{font-size:12.5px;line-height:1.45}
+  .three .mini{display:flex;gap:14px;font-size:11px;color:var(--grey);letter-spacing:.06em;text-transform:uppercase}
+  .three .mini b{color:#fff;font-size:13px;letter-spacing:0;text-transform:none}
+
+  .pc{display:flex;gap:12px}
+  .pc > div{flex:1}
+  .pc h5{margin:0 0 7px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:700}
+  .pc .plus h5{color:var(--orange)}
+  .pc .minus h5{color:var(--grey)}
+  .pc ul{margin:0;padding:0;list-style:none}
+  .pc li{position:relative;padding-left:14px;font-size:12px;line-height:1.42;color:var(--grey-2);margin-bottom:5px}
+  .pc li::before{content:"";position:absolute;left:0;top:7px;width:5px;height:1px;background:var(--orange)}
+  .pc .minus li::before{background:var(--grey)}
+
+  ol.steps{list-style:none;counter-reset:s;margin:0;padding:0}
+  ol.steps li{counter-increment:s;position:relative;padding:0 0 0 42px;margin-bottom:16px}
+  ol.steps li::before{content:counter(s,decimal-leading-zero);position:absolute;left:0;top:1px;
+    font-size:11.5px;letter-spacing:.1em;color:var(--orange);font-weight:700}
+  ol.steps h4{margin:0 0 3px;font-size:15px;font-weight:700;letter-spacing:-.01em}
+  ol.steps p{font-size:12.5px;line-height:1.48}
+
+  .qs{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+    border:1px solid var(--line);height:100%}
+  .qs > div{background:var(--bg);padding:14px 18px}
+  .qs h4{margin:0 0 5px;font-size:14px;font-weight:700;letter-spacing:-.01em}
+  .qs h4 em{font-style:normal;color:var(--orange);font-size:10px;letter-spacing:.12em;
+    text-transform:uppercase;display:block;margin-bottom:4px}
+  .qs p{font-size:12.5px;line-height:1.45}
+
+  .cover{padding:0;justify-content:flex-end}
+  .cover .bgimg{position:absolute;inset:0}
+  .cover .bgimg img{width:100%;height:100%;object-fit:cover;opacity:.3;filter:grayscale(.3)}
+  .cover .bgimg::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(to top,#0a0a0c 14%,rgba(10,10,12,.7) 60%,rgba(10,10,12,.8) 100%)}
+  .cover .inner{position:relative;padding:0 64px 54px}
+  .cover .topline{position:absolute;top:48px;left:64px;right:64px;display:flex;justify-content:space-between;
+    font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--grey-2)}
+  .cover h1{font-size:92px}
+  .cover .sub{display:flex;gap:40px;margin-top:28px;padding-top:20px;border-top:1px solid var(--line)}
+  .cover .sub div{font-size:12.5px;color:var(--grey-2);line-height:1.45}
+  .cover .sub b{display:block;color:#fff;font-size:19px;font-weight:700;margin-bottom:4px}
+
+  .mark{font-size:11px;letter-spacing:.24em;text-transform:uppercase;font-weight:700}
+  .mark i{font-style:normal;color:var(--orange)}
+  .foot{font-size:11px;color:var(--grey);line-height:1.45;margin-top:auto}
+</style>
+</head>
+<body>
+
+<!-- 01 COVER -->
+<section class="slide cover">
+  <div class="bgimg"><img src="img/plan_v1.jpg" alt=""></div>
+  <div class="topline">
+    <span class="mark">MOST<i>.</i> Architects</span>
+    <span>Внутреннее обсуждение · 31.07.2026</span>
+  </div>
+  <div class="inner">
+    <p class="eyebrow">Астана · р-н Есиль · с. Пригородное</p>
+    <h1>Посадка<br>отеля<span class="accent">.</span></h1>
+    <div class="sub">
+      <div><b>1,29 га</b>ул. Новый Аэропорт (61)<br>два кадастровых участка</div>
+      <div><b>2 + 3</b>исходные варианты<br>и новые направления</div>
+      <div><b>13 000 – 15 200 м²</b>надземной площади<br>в зависимости от схемы</div>
+      <div><b>345 – 430</b>номеров отеля<br>и апартаментов</div>
+    </div>
+  </div>
+</section>
+
+<!-- 02 ЛОКАЦИЯ -->
+<section class="slide">
+  <p class="eyebrow">01 · Локация</p>
+  <h2>Участок на въезде в город со стороны нового аэропорта</h2>
+  <div class="body">
+    <div class="col" style="flex:1.35">
+      <div class="fig" style="height:100%">
+        <img src="img/sat.jpg" alt="Спутниковая подоснова с красными линиями">
+        <span class="cap">Подоснова · красные линии, ж/д и станция Есиль</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;gap:13px">
+      <div class="fig" style="flex:1">
+        <img src="img/cadastre.jpg" alt="Кадастровая карта участка">
+        <span class="cap">Кадастр · два смежных участка</span>
+      </div>
+      <ul class="facts">
+        <li><span class="k">Кадастр</span><span class="v">21-320-054-211 + 21-320-054-396<small>два смежных участка, суммарно 1,29 га</small></span></li>
+        <li><span class="k">Адрес</span><span class="v">ул. Новый Аэропорт (61), с. Пригородное<small>р-н Есиль, г. Астана</small></span></li>
+        <li><span class="k">Связи</span><span class="v">выход на пр. Кабанбай Батыра<small>ж/д магистраль и станция Есиль рядом</small></span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>02 / 15</span></div>
+</section>
+
+<!-- 03 ЭСКИЗ ЗАСТРОЙКИ -->
+<section class="slide">
+  <p class="eyebrow">02 · Исходные данные</p>
+  <h2>Что разрешено по действующему эскизу застройки</h2>
+  <div class="body">
+    <div class="col" style="flex:1.5">
+      <div class="fig contain" style="height:100%">
+        <img src="img/eskiz.jpg" alt="Эскиз застройки, М 1:1500">
+        <span class="cap">Эскиз застройки № 000 7714 · М 1:1500</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;gap:14px">
+      <ul class="facts">
+        <li><span class="k">ПДП</span><span class="v">Территория в районе пос. Пригородный<small>утв. постановлением акимата г. Астана № 510-2854 от 29.12.2023</small></span></li>
+        <li><span class="k">Эскиз</span><span class="v">№ 000 7714 от 05.01.2026<small>исх. № 104 от 06.01.2026</small></span></li>
+        <li><span class="k">Разработчик</span><span class="v">ТОО НИПИ «Астанагенплан»<small>вед. специалист Баймуханова А.</small></span></li>
+        <li><span class="k">Заказчик</span><span class="v">ТОО «Выставочная компания Fair&nbsp;Expo»</span></li>
+        <li><span class="k">Назначение</span><span class="v">Коммерческое здание · 2–3 этажа<small>плюс ТП — 1 этаж</small></span></li>
+      </ul>
+      <div class="note">
+        <b>Ключевое расхождение</b>
+        <p>Эскиз закрепляет коммерцию в&nbsp;2–3 этажа. Все рассматриваемые схемы — от&nbsp;4 до&nbsp;8 этажей с&nbsp;гостиничной функцией. Любая из&nbsp;них требует корректировки эскиза застройки и&nbsp;смены назначения; вопрос только в&nbsp;величине отклонения.</p>
+      </div>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>03 / 15</span></div>
+</section>
+
+<!-- 04 ОГРАНИЧЕНИЯ -->
+<section class="slide">
+  <p class="eyebrow">03 · Ограничения</p>
+  <h2>Что мы сняли с подосновы посадки</h2>
+  <div class="body">
+    <div class="col" style="flex:1.55">
+      <div class="fig contain dark" style="height:100%">
+        <img src="img/scheme_zones.svg" alt="Контур участка и охранные зоны">
+        <span class="cap">Контур зем. отвода и зоны, снятые с подосновы</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;gap:13px">
+      <p>Контур участка обведён по синей линии зем. отвода и откалиброван по площади: получается <b style="color:#fff">145 × 92 м со срезанным юго-восточным углом, 1,29 га</b> — сходится с ТЭП исходной посадки.</p>
+      <div class="note zone">
+        <b>Две окружности на подоснове</b>
+        <p>Розовые окружности садятся на окружности с общим центром на южной границе участка, у газового объекта. Радиусы — около <b>27 м</b> и <b>103 м</b>, невязка подгонки 0,4 м. Это не декорация подосновы, а ограничение.</p>
+      </div>
+      <ul class="facts">
+        <li><span class="k">Зона R 27 м</span><span class="v">Юго-восточный угол участка<small>в В1 сюда попадают проезд и благоустройство; сам корпус проходит в 31 м от центра — запас всего 4 м</small></span></li>
+        <li><span class="k">Зона R 103 м</span><span class="v">Накрывает почти весь участок<small>режим не установлен — если это ограничение по застройке, под вопросом обе исходные посадки</small></span></li>
+      </ul>
+      <p class="foot">Радиусы и центр получены обмером подосновы, а не из правоустанавливающих документов. До подтверждения режима трактуем R 27 м как зону, свободную от застройки.</p>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>04 / 15</span></div>
+</section>
+
+<!-- 05 ТЕКУЩИЙ СЦЕНАРИЙ -->
+<section class="slide">
+  <p class="eyebrow">04 · Текущий сценарий</p>
+  <h2>Сейчас на участок запроектирован автоцентр</h2>
+  <div class="body">
+    <div class="col" style="flex:1.6">
+      <div class="fig" style="height:100%">
+        <img src="img/avtoarena.jpg" alt="Проект автоцентра на участке">
+        <span class="cap">Действующее проектное решение по участку</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px">
+      <p class="lead">Шоурум с большой площадью остекления и парковкой по периметру — функция, которая раскладывает весь участок в одну плоскость.</p>
+      <p>Всё, что дальше, — альтернативный сценарий для тех же 1,29 га: гостиничная функция с выходом 13–15 тыс. м² надземной площади вместо одноэтажного объёма.</p>
+      <div class="note">
+        <b>Вопрос к обсуждению</b>
+        <p>Сравниваем не архитектуру, а сценарий: остаётся автоцентр или заходим с отелем. От ответа зависит, запускаем ли корректировку эскиза застройки.</p>
+      </div>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>05 / 15</span></div>
+</section>
+
+<!-- 06 ВАРИАНТ 1 -->
+<section class="slide">
+  <p class="eyebrow">05 · Исходный вариант 1</p>
+  <h2>Два объёма: отель 6 эт. и апартаменты 7 эт.</h2>
+  <div class="body">
+    <div class="col" style="flex:1.62">
+      <div class="fig contain" style="height:100%">
+        <img src="img/plan_v1.jpg" alt="План посадки, вариант 1">
+        <span class="cap">Вариант 1 · два здания</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;gap:12px">
+      <div class="tep">
+        <div class="hd">Основной ТЭП — по исходной посадке</div>
+        <div class="row"><span>Площадь участка</span><b>1,29 га</b></div>
+        <div class="row"><span>Количество зданий</span><b>2</b></div>
+        <div class="row"><span>Отель, 6 эт.</span><b>6 900 м²</b></div>
+        <div class="row"><span>— номерной фонд</span><b>5 700 м² · 200 н.</b></div>
+        <div class="row"><span>Апартаменты, 7 эт.</span><b>8 000 м²</b></div>
+        <div class="row"><span>— номерной фонд</span><b>6 800 м² · 230 н.</b></div>
+        <div class="row total"><span>Общая продаваемая</span><b>14 500 м²</b></div>
+      </div>
+      <div class="kpi">
+        <div><b class="accent">430</b><span>номеров</span></div>
+        <div><b>12 500</b><span>м² номерного фонда</span></div>
+        <div><b>—</b><span>паркинг не посчитан</span></div>
+      </div>
+      <p style="font-size:12.5px;line-height:1.45">Раздельные объёмы дают два входа и два двора, позволяют развести операторов и разбить проект на очереди. Плата — плотная посадка, замкнутые дворы и минимум свободной территории.</p>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>06 / 15</span></div>
+</section>
+
+<!-- 07 ВАРИАНТ 2 -->
+<section class="slide">
+  <p class="eyebrow">06 · Исходный вариант 2</p>
+  <h2>Один объём 7 этажей V-образной конфигурации</h2>
+  <div class="body">
+    <div class="col" style="flex:1.62">
+      <div class="fig contain" style="height:100%">
+        <img src="img/plan_v2.jpg" alt="План посадки, вариант 2">
+        <span class="cap">Вариант 2 · одно здание</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;gap:12px">
+      <div class="tep">
+        <div class="hd">Основной ТЭП — по исходной посадке</div>
+        <div class="row"><span>Площадь участка</span><b>1,29 га</b></div>
+        <div class="row"><span>Количество зданий</span><b>1</b></div>
+        <div class="row"><span>Этажность</span><b>7 эт.</b></div>
+        <div class="row"><span>Площадь номеров</span><b>11 400 м²</b></div>
+        <div class="row"><span>Количество номеров</span><b>390 н.</b></div>
+        <div class="row total"><span>Общая продаваемая</span><b>13 000 м²</b></div>
+      </div>
+      <div class="kpi">
+        <div><b class="accent">390</b><span>номеров</span></div>
+        <div><b>87,7 %</b><span>номерной фонд / продав.</span></div>
+        <div><b>—</b><span>паркинг не посчитан</span></div>
+      </div>
+      <p style="font-size:12.5px;line-height:1.45">Один объём и одно ядро — проще эксплуатация и один оператор. Освобождается юго-западная часть участка. Но корпус длинный, а раскрытие V направлено на север, в пустое поле и железную дорогу.</p>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>07 / 15</span></div>
+</section>
+
+<!-- 08 КРИТИКА -->
+<section class="slide">
+  <p class="eyebrow">07 · Разбор</p>
+  <h2>Что не работает в обеих посадках</h2>
+  <div class="body">
+    <div class="crit">
+      <div>
+        <h4><em>Типология</em>Жилая схема на гостиничной функции</h4>
+        <p>Периметральный корпус с замкнутым двором и длинный двухкоридорный слэб — приёмы жилого комплекса. У отеля другая логика: короткий путь «подъезд → стойка», компактное ядро, обслуживание с тыла.</p>
+      </div>
+      <div>
+        <h4><em>Улица</em>Фронт не сформирован</h4>
+        <p>В обоих вариантах здания отодвинуты вглубь, к ул. Новый Аэропорт выходит проезд. Для отеля на въезде со стороны аэропорта улица — главный ресурс: видимость, адрес, подъезд.</p>
+      </div>
+      <div>
+        <h4><em>Нормы</em>Паркинга нет в ТЭП</h4>
+        <p>На 390–430 номеров машиноместа всё равно появятся. Как только их посчитают, обе посадки поедут: свободной территории под наземную стоянку в В1 почти не осталось.</p>
+      </div>
+      <div>
+        <h4><em>В1</em>Половина фонда смотрит в колодец</h4>
+        <p>Два замкнутых двора при высоте 6–7 этажей: дворы узкие, номера смотрят друг в друга. Между корпусами — щель, которая не работает ни как двор, ни как улица. Кольцевой проезд по периметру даёт максимум асфальта.</p>
+      </div>
+      <div>
+        <h4><em>В2</em>Коридоры и ориентация</h4>
+        <p>Корпус длиной под 200 м: коридоры по 90+ м в крыле, тяжёлое обслуживание. Раскрытие V смотрит на север, тыл — на юг. 390 номеров на одно ядро дают пик на завтраке и выезде.</p>
+      </div>
+      <div>
+        <h4><em>Участок</em>Восточный клин пропадает</h4>
+        <p>Срезанный юго-восточный угол в обоих вариантах остаётся остатком — проезд или газон. При этом именно туда попадает охранная зона R 27 м, которую никто не отрисовал как ограничение.</p>
+      </div>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>08 / 15</span></div>
+</section>
+
+<!-- 09 ТРИ НАПРАВЛЕНИЯ -->
+<section class="slide">
+  <p class="eyebrow">08 · Предложение</p>
+  <h2>Три направления, которые стоит отработать</h2>
+  <div class="body">
+    <div class="three">
+      <div>
+        <div class="fig contain dark"><img src="img/scheme_a.svg" alt="Схема А"></div>
+        <h4><em>А</em>Г-образный по улице</h4>
+        <div class="mini"><span>7 эт.</span><span><b>14 490 м²</b></span><span><b>420 н.</b></span></div>
+        <p>Корпус держит фронт улицы и северную границу, двор раскрыт на юго-восток.</p>
+      </div>
+      <div>
+        <div class="fig contain dark"><img src="img/scheme_b.svg" alt="Схема Б"></div>
+        <h4><em>Б</em>Пластины на стилобате</h4>
+        <div class="mini"><span>8 эт.</span><span><b>15 240 м²</b></span><span><b>345 н.</b></span></div>
+        <p>Стилобат вдоль улицы берёт общественные функции, две пластины идут вглубь.</p>
+      </div>
+      <div>
+        <div class="fig contain dark"><img src="img/scheme_c.svg" alt="Схема В"></div>
+        <h4><em>В</em>Гребёнка</h4>
+        <div class="mini"><span>4 эт.</span><span><b>13 392 м²</b></span><span><b>390 н.</b></span></div>
+        <p>Спина по улице и три коротких крыла на восток, дворы раскрыты.</p>
+      </div>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>09 / 15</span></div>
+</section>
+
+<!-- 10 СХЕМА А -->
+<section class="slide">
+  <p class="eyebrow">09 · Направление А</p>
+  <h2>Г-образный по улице</h2>
+  <div class="body">
+    <div class="col" style="flex:1.55">
+      <div class="fig contain dark" style="height:100%">
+        <img src="img/scheme_a.svg" alt="Схема А — Г-образный корпус">
+        <span class="cap">Схема А · пятно 2 070 м², 16 % застройки</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;gap:11px">
+      <div class="tep">
+        <div class="hd">ТЭП — расчёт по геометрии схемы</div>
+        <div class="row"><span>Пятно застройки</span><b>2 070 м² · 16 %</b></div>
+        <div class="row"><span>Этажность</span><b>7 эт.</b></div>
+        <div class="row"><span>Надземная площадь</span><b>14 490 м²</b></div>
+        <div class="row"><span>Номерной фонд</span><b>12 170 м²</b></div>
+        <div class="row"><span>Паркинг</span><b>135 + 60 = 195 м/м</b></div>
+        <div class="row"><span>Свободная территория</span><b>10 835 м²</b></div>
+        <div class="row total"><span>Количество номеров</span><b>420 н.</b></div>
+      </div>
+      <div class="pc">
+        <div class="plus">
+          <h5>За</h5>
+          <ul>
+            <li>66 м фасада на улицу — у отеля появляется адрес</li>
+            <li>Коридор максимум 66 м, два компактных ядра</li>
+            <li>Двор раскрыт на юго-восток</li>
+            <li>Юго-восток в охранной зоне отдан озеленению</li>
+          </ul>
+        </div>
+        <div class="minus">
+          <h5>Против</h5>
+          <ul>
+            <li>Северное крыло смотрит на север — худший фонд</li>
+            <li>Без подземного уровня паркинг съест двор</li>
+            <li>7 этажей — отклонение как у В1 и В2</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>10 / 15</span></div>
+</section>
+
+<!-- 11 СХЕМА Б -->
+<section class="slide">
+  <p class="eyebrow">10 · Направление Б</p>
+  <h2>Две пластины на стилобате</h2>
+  <div class="body">
+    <div class="col" style="flex:1.55">
+      <div class="fig contain dark" style="height:100%">
+        <img src="img/scheme_b.svg" alt="Схема Б — пластины на стилобате">
+        <span class="cap">Схема Б · пятно 3 660 м², 28 % застройки</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;gap:11px">
+      <div class="tep">
+        <div class="hd">ТЭП — расчёт по геометрии схемы</div>
+        <div class="row"><span>Пятно застройки</span><b>3 660 м² · 28 %</b></div>
+        <div class="row"><span>Этажность</span><b>8 эт. (2 + 6)</b></div>
+        <div class="row"><span>Надземная площадь</span><b>15 240 м²</b></div>
+        <div class="row"><span>— номерная часть</span><b>11 880 м²</b></div>
+        <div class="row"><span>— стилобат, общественное</span><b>3 360 м²</b></div>
+        <div class="row"><span>Паркинг</span><b>140 + 45 = 185 м/м</b></div>
+        <div class="row total"><span>Количество номеров</span><b>345 н.</b></div>
+      </div>
+      <div class="pc">
+        <div class="plus">
+          <h5>За</h5>
+          <ul>
+            <li>Общественные функции видны в ТЭП, а не спрятаны</li>
+            <li>Один вход, одна стойка, логистика через стилобат</li>
+            <li>Паркинг под стилобатом, наземных проездов минимум</li>
+            <li>Наибольшая надземная площадь из трёх схем</li>
+          </ul>
+        </div>
+        <div class="minus">
+          <h5>Против</h5>
+          <ul>
+            <li>8 этажей — самое сильное отклонение от эскиза</li>
+            <li>Двор 24 м при высоте ~27 м — проверять инсоляцию</li>
+            <li>Меньше всего номеров: стилобат ест площадь</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>11 / 15</span></div>
+</section>
+
+<!-- 12 СХЕМА В -->
+<section class="slide">
+  <p class="eyebrow">11 · Направление В</p>
+  <h2>Гребёнка</h2>
+  <div class="body">
+    <div class="col" style="flex:1.55">
+      <div class="fig contain dark" style="height:100%">
+        <img src="img/scheme_c.svg" alt="Схема В — гребёнка">
+        <span class="cap">Схема В · пятно 3 348 м², 26 % застройки</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;gap:11px">
+      <div class="tep">
+        <div class="hd">ТЭП — расчёт по геометрии схемы</div>
+        <div class="row"><span>Пятно застройки</span><b>3 348 м² · 26 %</b></div>
+        <div class="row"><span>Этажность</span><b>4 эт.</b></div>
+        <div class="row"><span>Надземная площадь</span><b>13 392 м²</b></div>
+        <div class="row"><span>Номерной фонд</span><b>11 250 м²</b></div>
+        <div class="row"><span>Паркинг</span><b>130 + 105 = 235 м/м</b></div>
+        <div class="row"><span>Свободная территория</span><b>9 557 м²</b></div>
+        <div class="row total"><span>Количество номеров</span><b>390 н.</b></div>
+      </div>
+      <div class="pc">
+        <div class="plus">
+          <h5>За</h5>
+          <ul>
+            <li>Объём В2 при 4 этажах — минимальное отклонение от эскиза</li>
+            <li>Крылья по 36 м: короткие коридоры, дешевле эксплуатация</li>
+            <li>Ни один номер не смотрит в колодец</li>
+            <li>Восточная треть свободна: паркинг, парк, вторая очередь</li>
+          </ul>
+        </div>
+        <div class="minus">
+          <h5>Против</h5>
+          <ul>
+            <li>Больше периметра фасада — дороже оболочка</li>
+            <li>Четыре крыла — больше лестнично-лифтовых узлов</li>
+            <li>Наземный паркинг занимает восток участка</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>12 / 15</span></div>
+</section>
+
+<!-- 13 СРАВНЕНИЕ -->
+<section class="slide">
+  <p class="eyebrow">12 · Сравнение</p>
+  <h2>Пять схем на одном участке</h2>
+  <div class="body" style="flex-direction:column;gap:14px">
+    <table class="cmp">
+      <thead>
+        <tr>
+          <th>Показатель</th>
+          <th class="now">В1 — два здания</th>
+          <th class="now">В2 — одно здание</th>
+          <th class="new">А — Г-образный</th>
+          <th class="new">Б — стилобат</th>
+          <th class="new">В — гребёнка</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="p">Этажность</td><td class="old"><b>6 и 7</b></td><td class="old"><b>7</b></td><td><b>7</b></td><td><b>8</b></td><td class="win"><b>4</b></td></tr>
+        <tr><td class="p">Надземная площадь</td><td class="old"><b>14 500 м²</b></td><td class="old"><b>13 000 м²</b></td><td><b>14 490 м²</b></td><td class="win"><b>15 240 м²</b></td><td><b>13 392 м²</b></td></tr>
+        <tr><td class="p">Номеров</td><td class="old"><b>430</b></td><td class="old"><b>390</b></td><td class="win"><b>420</b></td><td><b>345</b></td><td><b>390</b></td></tr>
+        <tr><td class="p">Пятно застройки</td><td class="old"><b>~2 290 м²</b></td><td class="old"><b>н/д</b></td><td class="win"><b>2 070 м²</b></td><td><b>3 660 м²</b></td><td><b>3 348 м²</b></td></tr>
+        <tr><td class="p">Длина коридора</td><td class="old"><b>периметр двора</b></td><td class="old"><b>90+ м в крыле</b></td><td><b>66 м</b></td><td class="win"><b>62 м</b></td><td><b>78 м</b></td></tr>
+        <tr><td class="p">Общественные функции</td><td class="old"><b>не выделены</b></td><td class="old"><b>не выделены</b></td><td><b>не выделены</b></td><td class="win"><b>3 360 м²</b></td><td><b>не выделены</b></td></tr>
+        <tr><td class="p">Паркинг</td><td class="old"><b>не посчитан</b></td><td class="old"><b>не посчитан</b></td><td><b>195 м/м</b></td><td><b>185 м/м</b></td><td class="win"><b>235 м/м</b></td></tr>
+        <tr><td class="p">Фронт по улице</td><td class="old"><b>нет</b></td><td class="old"><b>нет</b></td><td class="win"><b>66 м</b></td><td class="win"><b>70 м стилобата</b></td><td class="win"><b>78 м</b></td></tr>
+        <tr><td class="p">Охранная зона R 27 м</td><td class="old"><b>проезд внутри</b></td><td class="old"><b>озеленение</b></td><td><b>обойдена</b></td><td><b>обойдена</b></td><td><b>обойдена</b></td></tr>
+      </tbody>
+    </table>
+    <div class="note" style="margin-top:auto">
+      <b>Как считалось</b>
+      <p>Схемы А, Б, В построены на контуре, снятом с подосновы и откалиброванном по 1,29 га. Надземная площадь = пятно × этажность; номерной фонд принят 84 % от неё, средняя площадь номера 29 м² — те же коэффициенты, что дают исходные В1 и В2. Паркинг: 32 м²/место в подземном, 25 м²/место на наземном. Это уровень посадки, а не проекта: планировки, ядра и пожарные проезды не проверялись.</p>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>13 / 15</span></div>
+</section>
+
+<!-- 14 ОРИЕНТИР -->
+<section class="slide">
+  <p class="eyebrow">13 · Ориентир</p>
+  <h2>Уровень среды, на который мы можем выйти</h2>
+  <div class="body">
+    <div class="col" style="flex:1.75">
+      <div class="fig" style="height:100%">
+        <img src="img/zara.jpg" alt="Проект бюро MOST">
+        <span class="cap">Наш проект</span>
+      </div>
+    </div>
+    <div class="col" style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px">
+      <p class="lead">Активный общественный первый этаж, аркада, вода и озеленение как основа сценария — а не остаток после парковки.</p>
+      <p>Для участка на Новом Аэропорте это прямой ориентир: качество решается на уровне земли — как работает вход, стилобат и двор, а не только этажность.</p>
+      <p>К этому ближе всего схемы Б и В: в Б общественная функция вынесена в стилобат по улице, в В освобождается восточная треть участка под полноценное пространство, а не под проездной двор.</p>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>14 / 15</span></div>
+</section>
+
+<!-- 15 ШАГИ -->
+<section class="slide">
+  <p class="eyebrow">14 · Дальше</p>
+  <h2>Следующие шаги</h2>
+  <div class="body">
+    <div class="col" style="flex:1.15">
+      <ol class="steps">
+        <li>
+          <h4>Подтвердить охранные зоны</h4>
+          <p>Запросить режим и радиусы зон от газового объекта, санитарный разрыв от железной дороги, коридоры инженерных сетей по ПДП. Пока R 103 м не снят, под вопросом любая посадка.</p>
+        </li>
+        <li>
+          <h4>Посчитать парковку по нормам</h4>
+          <p>Потребность на 345–430 номеров и сверка с ёмкостью, которую даёт каждая схема: 185–235 м/м. Если норма выше — режем номерной фонд или уходим на второй подземный уровень.</p>
+        </li>
+        <li>
+          <h4>Определиться с моделью</h4>
+          <p>Отель плюс апартаменты на продажу или единый гостиничный объект. Это решение заказчика, и от него зависит, какая схема базовая.</p>
+        </li>
+        <li>
+          <h4>Запустить корректировку эскиза застройки</h4>
+          <p>Все схемы выходят за 2–3 этажа коммерции. Процедуру начинать параллельно с проработкой посадки, а не после.</p>
+        </li>
+      </ol>
+    </div>
+    <div class="col" style="flex:.85;display:flex;flex-direction:column;gap:14px;justify-content:center">
+      <div class="note">
+        <b>Рекомендация к обсуждению</b>
+        <p>Взять <b>В — гребёнку</b> как базовую: тот же объём, что у исходного варианта 2, но при четырёх этажах, с короткими коридорами и свободной восточной третью участка. Схему А держать как запасную, если приоритет — максимум номеров.</p>
+      </div>
+      <div class="kpi">
+        <div><b>4 эт.</b><span>у базовой схемы</span></div>
+        <div><b>390</b><span>номеров</span></div>
+      </div>
+      <p class="foot">Материалы: посадка (2 л.), эскиз застройки № 000 7714, кадастровая выкопировка, подоснова с красными линиями. Схемы А, Б, В — эскизный уровень, построены на обмеренном контуре участка.</p>
+      <p class="mark">MOST<i>.</i> Architects</p>
+    </div>
+  </div>
+  <div class="rail"><span><b>Посадка · Астана, отель 1,29 га</b> — внутреннее обсуждение</span><span>15 / 15</span></div>
+</section>
+
+</body>
+</html>
