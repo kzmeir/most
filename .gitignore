@@ -2,3 +2,8 @@
 *.log
 Thumbs.db
 .DS_Store
+
+# never commit API keys / secrets
+gemini_key
+*.key
+.env
