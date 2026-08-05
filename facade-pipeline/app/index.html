@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facade Studio — harvest &amp; loop (Nano Banana)</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1f232c; --line:#2a2f3a;
+    --text:#e8eaed; --muted:#9aa2b1; --accent:#c9a26a; --accent2:#8fb0d9;
+    --danger:#e0655f; --ok:#6fbf7b; --radius:14px;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f4f2ee; --panel:#fff; --panel2:#f0ece5; --line:#e0dbd2;
+      --text:#20232a; --muted:#6a7180; --accent:#a9803f; --accent2:#3d6ea5; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--text)}
+  header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;gap:14px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.02em}
+  header .tag{font-size:12px;color:var(--muted);border:1px solid var(--line);
+    padding:2px 8px;border-radius:20px}
+  main{max-width:1200px;margin:0 auto;padding:22px;display:grid;
+    grid-template-columns:380px 1fr;gap:22px}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px;margin-bottom:18px}
+  .panel h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--muted);margin:0 0 12px}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 5px}
+  input[type=text],input[type=password],select,textarea{
+    width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:10px 12px;font:inherit;outline:none}
+  textarea{resize:vertical;min-height:150px;line-height:1.5}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1}
+  button{background:var(--panel2);color:var(--text);border:1px solid var(--line);
+    border-radius:10px;padding:10px 14px;font:inherit;cursor:pointer;transition:.15s}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#1a1205;border-color:var(--accent);font-weight:600}
+  button.primary:hover{filter:brightness(1.06)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .hint a{color:var(--accent2)}
+  .refs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .ref{position:relative;width:70px;height:70px;border-radius:8px;overflow:hidden;
+    border:1px solid var(--line)}
+  .ref img{width:100%;height:100%;object-fit:cover}
+  .ref button{position:absolute;top:2px;right:2px;width:20px;height:20px;padding:0;
+    border-radius:50%;line-height:1;font-size:13px;background:rgba(0,0,0,.6);color:#fff;border:none}
+  .addref{width:70px;height:70px;border:1px dashed var(--line);border-radius:8px;
+    display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--muted);cursor:pointer}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;display:flex;flex-direction:column}
+  .card img{width:100%;display:block;background:var(--panel2);cursor:zoom-in}
+  .card .meta{padding:10px;font-size:12px;color:var(--muted);
+    display:flex;gap:6px;flex-wrap:wrap}
+  .card .meta button{padding:5px 8px;font-size:12px;flex:1}
+  .status{font-size:13px;padding:10px 14px;border-radius:10px;margin-bottom:14px;display:none}
+  .status.err{display:block;background:rgba(224,101,95,.12);color:var(--danger);border:1px solid var(--danger)}
+  .status.info{display:block;background:rgba(143,176,217,.12);color:var(--accent2);border:1px solid var(--accent2)}
+  .spinner{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;display:inline-block;animation:spin .8s linear infinite;vertical-align:-3px;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .empty{color:var(--muted);text-align:center;padding:50px 20px;border:1px dashed var(--line);border-radius:var(--radius)}
+  .lb{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:center;
+    justify-content:center;z-index:50;cursor:zoom-out}
+  .lb img{max-width:94vw;max-height:94vh;border-radius:6px}
+  .count{font-weight:600;color:var(--text)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏛 Facade Studio</h1>
+  <span class="tag">harvest &amp; loop</span>
+  <span class="tag">Nano Banana · gemini-2.5-flash-image</span>
+</header>
+
+<main>
+  <!-- LEFT: controls -->
+  <div>
+    <div class="panel">
+      <h2>1 · Ключ и модель</h2>
+      <label>Gemini API key</label>
+      <input type="password" id="apiKey" placeholder="AIza...">
+      <div class="hint">Ключ хранится только в этом браузере (localStorage). Взять:
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></div>
+      <label>Модель</label>
+      <input type="text" id="model" value="gemini-2.5-flash-image">
+      <div class="hint">По умолчанию Nano Banana. Если ключ без доступа — попробуй
+        <code>gemini-2.5-flash-image-preview</code>.</div>
+    </div>
+
+    <div class="panel">
+      <h2>2 · Пресет и промпт</h2>
+      <label>Пресет стиля</label>
+      <select id="preset"></select>
+      <label>Промпт (можно править)</label>
+      <textarea id="prompt"></textarea>
+      <div class="hint">Правь <b>по одному параметру</b> за прогон — стиль держится стабильнее.</div>
+    </div>
+
+    <div class="panel">
+      <h2>3 · Референсы стиля (0–3)</h2>
+      <div class="refs" id="refs">
+        <label class="addref" for="refInput">＋</label>
+      </div>
+      <input type="file" id="refInput" accept="image/*" multiple hidden>
+      <div class="hint">Это «замок стиля» для Nano Banana. Прикладывай 2–3 эталона.
+        Лучшие генерации потом можно вернуть сюда кнопкой «⟳ в референсы».</div>
+    </div>
+
+    <div class="panel">
+      <h2>4 · Генерация</h2>
+      <label>Сколько вариаций (1–4)</label>
+      <input type="text" id="nvar" value="2">
+      <div style="margin-top:14px" class="row">
+        <button class="primary" id="genBtn" style="flex:2">Сгенерировать</button>
+        <button id="clearBtn">Очистить ленту</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: output -->
+  <div>
+    <div class="status" id="status"></div>
+    <div class="panel" style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0">Лента · <span class="count" id="cnt">0</span></h2>
+      <button id="dlAll">Скачать всё</button>
+    </div>
+    <div id="gallery" class="grid"></div>
+    <div class="empty" id="empty">Пока пусто. Заполни ключ, выбери пресет, приложи референсы — и жми «Сгенерировать».</div>
+  </div>
+</main>
+
+<div class="lb" id="lb"><img id="lbImg" alt=""></div>
+
+<script>
+// ---------- Presets (из master-prompt.md) ----------
+const PRESETS = {
+  "Новая классика · жилой камень":
+`Create a photorealistic architectural render of a contemporary neoclassical residential building facade in the style of the attached reference images. Warm cream limestone cladding with a matte natural texture. Tripartite composition: a ground-floor base with floor-to-ceiling retail and lobby glazing framed in dark metal, a main body of six floors articulated by vertical fluted stone pilasters and deep window reveals, and an elegant setback attic penthouse with a rooftop terrace and glass balustrade. Tall French windows with slender bronze frames and minimal glass railings. Restrained classical detailing, timeless European proportions, calm and monumental. Architectural photography, corner three-quarter view, soft golden-hour light, clear blue sky, warm interior glow, a few pedestrians and a luxury car for scale. Vertical 4:5 framing.`,
+  "Офис · аркада (Portland stone)":
+`Create a photorealistic architectural render of a contemporary neoclassical office building facade in the style of the attached reference images. Pale Portland limestone cladding, matte and precise. Tripartite composition: a tall ground-floor base of repeating semicircular stone arches with recessed bronze-and-glass shopfronts, a main body of large windows separated by slender vertical stone mullions and fluted piers, and a restrained stone cornice with a setback top floor. Blue-tinted glazing, elegant rhythm, monumental civic character. Architectural photography, frontal elevation view, clear daylight, subtle reflections in the glass, pedestrians for scale. 3:2 framing.`,
+  "Старое + новое (facade retention)":
+`Using the attached photo of the existing historic ordered stone facade, preserve it exactly at the lower floors and design a contemporary addition on top and set back: a modern glazed volume with a bronze and anthracite frame grid. Keep the old white classical facade with its cornices, window surrounds and rustication intact; let the new and the old read as a deliberate dialogue. Photorealistic architectural render, corner view, soft evening light, warm interior glow behind the glass, refined European street context. 4:5 framing.`,
+  "Белая крашеная классика (флагман)":
+`Create a photorealistic architectural render of a compact corner building facade in the style of the attached reference images. Crisp white painted classical stonework with cornices, pilasters and a rusticated base. Large bright display windows on the ground floor with a minimalist boutique interior visible inside, tall sash-proportioned windows above, a mansard attic with dormers. Elegant, luminous, understated luxury. Twilight architectural photography, corner view, glowing interior light, wet dark street, a street lamp for scale. Vertical 4:5 framing.`
+};
+
+// ---------- State ----------
+let refs = [];            // {name, mime, b64, dataUrl}
+let gallery = [];         // {dataUrl, prompt}
+const $ = id => document.getElementById(id);
+
+// ---------- Init ----------
+(function init(){
+  const sel = $('preset');
+  Object.keys(PRESETS).forEach(k=>{
+    const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o);
+  });
+  sel.onchange = ()=> $('prompt').value = PRESETS[sel.value];
+  $('prompt').value = PRESETS[sel.value];
+  $('apiKey').value = localStorage.getItem('gemini_key') || '';
+  $('model').value  = localStorage.getItem('gemini_model') || 'gemini-2.5-flash-image';
+  $('apiKey').oninput = e=> localStorage.setItem('gemini_key', e.target.value.trim());
+  $('model').oninput  = e=> localStorage.setItem('gemini_model', e.target.value.trim());
+})();
+
+// ---------- References ----------
+$('refInput').onchange = e => {
+  [...e.target.files].forEach(f=>{
+    const r=new FileReader();
+    r.onload=()=>{ const d=r.result; addRef({name:f.name, mime:f.type||'image/jpeg',
+      b64:d.split(',')[1], dataUrl:d}); };
+    r.readAsDataURL(f);
+  });
+  e.target.value='';
+};
+function addRef(ref){
+  if(refs.length>=3){ flash('Максимум 3 референса для Nano Banana.','info'); return; }
+  refs.push(ref); renderRefs();
+}
+function renderRefs(){
+  const box=$('refs');
+  box.querySelectorAll('.ref').forEach(n=>n.remove());
+  refs.forEach((r,i)=>{
+    const d=document.createElement('div'); d.className='ref';
+    d.innerHTML=`<img src="${r.dataUrl}" alt=""><button title="Убрать">×</button>`;
+    d.querySelector('button').onclick=()=>{refs.splice(i,1);renderRefs();};
+    box.insertBefore(d, box.querySelector('.addref'));
+  });
+}
+
+// ---------- Generate ----------
+$('genBtn').onclick = generate;
+async function generate(){
+  const key=$('apiKey').value.trim();
+  const model=$('model').value.trim()||'gemini-2.5-flash-image';
+  const prompt=$('prompt').value.trim();
+  let n=parseInt($('nvar').value,10); if(isNaN(n)||n<1)n=1; if(n>4)n=4;
+  if(!key){ flash('Введи Gemini API key (п.1).','err'); return; }
+  if(!prompt){ flash('Пустой промпт.','err'); return; }
+
+  $('genBtn').disabled=true;
+  flash(`<span class="spinner"></span>Генерирую ${n} вариаци${n===1?'ю':'и'}…`,'info');
+
+  const parts=[{text:prompt}];
+  refs.forEach(r=> parts.push({inlineData:{mimeType:r.mime, data:r.b64}}));
+  const body={contents:[{role:'user',parts}]};
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+
+  let ok=0, lastErr='';
+  for(let i=0;i<n;i++){
+    try{
+      const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const data=await res.json();
+      if(!res.ok){ lastErr=(data.error&&data.error.message)||('HTTP '+res.status); continue; }
+      const cand=data.candidates&&data.candidates[0];
+      const iparts=(cand&&cand.content&&cand.content.parts)||[];
+      const img=iparts.find(p=>p.inlineData&&p.inlineData.data);
+      if(!img){
+        lastErr=(cand&&cand.finishReason)||(data.promptFeedback&&data.promptFeedback.blockReason)||'модель не вернула изображение';
+        continue;
+      }
+      const dataUrl=`data:${img.inlineData.mimeType||'image/png'};base64,${img.inlineData.data}`;
+      gallery.unshift({dataUrl, prompt});
+      ok++; renderGallery();
+    }catch(err){ lastErr=err.message; }
+  }
+  $('genBtn').disabled=false;
+  if(ok===0) flash('Не вышло: '+lastErr,'err');
+  else if(ok<n) flash(`Готово ${ok}/${n}. Часть не удалась: ${lastErr}`,'info');
+  else { flash(`Готово ${ok}/${n}.`,'info'); setTimeout(()=>{$('status').style.display='none';},2500); }
+}
+
+// ---------- Gallery ----------
+function renderGallery(){
+  const g=$('gallery');
+  g.innerHTML='';
+  $('cnt').textContent=gallery.length;
+  $('empty').style.display= gallery.length? 'none':'block';
+  gallery.forEach((item,i)=>{
+    const c=document.createElement('div'); c.className='card';
+    c.innerHTML=`<img src="${item.dataUrl}" alt="">
+      <div class="meta">
+        <button data-a="ref">⟳ в референсы</button>
+        <button data-a="dl">↓ скачать</button>
+        <button data-a="del">✕</button>
+      </div>`;
+    c.querySelector('img').onclick=()=>openLb(item.dataUrl);
+    c.querySelector('[data-a=ref]').onclick=()=>{
+      const [head,b64]=item.dataUrl.split(',');
+      const mime=head.slice(5, head.indexOf(';'));
+      addRef({name:'generated', mime, b64, dataUrl:item.dataUrl});
+      flash('Добавлено в референсы — стиль пойдёт по петле.','info');
+      setTimeout(()=>{$('status').style.display='none';},2000);
+    };
+    c.querySelector('[data-a=dl]').onclick=()=>download(item.dataUrl,`facade_${Date.now()}_${i}.png`);
+    c.querySelector('[data-a=del]').onclick=()=>{gallery.splice(i,1);renderGallery();};
+    g.appendChild(c);
+  });
+}
+$('clearBtn').onclick=()=>{ if(gallery.length&&confirm('Очистить ленту?')){gallery=[];renderGallery();} };
+$('dlAll').onclick=()=> gallery.forEach((it,i)=>setTimeout(()=>download(it.dataUrl,`facade_${i}.png`), i*250));
+
+function download(dataUrl,name){
+  const a=document.createElement('a'); a.href=dataUrl; a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function openLb(src){ $('lbImg').src=src; $('lb').style.display='flex'; }
+$('lb').onclick=()=> $('lb').style.display='none';
+function flash(html,type){ const s=$('status'); s.className='status '+type; s.innerHTML=html; }
+</script>
+</body>
+</html>
