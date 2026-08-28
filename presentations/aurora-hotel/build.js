@@ -27,7 +27,7 @@ const pres = new pptxgen();
 pres.layout = "LAYOUT_WIDE";
 pres.author = "MOST Architects";
 pres.company = "MOST Architects";
-pres.title = "AURORA HOTEL — гостиничный комплекс, г. Алматы";
+pres.title = "Гостиничный комплекс — г. Алматы, ул. Бухтарминская";
 
 let page = 1;
 
@@ -169,19 +169,6 @@ function plate(slide, img) {
 
   pill(s, 1.07, 0.72, 1.68, "architectural bureau", false);
 
-  s.addText("AURORA HOTEL", {
-    x: 1.07, y: 2.5, w: 5, h: 0.3, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 14, bold: true, color: INK, charSpacing: 0.3, valign: "middle",
-  });
-  s.addText("гостиничный комплекс категории 4 звезды", {
-    x: 1.07, y: 2.82, w: 5, h: 0.22, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 9.5, color: TXT, valign: "middle",
-  });
-  s.addText("г. Алматы, ул. Бухтарминская", {
-    x: 1.07, y: 3.03, w: 5, h: 0.22, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 9.5, color: TXT, valign: "middle",
-  });
-
   s.addImage({ path: A("logo_most.png"), x: 6.31, y: 3.35, w: 0.71, h: 0.79 });
 
   s.addText("most\narchitects\nkazakhstan/almaty", {
@@ -193,19 +180,19 @@ function plate(slide, img) {
     fontFace: F, fontSize: 8.5, color: INK, lineSpacing: 11, align: "right", valign: "top",
   });
 
+  const stages = [["concept", true], ["masterplan", false], ["project", false], ["detail plan", false]];
   const pw = 1.32, pg = 0.26;
-  const stages = [["концепция", true], ["генплан", false], ["проект", false], ["рабочая документация", false]];
   const totalW = stages.length * pw + (stages.length - 1) * pg;
   let px = (W - totalW) / 2;
   stages.forEach(([t, act]) => {
-    pill(s, px, 6.42, t === "рабочая документация" ? pw + 0.5 : pw, t, act);
-    px += (t === "рабочая документация" ? pw + 0.5 : pw) + pg;
+    pill(s, px, 6.42, pw, t, act);
+    px += pw + pg;
   });
 
   s.addNotes(
-    "Титул. Стадия — концепция (отмечена на нижней шкале).\n" +
-    "Объект: гостиница 4 звезды, ул. Бухтарминская, участок 1,4 га, два корпуса по 5 этажей, " +
-    "общая площадь 17 140,22 м²."
+    "Титул. Стадия — concept (отмечена на нижней шкале).\n" +
+    "Объект: гостиничный комплекс 4 звезды, ул. Бухтарминская, участок 1,4 га, " +
+    "два корпуса по 5 этажей, общая площадь 17 140,22 м²."
   );
 }
 
@@ -377,7 +364,7 @@ function plate(slide, img) {
 ].forEach(([img, left, sub, lc, pc, note]) => {
   const s = pres.addSlide();
   plate(s, A(img));
-  labels(s, { left, sub, right: "Визуализации", right2: "AURORA HOTEL", color: lc });
+  labels(s, { left, sub, right: "Визуализации", color: lc });
   logo(s);
   pageNo(s, pc);
   s.addNotes(note);
@@ -685,74 +672,7 @@ function plate(slide, img) {
 }
 
 /* =========================================================
-   15 · ЭТАПЫ РЕАЛИЗАЦИИ
-   ========================================================= */
-{
-  const s = pres.addSlide();
-  s.background = { color: WHITE };
-  labels(s, { left: "Реализация", sub: "Этапы прохождения проекта", right: "График" });
-
-  body(s, CX, 1.1, 8.5, 0.7,
-    "Проект находится на стадии проработки генерального плана и архитектурной концепции. " +
-    "Дальнейшие шаги требуют согласований с городом.");
-
-  const steps = [
-    ["Концепция", "Посадка на участок, ТЭП, архитектурное решение", true],
-    ["Эскизный проект", "Планировки, ёмкость фонда, расчёт парковки, баланс территории", false],
-    ["Согласование", "Градостроительный совет, архитектурно-планировочное задание", false],
-    ["ПСД", "Проектно-сметная и рабочая документация по всем разделам", false],
-    ["Экспертиза", "Комплексная вневедомственная экспертиза", false],
-    ["Строительство", "СМР и ввод объекта в эксплуатацию", false],
-  ];
-  const gap = 0.3;
-  const cw = (12.23 - 5 * gap) / 6;
-  steps.forEach(([t, d, done], i) => {
-    const x = CX + i * (cw + gap);
-    s.addText(String(i + 1).padStart(2, "0"), {
-      x, y: 2.5, w: cw, h: 0.3, isTextBox: true, margin: 0,
-      fontFace: F, fontSize: 11, bold: true, color: done ? ORANGE : GREY, valign: "middle",
-    });
-    rule(s, x, 2.86, cw, done ? ORANGE : INK);
-    s.addText(t, {
-      x, y: 2.98, w: cw, h: 0.52, isTextBox: true, margin: 0,
-      fontFace: F, fontSize: 11.5, bold: true, color: INK, lineSpacing: 14, valign: "top",
-    });
-    s.addText(d, {
-      x, y: 3.54, w: cw, h: 1.15, isTextBox: true, margin: 0,
-      fontFace: F, fontSize: 8.5, color: TXT, lineSpacing: 11, valign: "top",
-    });
-    if (done) {
-      s.addText("ВЫПОЛНЕНО", {
-        x, y: 4.45, w: cw, h: 0.24, isTextBox: true, margin: 0,
-        fontFace: F, fontSize: 7.5, bold: true, color: ORANGE, charSpacing: 0.4, valign: "middle",
-      });
-    }
-  });
-
-  rule(s, CX, 5.5, 12.23);
-  s.addText("Календарные сроки этапов и дата ввода объекта в эксплуатацию", {
-    x: CX, y: 5.72, w: 6.5, h: 0.34, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 10.5, color: TXT, valign: "middle",
-  });
-  s.addShape(pres.ShapeType.roundRect, {
-    x: CX + 6.8, y: 5.72, w: 3.4, h: 0.34, rectRadius: 0.06,
-    fill: { color: WHITE }, line: { color: ORANGE, width: 0.75 },
-  });
-  s.addText("заполняется заказчиком до показа", {
-    x: CX + 6.8, y: 5.72, w: 3.4, h: 0.34, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 9, italic: true, color: ORANGE, align: "center", valign: "middle",
-  });
-
-  logo(s);
-  pageNo(s);
-  s.addNotes(
-    "Сроки намеренно не проставлены — их даёт заказчик.\n" +
-    "Если спросят на встрече, а цифр нет — честнее сказать, что график формируется после эскизного проекта."
-  );
-}
-
-/* =========================================================
-   16 · КОНТАКТЫ
+   16 · КОНТАКТЫ  (по шаблону последнего листа MOST: QR + контакты)
    ========================================================= */
 {
   const s = pres.addSlide();
@@ -760,7 +680,7 @@ function plate(slide, img) {
 
   pill(s, 1.07, 0.72, 1.68, "architectural bureau", false);
 
-  s.addImage({ path: A("logo_most.png"), x: 6.31, y: 3.35, w: 0.71, h: 0.79 });
+  s.addImage({ path: A("qr_most.png"), x: 6.29, y: 3.24, w: 0.75, h: 0.75 });
 
   s.addText("most\narchitects\nkazakhstan/almaty", {
     x: 1.07, y: 3.85, w: 3, h: 0.6, isTextBox: true, margin: 0,
@@ -771,20 +691,15 @@ function plate(slide, img) {
     fontFace: F, fontSize: 8.5, color: INK, lineSpacing: 11, align: "right", valign: "top",
   });
 
-  blockTitle(s, 1.07, 1.55, 5.2, "Что мы просим у акимата", 12);
-  dashes(s, 1.07, 1.95, 5.2, 1.6, [
-    "Рассмотреть и одобрить архитектурно-градостроительную концепцию комплекса.",
-    "Выдать архитектурно-планировочное задание для перехода к эскизному проекту.",
-    "Определить технические условия на подключение к инженерным сетям.",
-  ], { size: 10, lead: 13, gap: 5 });
-
-  pill(s, (W - 1.32) / 2, 6.42, 1.32, "концепция", true);
+  pill(s, (W - 1.32) / 2, 6.42, 1.32, "concept", true);
 
   s.addNotes(
-    "Закрывающий слайд. Три запроса сформулированы как типовые для градсовета — " +
-    "скорректировать под фактическую повестку встречи."
+    "Контактный лист. QR ведёт на most-a.com.\n" +
+    "Устно на этом слайде — три запроса к акимату: одобрить архитектурно-градостроительную " +
+    "концепцию, выдать АПЗ для перехода к эскизному проекту, определить технические условия " +
+    "на подключение к инженерным сетям."
   );
 }
 
-pres.writeFile({ fileName: path.join(__dirname, "AURORA_HOTEL_akimat.pptx") })
+pres.writeFile({ fileName: path.join(__dirname, "MOST_Bukhtarminskaya_akimat.pptx") })
   .then((f) => console.log("Готово:", f));
