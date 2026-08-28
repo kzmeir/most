@@ -43,7 +43,8 @@ function labels(slide, o) {
   });
   if (o.right) slide.addText(o.right.toUpperCase(), {
     x: W - EDGE - 7, y: 0.18, w: 7, h: 0.24, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 9.5, color: ORANGE, charSpacing: 0.6, align: "right", valign: "middle",
+    fontFace: F, fontSize: 9.5, color: o.rightColor || ORANGE, charSpacing: 0.6,
+    align: "right", valign: "middle",
   });
 }
 
@@ -268,16 +269,22 @@ function caption(slide, x, y, w, text) {
    ВИЗУАЛИЗАЦИИ — по одной на слайд
    ========================================================= */
 [
-  ["facade.jpg",     "Главный фасад",        INK,   WHITE],
-  ["lobby.jpg",      "Лобби",                WHITE, WHITE],
-  ["restaurant.jpg", "Ресторан",             INK,   INK],
-  ["conference.jpg", "Конференц-зал",        INK,   INK],
-  ["room.jpg",       "Номер",                WHITE, WHITE],
-  ["terrace.jpg",    "Общественная терраса", INK,   WHITE],
-].forEach(([img, lab, lc, pc]) => {
+  // кадр, подпись, цвет подписей слева, цвет ярлыка справа, цвет номера — по замеру контраста
+  ["facade.jpg",      "Главный фасад",        INK,   INK,   WHITE],
+  ["lobby.jpg",       "Лобби",                WHITE, WHITE, WHITE],
+  ["lobby_grand.jpg", "Лобби-лаунж",          WHITE, INK,   WHITE],
+  ["restaurant.jpg",  "Ресторан",             WHITE, INK,   WHITE],
+  ["conference.jpg",  "Конференц-зал",        WHITE, WHITE, WHITE],
+  ["boardroom.jpg",   "Переговорная",         WHITE, INK,   WHITE],
+  ["coworking.jpg",   "Коворкинг",            WHITE, WHITE, WHITE],
+  ["gym.jpg",         "Фитнес",               WHITE, ORANGE, WHITE],
+  ["room.jpg",        "Номер",                WHITE, WHITE, WHITE],
+  ["terrace.jpg",     "Общественная терраса", WHITE, WHITE, WHITE],
+  ["night.jpg",       "Вечерний вид",         WHITE, ORANGE, WHITE],
+].forEach(([img, lab, lc, rc, pc]) => {
   const s = pres.addSlide();
   plate(s, A(img));
-  labels(s, { left: lab, right: "Визуализация", color: lc });
+  labels(s, { left: lab, right: "Визуализация", color: lc, rightColor: rc });
   logo(s);
   pageNo(s, pc);
   s.addNotes(lab + ". Один кадр — одна мысль, комментировать коротко.");
