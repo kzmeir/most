@@ -145,28 +145,31 @@ function caption(slide, x, y, w, text) {
 }
 
 /* =========================================================
-   01 · ОБЛОЖКА
+   01 · ТИТУЛ
    ========================================================= */
 {
   const s = pres.addSlide();
-  plate(s, A("facade.jpg"));
-  s.addShape(pres.ShapeType.rect, {
-    x: 0, y: 0, w: W, h: H, fill: { color: "0A0A0A", transparency: 52 }, line: { color: "0A0A0A", width: 0 },
+  s.background = { color: WHITE };
+
+  pill(s, 1.07, 0.72, 1.68, "architectural bureau", false);
+  s.addImage({ path: A("logo_most.png"), x: 6.31, y: 3.35, w: 0.71, h: 0.79 });
+
+  s.addText("most\narchitects\nkazakhstan/almaty", {
+    x: 1.07, y: 3.85, w: 3, h: 0.6, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 8.5, color: INK, lineSpacing: 11, valign: "top",
   });
-  s.addText("ГОСТИНИЧНЫЙ КОМПЛЕКС", {
-    x: 0.9, y: 4.62, w: 11, h: 0.78, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 42, bold: true, color: WHITE, charSpacing: 1.5, valign: "middle",
+  s.addText("презентация для акимата г. Алматы\nавгуст 2026", {
+    x: W - 1.07 - 4, y: 3.85, w: 4, h: 0.6, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 8.5, color: INK, lineSpacing: 11, align: "right", valign: "top",
   });
-  s.addText("г. Алматы, ул. Бухтарминская", {
-    x: 0.9, y: 5.46, w: 11, h: 0.34, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 15, color: "E8E4DC", valign: "middle",
-  });
-  s.addText("Презентация для акимата г. Алматы  ·  август 2026", {
-    x: 0.9, y: 6.62, w: 8, h: 0.3, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 10, color: "C8C4BC", valign: "middle",
-  });
-  s.addImage({ path: A("logo_most.png"), x: 12.42, y: 0.5, w: 0.69, h: 0.77 });
-  s.addNotes("Обложка. Ничего не зачитывать — назвать объект и передать слово по существу.");
+
+  const stages = [["concept", true], ["masterplan", false], ["project", false], ["detail plan", false]];
+  const pw = 1.32, pg = 0.26;
+  const totalW = stages.length * pw + (stages.length - 1) * pg;
+  let px = (W - totalW) / 2;
+  stages.forEach(([t, act]) => { pill(s, px, 6.42, pw, t, act); px += pw + pg; });
+
+  s.addNotes("Титул. Стадия — concept. Объект: гостиничный комплекс, ул. Бухтарминская, участок 1,4 га.");
 }
 
 /* =========================================================
@@ -204,50 +207,6 @@ function caption(slide, x, y, w, text) {
 }
 
 /* =========================================================
-   03 · БЫЛО → СТАНЕТ
-   ========================================================= */
-{
-  const s = pres.addSlide();
-  s.background = { color: WHITE };
-  labels(s, { left: "Территория", sub: "Было и станет", right: "Трансформация" });
-
-  const pw = 5.75, py = 1.35, ph = 4.3;
-
-  // БЫЛО — поле под аэрофото
-  s.addShape(pres.ShapeType.rect, {
-    x: 0.55, y: py, w: pw, h: ph,
-    fill: { color: "F4F3F1" }, line: { color: ORANGE, width: 1, dashType: "dash" },
-  });
-  s.addText("аэрофото существующего состояния\nвставить снимок пустого участка", {
-    x: 0.55, y: py, w: pw, h: ph, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 11, italic: true, color: ORANGE, align: "center", valign: "middle", lineSpacing: 16,
-  });
-  subTitle(s, 0.55, py - 0.34, pw, "Было", GREY);
-
-  // стрелка
-  s.addShape(pres.ShapeType.rightArrow, {
-    x: 6.44, y: py + ph / 2 - 0.16, w: 0.44, h: 0.32,
-    fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
-  });
-
-  // СТАНЕТ
-  s.addImage({ path: A("facade.jpg"), x: 7.02, y: py, w: pw, h: ph, sizing: { type: "cover", w: pw, h: ph } });
-  subTitle(s, 7.02, py - 0.34, pw, "Станет", ORANGE);
-
-  s.addText("Пустырь в деловом поясе города становится гостиничным комплексом на 280–300 номеров с общественным первым этажом.", {
-    x: 0.55, y: 6.1, w: 12.23, h: 0.5, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 13, color: INK, lineSpacing: 19, valign: "top",
-  });
-
-  logo(s);
-  pageNo(s);
-  s.addNotes(
-    "Слайд на три секунды. Слева — что есть, справа — что будет. Не комментировать подробно.\\n" +
-    "ВСТАВИТЬ аэрофото пустого участка в левое поле."
-  );
-}
-
-/* =========================================================
    04 · ИДЕЯ: АЛАТАУ
    ========================================================= */
 {
@@ -265,73 +224,6 @@ function caption(slide, x, y, w, text) {
   logo(s);
   pageNo(s);
   s.addNotes("Форма не произвольная — она выведена из силуэта, который виден с участка. Отсюда и отказ от высотности.");
-}
-
-/* =========================================================
-   05 · ПОЧЕМУ 5 ЭТАЖЕЙ
-   ========================================================= */
-{
-  const s = pres.addSlide();
-  s.background = { color: WHITE };
-  labels(s, { left: "Масштаб", sub: "Почему пять этажей", right: "Схема" });
-
-  blockTitle(s, CX, 1.35, CW, "Не конкурируем с панорамой", 15);
-  body(s, CX, 1.92, CW, 1.7,
-    "Участок в 1,4 га позволял поставить башню. Вместо этого объём распластан по горизонтали и держится ниже линии гор.",
-    { size: 12, lead: 18 });
-  rule(s, CX, 3.75, CW);
-  dashes(s, CX, 3.97, CW, 2.2, [
-    "Пять этажей — в габаритах окружающей застройки.",
-    "Виды соседних участков на хребет не перекрываются.",
-    "Силуэт продолжает ландшафт, а не спорит с ним.",
-  ], { size: 11 });
-
-  /* --- диаграмма --- */
-  const GY = 5.75;
-  // гряда: перекрывающиеся треугольники одного цвета сливаются в силуэт
-  [[5.5, 3.78], [6.4, 3.30], [7.4, 3.90], [8.4, 3.12], [9.4, 3.66],
-   [10.5, 3.24], [11.6, 3.84], [12.6, 3.46]].forEach(([cx, top]) => {
-    s.addShape(pres.ShapeType.triangle, {
-      x: cx - 1.15, y: top, w: 2.3, h: GY - top,
-      fill: { color: SOFT }, line: { color: SOFT, width: 0 },
-    });
-  });
-  rule(s, 5.35, GY, 7.75, INK);
-
-  // условная вертикальная доминанта — рвёт линию гор
-  s.addShape(pres.ShapeType.rect, {
-    x: 6.05, y: 2.35, w: 0.8, h: GY - 2.35,
-    fill: { color: WHITE }, line: { color: GREY, width: 1, dashType: "dash" },
-  });
-  s.addText("×", {
-    x: 6.05, y: 3.75, w: 0.8, h: 0.6, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 26, bold: true, color: GREY, align: "center", valign: "middle",
-  });
-  s.addText("условная\nвертикальная\nдоминанта", {
-    x: 5.6, y: GY + 0.14, w: 1.7, h: 0.75, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 8.5, color: GREY, align: "center", valign: "top", lineSpacing: 11,
-  });
-
-  // наш объём — пять лент перекрытий
-  const bcx = 10.6;
-  [3.4, 3.15, 2.9, 2.6, 2.2].forEach((bw, i) => {
-    const y = GY - (i + 1) * 0.32;
-    s.addShape(pres.ShapeType.roundRect, {
-      x: bcx - bw / 2, y, w: bw, h: 0.29, rectRadius: 0.05,
-      fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
-    });
-  });
-  s.addText("наш объём · 5 этажей", {
-    x: bcx - 1.6, y: GY + 0.14, w: 3.2, h: 0.3, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 8.5, bold: true, color: ORANGE, align: "center", valign: "top",
-  });
-
-  logo(s);
-  pageNo(s);
-  s.addNotes(
-    "Ключевой аргумент для градсовета: высотность не взята сознательно.\\n" +
-    "Слева на схеме — что было бы при вертикальной доминанте: она рвёт линию гор. Справа — наш вариант."
-  );
 }
 
 /* =========================================================
@@ -373,188 +265,23 @@ function caption(slide, x, y, w, text) {
 }
 
 /* =========================================================
-   07 · ФУНКЦИОНАЛЬНАЯ СХЕМА
+   ВИЗУАЛИЗАЦИИ — по одной на слайд
    ========================================================= */
-{
+[
+  ["facade.jpg",     "Главный фасад",        INK,   WHITE],
+  ["lobby.jpg",      "Лобби",                WHITE, WHITE],
+  ["restaurant.jpg", "Ресторан",             INK,   INK],
+  ["conference.jpg", "Конференц-зал",        INK,   INK],
+  ["room.jpg",       "Номер",                WHITE, WHITE],
+  ["terrace.jpg",    "Общественная терраса", INK,   WHITE],
+].forEach(([img, lab, lc, pc]) => {
   const s = pres.addSlide();
-  s.background = { color: WHITE };
-  labels(s, { left: "Функция", sub: "Распределение по этажам", right: "Схема" });
-
-  blockTitle(s, CX, 1.45, CW, "Один этаж — городу", 15);
-  body(s, CX, 2.0, CW, 1.2,
-    "Первый этаж отдан общественным функциям. Этажи со 2-го по 5-й — номерной фонд.",
-    { size: 12, lead: 18 });
-
-  figure(s, CX, 3.5, CW, "4 446,9", "м²", "Общественные функции · 1 этаж", { size: 27, lc: ORANGE });
-  figure(s, CX, 4.75, CW, "12 693,32", "м²", "Номерной фонд · этажи 2–5", { size: 27 });
-
-  /* --- диаграмма --- */
-  const bcx = 9.1, GY = 6.15, bh = 0.62, gp = 0.08;
-  const bands = [
-    [5.3, ORANGE, "PUBLIC"],
-    [4.95, "2B2B2B", ""],
-    [4.6, "2B2B2B", ""],
-    [4.2, "2B2B2B", ""],
-    [3.7, "2B2B2B", ""],
-  ];
-  bands.forEach(([bw, col, lab], i) => {
-    const y = GY - (i + 1) * bh - i * gp;
-    s.addShape(pres.ShapeType.roundRect, {
-      x: bcx - bw / 2, y, w: bw, h: bh, rectRadius: 0.12,
-      fill: { color: col }, line: { color: col, width: 0 },
-    });
-    if (lab) s.addText(lab, {
-      x: bcx - bw / 2, y, w: bw, h: bh, isTextBox: true, margin: 0,
-      fontFace: F, fontSize: 12, bold: true, color: WHITE, charSpacing: 2, align: "center", valign: "middle",
-    });
-  });
-  s.addText("HOTEL ROOMS", {
-    x: bcx - 2.4, y: GY - 3 * bh - 2 * gp, w: 4.8, h: bh, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 12, bold: true, color: WHITE, charSpacing: 2, align: "center", valign: "middle",
-  });
-  rule(s, 6.3, GY + 0.02, 5.6, INK);
-
+  plate(s, A(img));
+  labels(s, { left: lab, right: "Визуализация", color: lc });
   logo(s);
-  pageNo(s);
-  s.addNotes(
-    "Самая простая схема в презентации и одна из самых важных: видно, что первый этаж работает на город.\\n" +
-    "Обе площади — из ТЭП генплана, не расчётные."
-  );
-}
-
-/* =========================================================
-   08 · ПЕРВЫЙ ЭТАЖ РАБОТАЕТ НА ГОРОД
-   ========================================================= */
-{
-  const s = pres.addSlide();
-  s.background = { color: WHITE };
-  s.addImage({ path: A("lobby.jpg"), x: 0, y: 0, w: 6.1, h: H, sizing: { type: "cover", w: 6.1, h: H } });
-
-  const tx = 6.8, tw = W - 6.8 - 0.62;
-  subTitle(s, tx, 1.0, tw, "Первый этаж");
-  s.addText("Открыт не только\nдля постояльцев", {
-    x: tx, y: 1.3, w: tw, h: 1.15, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 30, bold: true, color: INK, lineSpacing: 34, valign: "top",
-  });
-  body(s, tx, 2.72, tw, 0.7,
-    "4 446,9 м² — четверть надземной площади комплекса — работают как городская функция.",
-    { size: 12, lead: 18 });
-
-  rule(s, tx, 3.62, tw);
-  const fns = [
-    ["Лобби и приём", "Круговой подъезд, зона высадки, вестибюль двойной высоты"],
-    ["Рестораны и кафе", "Открыты с улицы, а не только из гостиницы"],
-    ["Конференц-зона", "Площадка для деловых и городских мероприятий"],
-    ["Оздоровительный блок", "СПА и фитнес; состав уточняется на стадии ЭП"],
-  ];
-  let y = 3.84;
-  fns.forEach(([tt, dd]) => {
-    s.addText(tt, {
-      x: tx, y, w: tw, h: 0.26, isTextBox: true, margin: 0,
-      fontFace: F, fontSize: 12.5, bold: true, color: ORANGE, valign: "middle",
-    });
-    s.addText(dd, {
-      x: tx, y: y + 0.26, w: tw, h: 0.42, isTextBox: true, margin: 0,
-      fontFace: F, fontSize: 10.5, color: TXT, lineSpacing: 14, valign: "top",
-    });
-    y += 0.78;
-  });
-
-  logo(s);
-  pageNo(s, WHITE);
-  s.addNotes("Тезис не «в отеле есть ресторан», а «первый этаж доступен городу». Это то, что интересует акимат.");
-}
-
-/* =========================================================
-   09 · HERO
-   ========================================================= */
-{
-  const s = pres.addSlide();
-  plate(s, A("facade.jpg"));
-  labels(s, { left: "Главный фасад", sub: "Со стороны въездной группы", right: "Визуализация", color: INK });
-  logo(s);
-  pageNo(s, WHITE);
-  s.addNotes("Пауза. Дать слайду постоять — идея уже рассказана, это её доказательство.");
-}
-
-/* =========================================================
-   10 · ARRIVAL → LOBBY
-   ========================================================= */
-{
-  const s = pres.addSlide();
-  s.background = { color: WHITE };
-  labels(s, { left: "Сценарий гостя", sub: "Прибытие и вестибюль", right: "Визуализации" });
-
-  const pw = 5.9, py = 1.35, ph = 3.92;
-  s.addImage({ path: A("arrival.jpg"), x: 0.55, y: py, w: pw, h: ph });
-  s.addImage({ path: A("lobby.jpg"), x: 6.88, y: py, w: pw, h: ph });
-  subTitle(s, 0.55, py - 0.34, pw, "1 · Прибытие");
-  subTitle(s, 6.88, py - 0.34, pw, "2 · Лобби");
-  caption(s, 0.55, py + ph + 0.14, pw, "Круговой подъезд и входной портик со стороны внутриквартального проезда.");
-  caption(s, 6.88, py + ph + 0.14, pw, "Вестибюль двойной высоты с раскрытием на панораму хребта.");
-
-  s.addShape(pres.ShapeType.rightArrow, {
-    x: 6.53, y: py + ph / 2 - 0.14, w: 0.3, h: 0.28,
-    fill: { color: ORANGE }, line: { color: ORANGE, width: 0 },
-  });
-
-  s.addText("Круговой подъезд отделён от хозяйственного двора: потоки гостей и обслуживания не пересекаются.", {
-    x: 0.55, y: 6.2, w: 12.23, h: 0.4, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 12.5, color: INK, valign: "middle",
-  });
-
-  logo(s);
-  pageNo(s);
-  s.addNotes("Путь гостя одним движением: подъезд — вход — вестибюль.");
-}
-
-/* =========================================================
-   11 · RESTAURANT + CONFERENCE
-   ========================================================= */
-{
-  const s = pres.addSlide();
-  s.background = { color: WHITE };
-  labels(s, { left: "Общественные функции", sub: "Ресторан и конференц-зона", right: "Визуализации" });
-
-  const pw = 5.9, py = 1.35, ph = 3.92;
-  s.addImage({ path: A("restaurant.jpg"), x: 0.55, y: py, w: pw, h: ph });
-  s.addImage({ path: A("conference.jpg"), x: 6.88, y: py, w: pw, h: ph });
-  subTitle(s, 0.55, py - 0.34, pw, "Ресторан");
-  subTitle(s, 6.88, py - 0.34, pw, "Конференц-зал");
-  caption(s, 0.55, py + ph + 0.14, pw, "Зал первого этажа с выходом на террасу в сад.");
-  caption(s, 6.88, py + ph + 0.14, pw, "Площадка для деловых мероприятий и городских событий.");
-
-  s.addText("Обе функции работают на город и держат загрузку вне туристического сезона.", {
-    x: 0.55, y: 6.2, w: 12.23, h: 0.4, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 12.5, color: INK, valign: "middle",
-  });
-
-  logo(s);
-  pageNo(s);
-  s.addNotes("Два кадра — один тезис. Не рассказывать про каждый отдельно.");
-}
-
-/* =========================================================
-   12 · HOTEL EXPERIENCE
-   ========================================================= */
-{
-  const s = pres.addSlide();
-  s.background = { color: WHITE };
-  labels(s, { left: "Гость", sub: "Номер и общественная терраса", right: "Визуализации" });
-
-  s.addImage({ path: A("room.jpg"), x: 0.55, y: 1.35, w: 8.3, h: 5.54 });
-  s.addImage({ path: A("terrace.jpg"), x: 9.15, y: 1.35, w: 3.63, h: 2.42 });
-  caption(s, 9.15, 3.9, 3.63, "Общественная терраса верхнего яруса.");
-
-  s.addText("Каждый номер раскрыт на город и хребет, с собственным балконом на озеленённой ленте фасада.", {
-    x: 9.15, y: 4.5, w: 3.63, h: 1.4, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 11.5, color: TXT, lineSpacing: 17, valign: "top",
-  });
-
-  logo(s);
-  pageNo(s);
-  s.addNotes("Эмоциональная часть: что получает гость. Дальше возвращаемся к делу.");
-}
+  pageNo(s, pc);
+  s.addNotes(lab + ". Один кадр — одна мысль, комментировать коротко.");
+});
 
 /* =========================================================
    13 · МАТЕРИАЛЫ
@@ -618,8 +345,7 @@ function caption(slide, x, y, w, text) {
   const pts = [
     [0.207, 0.470, 1],
     [0.262, 0.540, 2],
-    [0.495, 0.450, 3],
-    [0.345, 0.630, 4],
+    [0.345, 0.630, 3],
   ];
   pts.forEach(([fx, fy, n]) => marker(s, px + fx * pW, py + fy * pH, n));
 
@@ -627,7 +353,6 @@ function caption(slide, x, y, w, text) {
   const legend = [
     ["Наземные гостевые места", "Ряд вдоль западной кромки, со стороны улицы. Гостевой транспорт не заезжает во двор."],
     ["Юго-западный узел", "Въезд с внутриквартального проезда, зона высадки и рампа в подземный паркинг под корпусом."],
-    ["Северо-восточный въезд", "Второй узел со стороны ул. Бухтарминской. Оба входа вынесены от перекрёстка."],
     ["Кольцевой проезд", "Замкнут вокруг застройки: подъезд ко всем входам, разгрузка и проезд пожарной техники."],
   ];
   let y = 1.15;
