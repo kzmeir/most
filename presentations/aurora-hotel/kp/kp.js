@@ -20,10 +20,13 @@ const W = PAGE_W - 2 * M;                       // рабочая ширина
 
 /* ---------- значения ---------- */
 const AREA = 24803.71;
-const RATE_TOTAL = 2000, RATE_F = 200, RATE_C = 400, RATE_E = 1400;
-const SUM_F = 4960742, SUM_C = 9921484, SUM_E = 34725194, SUM_T = 49607420;
-const NET = 42765017.24, VAT = 6842402.76;
-const money = (n) => n.toLocaleString("ru-RU").replace(/ /g, " ") + " ₸";
+const RATE_TOTAL = 2000;
+const SUM_F = 4276501.72, SUM_C = 17106006.90, SUM_E = 21382508.62;
+const NET = 42765017.24, VAT = 6842402.76, GROSS = 49607420.00;
+const money = (n) => {
+  const [i, f] = n.toFixed(2).split(".");
+  return i.replace(/\B(?=(\d{3})+(?!\d))/g, " ") + "," + f + " ₸";
+};
 
 /* ---------- элементы ---------- */
 const t = (text, o = {}) => new TextRun({
@@ -80,6 +83,7 @@ const table = (widths, rows) => new Table({
 
 /* ---------- шапка ---------- */
 const logo = fs.readFileSync(path.join(__dirname, "assets", "logo_flat.png"));
+const planImg = fs.readFileSync(path.join(__dirname, "assets", "kp_plan.jpg"));
 
 const header = [
   new Paragraph({
@@ -128,6 +132,13 @@ const doc = new Document({
 
       /* 1 */
       h2("1. База расчёта стоимости"),
+      new Paragraph({
+        children: [new ImageRun({ data: planImg, type: "jpg", transformation: { width: 470, height: 376 } })],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 80 },
+      }),
+      p(t("Посадка комплекса на участок. Площади в таблице приведены по проекту генерального плана.",
+        { size: 16, color: GREY, italics: true }), { align: AlignmentType.CENTER, after: 200 }),
       table([W - 3200, 3200], [
         ["Площадь 1-го этажа", "4 446,90 м²", false],
         ["Площадь номеров, нетто (этажи 2–5)", "12 693,32 м²", false],
@@ -141,38 +152,35 @@ const doc = new Document({
           cell([t(v, { color: INK, bold: true })], { w: 3200, align: AlignmentType.RIGHT, strong: s }),
         ],
       }))),
-      gap(140),
-      p(t("Позиции с пометкой «расчётно» получены расчётом бюро: в исходных технико-экономических показателях генерального плана они не выделены. Стоимость работ по настоящему предложению подлежит пересчёту по фактической площади объекта, утверждённой на стадии эскизного проекта, с сохранением ставки за квадратный метр. Площадь подземного этажа учитывается в расчёте с понижающим коэффициентом 0,45.",
-        { size: 17, color: GREY, italics: true }), { line: 230 }),
 
       /* 2 */
       h2("2. Стоимость работ"),
-      table([W - 4400, 1400, 1500, 1500], [
+      table([W - 4400, 1600, 2800], [
         new TableRow({
           children: [
             cell([t("Стадия", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: W - 4400, strong: true }),
-            cell([t("Доля", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: 1400, align: AlignmentType.RIGHT, strong: true }),
-            cell([t("₸ / м²", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: 1500, align: AlignmentType.RIGHT, strong: true }),
-            cell([t("Сумма", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: 1500, align: AlignmentType.RIGHT, strong: true }),
+            cell([t("Доля", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: 1600, align: AlignmentType.RIGHT, strong: true }),
+            cell([t("Сумма без НДС", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: 2800, align: AlignmentType.RIGHT, strong: true }),
           ],
         }),
         ...[
-          ["Стадия 1. Форэскиз", "10 %", RATE_F, SUM_F, false],
-          ["Стадия 2. Концепция", "20 %", RATE_C, SUM_C, false],
-          ["Стадия 3. Эскизный проект", "70 %", RATE_E, SUM_E, false],
-          ["Итого по предложению", "100 %", RATE_TOTAL, SUM_T, true],
-        ].map(([k, d, r, s, strong]) => new TableRow({
+          ["Стадия 1. Форэскиз", "10 %", SUM_F, 0],
+          ["Стадия 2. Концепция", "40 %", SUM_C, 0],
+          ["Стадия 3. Эскизный проект", "50 %", SUM_E, 0],
+          ["Итого без НДС", "100 %", NET, 1],
+          ["НДС 16 %", "", VAT, 0],
+          ["Итого к оплате с НДС", "", GROSS, 2],
+        ].map(([k, d, v, lvl]) => new TableRow({
           children: [
-            cell([t(k, { color: INK, bold: !!strong })], { w: W - 4400, strong }),
-            cell([t(d, { color: TXT })], { w: 1400, align: AlignmentType.RIGHT, strong }),
-            cell([t(String(r), { color: TXT })], { w: 1500, align: AlignmentType.RIGHT, strong }),
-            cell([t(money(s), { color: INK, bold: true })], { w: 1500, align: AlignmentType.RIGHT, strong }),
+            cell([t(k, { color: INK, bold: lvl > 0 })], { w: W - 4400, strong: lvl === 2 }),
+            cell([t(d, { color: TXT })], { w: 1600, align: AlignmentType.RIGHT, strong: lvl === 2 }),
+            cell([t(money(v), { color: INK, bold: true })], { w: 2800, align: AlignmentType.RIGHT, strong: lvl === 2 }),
           ],
         })),
       ]),
       gap(140),
-      p(t("Стоимость указана с учётом НДС, расчёт от площади 24 803,71 м². В том числе: сумма без НДС — " +
-        money(NET) + ", НДС 16 % — " + money(VAT) + ".", { size: 17, color: GREY, italics: true })),
+      p(t("Стоимость работ с НДС за 1 м\u00b2 расчётной площади: " + RATE_TOTAL + " тенге.",
+        { size: 18, color: INK })),
 
       /* 3 */
       h2("3. Состав работ"),
@@ -181,17 +189,19 @@ const doc = new Document({
       li("Посадка комплекса на участок, генеральный план, отступы от границ"),
       li("Объёмно-пространственное решение, этажность, силуэт"),
       li("Предварительные технико-экономические показатели"),
-      li("Архитектурное решение фасадов, ведомость отделочных материалов"),
+      li("Архитектурное решение фасадов"),
       li("Визуализации — 11 ракурсов (экстерьер, интерьеры общественных зон и номера)"),
-      li("Комплект презентационных материалов для градостроительного совета"),
+      li("Презентационные материалы для предварительного согласования"),
       gap(180),
       p(t("Стадия 2. Концепция", { bold: true, color: INK, size: 21 }), { after: 120 }),
-      li("Уточнение генерального плана по итогам рассмотрения градостроительным советом"),
+      li("Уточнение генерального плана по итогам предварительного согласования"),
       li("Функциональное зонирование по этажам"),
       li("Планировочное решение первого этажа"),
       li("Фасады и характерные разрезы с высотными отметками"),
+      li("Ведомость отделочных материалов"),
       li("Уточнённые технико-экономические показатели, коэффициенты застройки и использования территории"),
       li("Баланс территории: озеленение, покрытия, проезды, площадки"),
+      li("Комплект презентационных материалов для градостроительного совета"),
       gap(180),
       p(t("Стадия 3. Эскизный проект", { bold: true, color: INK, size: 21 }), { after: 120 }),
       li("Планировочные решения всех этажей, типы номеров, итоговая ёмкость номерного фонда"),
@@ -241,39 +251,18 @@ const doc = new Document({
       li("Настоящее предложение действительно в течение 10 рабочих дней с даты его направления"),
 
       /* подписи */
-      gap(320),
-      table([Math.floor(W / 2) - 200, Math.floor(W / 2) - 200], [
-        new TableRow({
-          children: [
-            cell([t("ИСПОЛНИТЕЛЬ", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: Math.floor(W / 2) - 200, strong: true }),
-            cell([t("ЗАКАЗЧИК", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: Math.floor(W / 2) - 200, strong: true }),
-          ],
-        }),
-        new TableRow({
-          children: [
-            cell([t("ТОО «MOST Architects»", { color: INK, bold: true })], { w: Math.floor(W / 2) - 200 }),
-            cell([t("______________________________", { color: GREY })], { w: Math.floor(W / 2) - 200 }),
-          ],
-        }),
-        new TableRow({
-          children: [
-            cell([t("г. Алматы, ул. Утеген батыра 11в к6/1", { size: 17, color: TXT })], { w: Math.floor(W / 2) - 200 }),
-            cell([t("______________________________", { color: GREY })], { w: Math.floor(W / 2) - 200 }),
-          ],
-        }),
-        new TableRow({
-          children: [
-            cell([t("Директор  ______________  Иманкулов И.Т.", { color: INK })], { w: Math.floor(W / 2) - 200 }),
-            cell([t("______________________________", { color: GREY })], { w: Math.floor(W / 2) - 200 }),
-          ],
-        }),
-        new TableRow({
-          children: [
-            cell([t("М.П.", { size: 15, color: GREY })], { w: Math.floor(W / 2) - 200 }),
-            cell([t("подпись, дата", { size: 15, color: GREY })], { w: Math.floor(W / 2) - 200 }),
-          ],
-        }),
-      ]),
+      gap(560),
+      p(t("ТОО «MOST Architects»", { bold: true, color: INK, size: 21 }), { after: 60 }),
+      p(t("г. Алматы, ул. Утеген батыра 11в к6/1", { size: 17, color: TXT }), { after: 420 }),
+      new Paragraph({
+        children: [
+          t("Директор", { color: INK }),
+          t("          М.П.  ", { color: GREY, size: 17 }),
+          t("_________________", { color: GREY }),
+          t("          Иманкулов И.Т.", { color: INK }),
+        ],
+        spacing: { after: 0, line: 260 },
+      }),
     ],
   }],
 });
