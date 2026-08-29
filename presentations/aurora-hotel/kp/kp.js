@@ -85,12 +85,12 @@ const header = [
   new Paragraph({
     children: [
       new ImageRun({ data: logo, type: "png", transformation: { width: 46, height: 51 } }),
-      t("    АРХИТЕКТУРНОЕ БЮРО MOST", { size: 17, bold: true, color: INK, cs: 8 }),
+      t("    ТОО «MOST Architects»", { size: 17, bold: true, color: INK, cs: 8 }),
     ],
     spacing: { after: 60 },
   }),
   new Paragraph({
-    children: [t("most-a.com   ·   info@most-a.com   ·   +7 (771) 733 77 00", { size: 16, color: GREY })],
+    children: [t("г. Алматы, ул. Утеген батыра 11в к6/1   ·   +7 771 733 77 00   ·   most-a.com", { size: 16, color: GREY })],
     alignment: AlignmentType.RIGHT,
     spacing: { after: 0 },
     border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: INK, space: 8 } },
@@ -239,7 +239,7 @@ const doc = new Document({
       h2("7. Условия"),
       li("Исходные данные, предоставляемые заказчиком: топографическая съёмка, правоустанавливающие документы на участок, архитектурно-планировочное задание, технические условия на подключение к инженерным сетям, задание на проектирование"),
       li("Изменение состава работ, площади объекта или градостроительных условий влечёт пересмотр стоимости и сроков"),
-      li("Настоящее предложение действительно в течение 30 календарных дней с даты его направления"),
+      li("Настоящее предложение действительно в течение 10 рабочих дней с даты его направления"),
 
       /* подписи */
       gap(320),
@@ -252,19 +252,25 @@ const doc = new Document({
         }),
         new TableRow({
           children: [
-            cell([t("Архитектурное бюро MOST", { color: INK, bold: true })], { w: Math.floor(W / 2) - 200 }),
+            cell([t("ТОО «MOST Architects»", { color: INK, bold: true })], { w: Math.floor(W / 2) - 200 }),
             cell([t("______________________________", { color: GREY })], { w: Math.floor(W / 2) - 200 }),
           ],
         }),
         new TableRow({
           children: [
-            cell([t("______________________________", { color: GREY })], { w: Math.floor(W / 2) - 200 }),
+            cell([t("г. Алматы, ул. Утеген батыра 11в к6/1", { size: 17, color: TXT })], { w: Math.floor(W / 2) - 200 }),
             cell([t("______________________________", { color: GREY })], { w: Math.floor(W / 2) - 200 }),
           ],
         }),
         new TableRow({
           children: [
-            cell([t("подпись, дата", { size: 15, color: GREY })], { w: Math.floor(W / 2) - 200 }),
+            cell([t("Директор  ______________  Иманкулов И.Т.", { color: INK })], { w: Math.floor(W / 2) - 200 }),
+            cell([t("______________________________", { color: GREY })], { w: Math.floor(W / 2) - 200 }),
+          ],
+        }),
+        new TableRow({
+          children: [
+            cell([t("М.П.", { size: 15, color: GREY })], { w: Math.floor(W / 2) - 200 }),
             cell([t("подпись, дата", { size: 15, color: GREY })], { w: Math.floor(W / 2) - 200 }),
           ],
         }),
