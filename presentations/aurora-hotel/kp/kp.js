@@ -5,6 +5,7 @@ const {
   WidthType, ShadingType, AlignmentType, BorderStyle, HeadingLevel,
   ImageRun, LevelFormat, convertMillimetersToTwip,
   PositionalTab, PositionalTabAlignment, PositionalTabLeader, PositionalTabRelativeTo,
+  HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType,
 } = require("docx");
 
 const ORANGE = "FF4D23";
@@ -84,6 +85,18 @@ const table = (widths, rows) => new Table({
 /* ---------- шапка ---------- */
 const logo = fs.readFileSync(path.join(__dirname, "assets", "logo_flat.png"));
 const planImg = fs.readFileSync(path.join(__dirname, "assets", "kp_plan.jpg"));
+const sealImg = fs.readFileSync(path.join(__dirname, "assets", "seal.png"));
+const signImg = fs.readFileSync(path.join(__dirname, "assets", "sign.png"));
+const IN = 914400;
+const floatImg = (data, w, h, x, y) => new ImageRun({
+  data, type: "png", transformation: { width: w, height: h },
+  floating: {
+    horizontalPosition: { relative: HorizontalPositionRelativeFrom.COLUMN, offset: Math.round(x * IN) },
+    verticalPosition: { relative: VerticalPositionRelativeFrom.PARAGRAPH, offset: Math.round(y * IN) },
+    wrap: { type: TextWrappingType.NONE },
+    behindDocument: false,
+  },
+});
 
 const header = [
   new Paragraph({
@@ -251,13 +264,17 @@ const doc = new Document({
       li("Настоящее предложение действительно в течение 10 рабочих дней с даты его направления"),
 
       /* подписи */
-      gap(560),
-      p(t("ТОО «MOST Architects»", { bold: true, color: INK, size: 21 }), { after: 60 }),
-      p(t("г. Алматы, ул. Утеген батыра 11в к6/1", { size: 17, color: TXT }), { after: 420 }),
+      gap(520),
+      p(t("ТОО «MOST Architects»", { bold: true, color: INK, size: 21 }), { after: 40 }),
+      p(t("г. Алматы, ул. Утеген батыра 11в к6/1", { size: 18, color: TXT }), { after: 20 }),
+      p(t("+7 771 733 77 00", { size: 18, color: TXT }), { after: 20 }),
+      p(t("most-a.com", { size: 18, color: TXT }), { after: 560 }),
       new Paragraph({
         children: [
+          floatImg(sealImg, 118, 114, 0.58, -0.30),
+          floatImg(signImg, 168, 103, 1.30, -0.46),
           t("Директор", { color: INK }),
-          t("          М.П.  ", { color: GREY, size: 17 }),
+          t("            ", { color: GREY }),
           t("_________________", { color: GREY }),
           t("          Иманкулов И.Т.", { color: INK }),
         ],
