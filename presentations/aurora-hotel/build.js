@@ -148,8 +148,14 @@ function pill(slide, x, y, w, text, active) {
   });
 }
 
+// полноэкранный кадр: заполняем лист, сохраняя пропорции.
+// sizing:"cover" в pptxgenjs выдаёт пустой srcRect и растягивает картинку,
+// поэтому масштабируем сами и выпускаем лишнее за край — оно обрезается листом.
 function plate(slide, img) {
-  slide.addImage({ path: img, x: 0, y: 0, w: W, h: H, sizing: { type: "cover", w: W, h: H } });
+  const { w: iw, h: ih } = imgSize(img);
+  const k = Math.max(W / iw, H / ih);
+  const w = iw * k, h = ih * k;
+  slide.addImage({ path: img, x: (W - w) / 2, y: (H - h) / 2, w, h });
 }
 
 // маркер-кружок с номером
@@ -311,10 +317,10 @@ plates([
   ["lobby_grand.jpg", "Лобби-лаунж",          WHITE, INK,   WHITE],
   ["restaurant.jpg",  "Ресторан",             WHITE, INK,   WHITE],
   ["conference.jpg",  "Конференц-зал",        WHITE, WHITE, WHITE],
-  ["boardroom.jpg",   "Переговорная",         WHITE, INK,   WHITE],
+  ["boardroom.jpg",   "Переговорная",         INK,   INK,   WHITE],
   ["coworking.jpg",   "Коворкинг",            WHITE, WHITE, WHITE],
-  ["gym.jpg",         "Фитнес",               WHITE, ORANGE, WHITE],
-  ["room.jpg",        "Номер",                WHITE, WHITE, WHITE],
+  ["gym.jpg",         "Фитнес",               WHITE, WHITE, WHITE],
+  ["room.jpg",        "Номер",                WHITE, INK,   WHITE],
   ["terrace.jpg",     "Общественная терраса", WHITE, WHITE, WHITE],
   ["bc.jpg",          "Бизнес-центр",         INK,   INK,   WHITE,
     "Бизнес-центр — новая функция в составе комплекса, для акимата это постоянные рабочие места вне сезона.\n" +
