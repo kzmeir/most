@@ -183,8 +183,8 @@ function caption(slide, x, y, w, text) {
     x: 1.07, y: 3.85, w: 3, h: 0.6, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 8.5, color: INK, lineSpacing: 11, valign: "top",
   });
-  s.addText("презентация для акимата г. Алматы\nавгуст 2026", {
-    x: W - 1.07 - 4, y: 3.85, w: 4, h: 0.6, isTextBox: true, margin: 0,
+  s.addText("гостиничный комплекс с бизнес-центром\nг. алматы, ул. бухтарминская\nавгуст 2026", {
+    x: W - 1.07 - 4, y: 3.85, w: 4, h: 0.75, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 8.5, color: INK, lineSpacing: 11, align: "right", valign: "top",
   });
 
@@ -194,7 +194,7 @@ function caption(slide, x, y, w, text) {
   let px = (W - totalW) / 2;
   stages.forEach(([t, act]) => { pill(s, px, 6.42, pw, t, act); px += pw + pg; });
 
-  s.addNotes("Титул. Стадия — concept. Объект: гостиничный комплекс с бизнес-центром, ул. Бухтарминская, участок 1,4 га.");
+  s.addNotes("Титул. Стадия — concept. Объект: гостиничный комплекс с бизнес-центром, ул. Бухтарминская, участок 1,4 га.\nАдресат на титуле не указан — дека универсальна.");
 }
 
 /* =========================================================
@@ -478,5 +478,5 @@ function caption(slide, x, y, w, text) {
   );
 }
 
-pres.writeFile({ fileName: path.join(__dirname, "MOST_Bukhtarminskaya_akimat.pptx") })
+pres.writeFile({ fileName: path.join(__dirname, "MOST_Bukhtarminskaya.pptx") })
   .then((f) => console.log("Готово:", f));

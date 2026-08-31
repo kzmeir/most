@@ -50,6 +50,7 @@ const p = (runs, o = {}) => new Paragraph({
   children: Array.isArray(runs) ? runs : [runs],
   alignment: o.align, spacing: { before: o.before || 0, after: o.after === undefined ? 100 : o.after, line: o.line || 260 },
   border: o.border, indent: o.indent,
+  keepNext: !!o.keep, keepLines: true,
 });
 
 const gap = (h) => new Paragraph({ children: [], spacing: { after: h } });
@@ -61,20 +62,28 @@ const h1 = (text) => new Paragraph({
 
 const h2 = (text) => new Paragraph({
   children: [t(text.toUpperCase(), { size: 19, bold: true, color: ORANGE, cs: 6 })],
-  spacing: { before: 240, after: 120 },
+  spacing: { before: 160, after: 100 },
   border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: INK, space: 6 } },
+  keepNext: true,          // заголовок раздела не остаётся один внизу листа
 });
 
 const li = (text, o = {}) => new Paragraph({
   children: [t("— ", { color: ORANGE }), t(text, { color: o.color || TXT })],
-  spacing: { after: 55, line: 245 },
+  spacing: { after: 40, line: 242 },
   indent: { left: 200, hanging: 200 },
+  keepNext: !!o.keep, keepLines: true,
 });
+
+// заголовок стадии и её список переносятся на новый лист целиком, а не по частям
+const stage = (title, items) => [
+  p(t(title, { bold: true, color: INK, size: 21 }), { after: 120, keep: true }),
+  ...items.map((x, i) => li(x, { keep: i < items.length - 1 })),
+];
 
 const cell = (runs, o = {}) => new TableCell({
   width: { size: o.w, type: WidthType.DXA },
   shading: o.fill ? { type: ShadingType.CLEAR, fill: o.fill, color: "auto" } : undefined,
-  margins: { top: 90, bottom: 90, left: 120, right: 120 },
+  margins: { top: 66, bottom: 66, left: 120, right: 120 },
   borders: {
     top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
     left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
@@ -84,6 +93,7 @@ const cell = (runs, o = {}) => new TableCell({
   children: [new Paragraph({
     children: Array.isArray(runs) ? runs : [runs],
     alignment: o.align, spacing: { after: 0, line: 240 },
+    keepNext: !!o.keep, keepLines: true,
   })],
 });
 
@@ -151,15 +161,15 @@ const doc = new Document({
         ["Дата предложения", "31 августа 2026 г."],
       ].map(([k, v], i, a) => new TableRow({
         children: [
-          cell([t(k, { color: GREY, size: 18 })], { w: 3000, strong: i === a.length - 1 }),
-          cell([t(v, { color: INK, bold: true })], { w: W - 3000, strong: i === a.length - 1 }),
+          cell([t(k, { color: GREY, size: 18 })], { w: 3000, strong: i === a.length - 1, keep: i < a.length - 1 }),
+          cell([t(v, { color: INK, bold: true })], { w: W - 3000, strong: i === a.length - 1, keep: i < a.length - 1 }),
         ],
       }))),
 
       /* 1 */
       h2("1. База расчёта стоимости"),
       new Paragraph({
-        children: [new ImageRun({ data: planImg, type: "jpg", transformation: { width: 470, height: 376 } })],
+        children: [new ImageRun({ data: planImg, type: "jpg", transformation: { width: 500, height: 400 } })],
         alignment: AlignmentType.CENTER,
         spacing: { after: 80 },
       }),
@@ -170,10 +180,10 @@ const doc = new Document({
         ["Номерной фонд, нетто (этажи 2–5)", "7 665,29 м²", false],
         ["Бизнес-центр, нетто (этажи 2–5)", "4 895,11 м²", false],
         ["Полезная площадь здания — расчётная площадь для определения стоимости", "17 043,44 м²", true],
-      ].map(([k, v, s]) => new TableRow({
+      ].map(([k, v, s], i, a) => new TableRow({
         children: [
-          cell([t(k, { color: s ? INK : TXT, bold: s })], { w: W - 3200, strong: s }),
-          cell([t(v, { color: INK, bold: true })], { w: 3200, align: AlignmentType.RIGHT, strong: s }),
+          cell([t(k, { color: s ? INK : TXT, bold: s })], { w: W - 3200, strong: s, keep: i < a.length - 1 }),
+          cell([t(v, { color: INK, bold: true })], { w: 3200, align: AlignmentType.RIGHT, strong: s, keep: i < a.length - 1 }),
         ],
       }))),
 
@@ -182,9 +192,9 @@ const doc = new Document({
       table([W - 4400, 1600, 2800], [
         new TableRow({
           children: [
-            cell([t("Стадия", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: W - 4400, strong: true }),
-            cell([t("Доля", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: 1600, align: AlignmentType.RIGHT, strong: true }),
-            cell([t("Сумма без НДС", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: 2800, align: AlignmentType.RIGHT, strong: true }),
+            cell([t("Стадия", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: W - 4400, strong: true, keep: true }),
+            cell([t("Доля", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: 1600, align: AlignmentType.RIGHT, strong: true, keep: true }),
+            cell([t("Сумма без НДС", { size: 16, bold: true, color: ORANGE, cs: 6 })], { w: 2800, align: AlignmentType.RIGHT, strong: true, keep: true }),
           ],
         }),
         ...[
@@ -196,11 +206,11 @@ const doc = new Document({
           ["Итого со скидкой без НДС", "", NET_D, 1],
           ["НДС 16 %", "", VAT, 0],
           ["Итого к оплате с НДС", "", GROSS, 2],
-        ].map(([k, d, v, lvl]) => new TableRow({
+        ].map(([k, d, v, lvl], i, a) => new TableRow({
           children: [
-            cell([t(k, { color: INK, bold: lvl > 0 })], { w: W - 4400, strong: lvl === 2 }),
-            cell([t(d, { color: TXT })], { w: 1600, align: AlignmentType.RIGHT, strong: lvl === 2 }),
-            cell([t(money(v), { color: INK, bold: true })], { w: 2800, align: AlignmentType.RIGHT, strong: lvl === 2 }),
+            cell([t(k, { color: INK, bold: lvl > 0 })], { w: W - 4400, strong: lvl === 2, keep: i < a.length - 1 }),
+            cell([t(d, { color: TXT })], { w: 1600, align: AlignmentType.RIGHT, strong: lvl === 2, keep: i < a.length - 1 }),
+            cell([t(money(v), { color: INK, bold: true })], { w: 2800, align: AlignmentType.RIGHT, strong: lvl === 2, keep: i < a.length - 1 }),
           ],
         })),
       ]),
@@ -213,32 +223,35 @@ const doc = new Document({
 
       /* 3 */
       h2("3. Состав работ"),
-      p(t("Стадия 1. Форэскиз", { bold: true, color: INK, size: 21 }), { after: 120 }),
-      li("Градостроительный анализ участка и окружения, ограничения застройки"),
-      li("Посадка комплекса на участок, генеральный план, отступы от границ"),
-      li("Объёмно-пространственное решение, этажность, силуэт"),
-      li("Предварительные технико-экономические показатели"),
-      li("Архитектурное решение фасадов"),
-      li("Визуализации объёмного решения — 3 ракурса экстерьера"),
-      li("Презентационные материалы для предварительного согласования"),
-      gap(180),
-      p(t("Стадия 2. Концепция", { bold: true, color: INK, size: 21 }), { after: 120 }),
-      li("Уточнение генерального плана по итогам предварительного согласования"),
-      li("Функциональное зонирование по этажам"),
-      li("Планировочное решение первого этажа"),
-      li("Фасады и характерные разрезы с высотными отметками"),
-      li("Ведомость отделочных материалов"),
-      li("Визуализации экстерьера — 3 ракурса, включая вечерний вид"),
-      li("Уточнённые технико-экономические показатели, коэффициенты застройки и использования территории"),
-      li("Баланс территории: озеленение, покрытия, проезды, площадки"),
-      li("Комплект презентационных материалов для градостроительного совета"),
-      gap(180),
-      p(t("Стадия 3. Эскизный проект", { bold: true, color: INK, size: 21 }), { after: 120 }),
-      li("Планировочные решения всех этажей, типы номеров, итоговая ёмкость номерного фонда"),
-      li("Расчёт машино-мест по действующему нормативу, планировочное решение наземных стоянок"),
-      li("Схема транспортного обслуживания, узлы въезда, пожарные проезды"),
-      li("Пояснительная записка"),
-      li("Комплект документации для получения архитектурно-планировочного задания"),
+      ...stage("Стадия 1. Форэскиз", [
+        "Градостроительный анализ участка и окружения, ограничения застройки",
+        "Посадка комплекса на участок, генеральный план, отступы от границ",
+        "Объёмно-пространственное решение, этажность, силуэт",
+        "Предварительные технико-экономические показатели",
+        "Архитектурное решение фасадов",
+        "Визуализации объёмного решения — 3 ракурса экстерьера",
+        "Презентационные материалы для предварительного согласования",
+      ]),
+      gap(90),
+      ...stage("Стадия 2. Концепция", [
+        "Уточнение генерального плана по итогам предварительного согласования",
+        "Функциональное зонирование по этажам",
+        "Планировочное решение первого этажа",
+        "Фасады и характерные разрезы с высотными отметками",
+        "Ведомость отделочных материалов",
+        "Визуализации экстерьера — 3 ракурса, включая вечерний вид",
+        "Уточнённые технико-экономические показатели, коэффициенты застройки и использования территории",
+        "Баланс территории: озеленение, покрытия, проезды, площадки",
+        "Комплект презентационных материалов для градостроительного совета",
+      ]),
+      gap(90),
+      ...stage("Стадия 3. Эскизный проект", [
+        "Планировочные решения всех этажей, типы номеров, итоговая ёмкость номерного фонда",
+        "Расчёт машино-мест по действующему нормативу, планировочное решение наземных стоянок",
+        "Схема транспортного обслуживания, узлы въезда, пожарные проезды",
+        "Пояснительная записка",
+        "Комплект документации для получения архитектурно-планировочного задания",
+      ]),
 
       /* 4 */
       h2("4. Сроки выполнения"),
@@ -249,8 +262,8 @@ const doc = new Document({
         ["Всего", "13 недель"],
       ].map(([k, v], i, a) => new TableRow({
         children: [
-          cell([t(k, { color: i === a.length - 1 ? INK : TXT, bold: i === a.length - 1 })], { w: W - 3200, strong: i === a.length - 1 }),
-          cell([t(v, { color: INK, bold: true })], { w: 3200, align: AlignmentType.RIGHT, strong: i === a.length - 1 }),
+          cell([t(k, { color: i === a.length - 1 ? INK : TXT, bold: i === a.length - 1 })], { w: W - 3200, strong: i === a.length - 1, keep: i < a.length - 1 }),
+          cell([t(v, { color: INK, bold: true })], { w: 3200, align: AlignmentType.RIGHT, strong: i === a.length - 1, keep: i < a.length - 1 }),
         ],
       }))),
       gap(140),
@@ -284,11 +297,11 @@ const doc = new Document({
       li("Настоящее предложение действительно в течение 10 рабочих дней с даты его направления"),
 
       /* подписи */
-      gap(520),
-      p(t("ТОО «MOST Architects»", { bold: true, color: INK, size: 21 }), { after: 40 }),
-      p(t("г. Алматы, ул. Утеген батыра 11в к6/1", { size: 18, color: TXT }), { after: 20 }),
-      p(t("+7 771 733 77 00", { size: 18, color: TXT }), { after: 20 }),
-      p(t("most-a.com", { size: 18, color: TXT }), { after: 560 }),
+      gap(100),
+      p(t("ТОО «MOST Architects»", { bold: true, color: INK, size: 21 }), { after: 40, keep: true }),
+      p(t("г. Алматы, ул. Утеген батыра 11в к6/1", { size: 18, color: TXT }), { after: 20, keep: true }),
+      p(t("+7 771 733 77 00", { size: 18, color: TXT }), { after: 20, keep: true }),
+      p(t("most-a.com", { size: 18, color: TXT }), { after: 520, keep: true }),
       new Paragraph({
         children: [
           floatImg(sealImg, 118, 114, 0.58, -0.30),
@@ -299,6 +312,7 @@ const doc = new Document({
           t("          Иманкулов И.Т.", { color: INK }),
         ],
         spacing: { after: 0, line: 260 },
+        keepLines: true,
       }),
     ],
   }],
