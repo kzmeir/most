@@ -62,14 +62,14 @@ const h1 = (text) => new Paragraph({
 
 const h2 = (text) => new Paragraph({
   children: [t(text.toUpperCase(), { size: 19, bold: true, color: ORANGE, cs: 6 })],
-  spacing: { before: 160, after: 100 },
+  spacing: { before: 120, after: 90 },
   border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: INK, space: 6 } },
   keepNext: true,          // заголовок раздела не остаётся один внизу листа
 });
 
 const li = (text, o = {}) => new Paragraph({
   children: [t("— ", { color: ORANGE }), t(text, { color: o.color || TXT })],
-  spacing: { after: 40, line: 242 },
+  spacing: { after: 30, line: 238 },
   indent: { left: 200, hanging: 200 },
   keepNext: !!o.keep, keepLines: true,
 });
@@ -83,7 +83,7 @@ const stage = (title, items) => [
 const cell = (runs, o = {}) => new TableCell({
   width: { size: o.w, type: WidthType.DXA },
   shading: o.fill ? { type: ShadingType.CLEAR, fill: o.fill, color: "auto" } : undefined,
-  margins: { top: 66, bottom: 66, left: 120, right: 120 },
+  margins: { top: 54, bottom: 54, left: 120, right: 120 },
   borders: {
     top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
     left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
@@ -297,15 +297,15 @@ const doc = new Document({
       li("Настоящее предложение действительно в течение 10 рабочих дней с даты его направления"),
 
       /* подписи */
-      gap(100),
+      gap(60),
       p(t("ТОО «MOST Architects»", { bold: true, color: INK, size: 21 }), { after: 40, keep: true }),
       p(t("г. Алматы, ул. Утеген батыра 11в к6/1", { size: 18, color: TXT }), { after: 20, keep: true }),
       p(t("+7 771 733 77 00", { size: 18, color: TXT }), { after: 20, keep: true }),
-      p(t("most-a.com", { size: 18, color: TXT }), { after: 520, keep: true }),
+      p(t("most-a.com", { size: 18, color: TXT }), { after: 200, keep: true }),
       new Paragraph({
         children: [
-          floatImg(sealImg, 118, 114, 0.58, -0.30),
-          floatImg(signImg, 168, 103, 1.30, -0.46),
+          floatImg(sealImg, 183, 177, 0.929, -0.263),   // 48,5 x 47,0 мм — размер оттиска
+          floatImg(signImg, 127, 78, 1.064, -0.468),    // 33,6 x 20,5 мм
           t("Директор", { color: INK }),
           t("            ", { color: GREY }),
           t("_________________", { color: GREY }),
