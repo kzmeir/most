@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Life RPG — прокачай себя</title>
+<link rel="icon" href="../orange.svg">
+<style>
+  :root{
+    --bg:#0f1220;
+    --bg2:#171b2e;
+    --card:#1e2338;
+    --card2:#262c47;
+    --border:#323a5e;
+    --text:#e8eaf6;
+    --muted:#8b93b8;
+    --gold:#f6c453;
+    --xp:#7c5cff;
+    --hp:#ff5c7a;
+    --green:#3ddc97;
+    --red:#ff6b6b;
+    --blue:#5cc8ff;
+    --radius:16px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:radial-gradient(1200px 800px at 20% -10%, #1c2140 0%, var(--bg) 55%);
+    color:var(--text);
+    min-height:100vh;
+    padding-bottom:80px;
+  }
+  .wrap{max-width:680px;margin:0 auto;padding:16px}
+
+  /* ===== Character card ===== */
+  .hero{
+    background:linear-gradient(145deg,var(--card),var(--bg2));
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px;
+    margin-bottom:16px;
+    position:relative;
+    overflow:hidden;
+  }
+  .hero::after{
+    content:"";position:absolute;top:-60px;right:-60px;width:180px;height:180px;
+    background:radial-gradient(circle,rgba(124,92,255,.25),transparent 70%);
+    pointer-events:none;
+  }
+  .hero-top{display:flex;gap:16px;align-items:center}
+  .avatar{
+    width:70px;height:99px;flex:0 0 70px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;user-select:none;
+    transition:transform .15s;
+    filter:drop-shadow(0 4px 14px rgba(0,0,0,.5));
+  }
+  .avatar svg{display:block}
+  .avatar:active{transform:scale(.92)}
+  .hero-info{flex:1;min-width:0}
+  .hero-name{
+    font-size:20px;font-weight:700;background:transparent;border:none;color:var(--text);
+    width:100%;outline:none;border-bottom:1px dashed transparent;
+  }
+  .hero-name:focus{border-bottom-color:var(--muted)}
+  .hero-rank{color:var(--gold);font-size:13px;font-weight:600;margin-top:2px}
+  .hero-lvl{color:var(--muted);font-size:13px;margin-top:2px}
+  .gold-badge{
+    display:flex;align-items:center;gap:6px;
+    background:rgba(246,196,83,.12);border:1px solid rgba(246,196,83,.35);
+    color:var(--gold);font-weight:700;font-size:15px;
+    padding:8px 14px;border-radius:12px;white-space:nowrap;
+  }
+  .bars{margin-top:16px;display:flex;flex-direction:column;gap:10px}
+  .bar-row{display:flex;align-items:center;gap:10px;font-size:12px}
+  .bar-label{width:30px;color:var(--muted);font-weight:700}
+  .bar{flex:1;height:12px;background:rgba(0,0,0,.35);border-radius:99px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:99px;transition:width .4s ease}
+  .bar-fill.xp{background:linear-gradient(90deg,#6c4cf0,#9d7bff)}
+  .bar-fill.hp{background:linear-gradient(90deg,#f0396a,#ff7a94)}
+  .bar-val{width:74px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  /* ===== Tabs ===== */
+  .tabs{
+    display:flex;gap:6px;background:var(--card);border:1px solid var(--border);
+    border-radius:14px;padding:5px;margin-bottom:16px;
+  }
+  .tab{
+    flex:1;text-align:center;padding:10px 4px;border-radius:10px;cursor:pointer;
+    color:var(--muted);font-size:13px;font-weight:600;border:none;background:transparent;
+    transition:all .15s;
+  }
+  .tab.active{background:var(--xp);color:#fff}
+
+  /* ===== Sections / cards ===== */
+  .section{display:none}
+  .section.active{display:block;animation:fadeIn .25s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .card{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:var(--radius);padding:16px;margin-bottom:12px;
+  }
+  h2{font-size:15px;margin-bottom:12px;color:var(--muted);font-weight:700;
+     text-transform:uppercase;letter-spacing:.06em}
+
+  /* ===== Habit list ===== */
+  .habit{
+    display:flex;align-items:center;gap:12px;
+    background:var(--card);border:1px solid var(--border);
+    border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;
+    transition:opacity .2s;
+  }
+  .habit.done-today{opacity:.55}
+  .habit-btn{
+    width:46px;height:46px;flex:0 0 46px;border-radius:14px;border:none;cursor:pointer;
+    font-size:22px;display:flex;align-items:center;justify-content:center;
+    transition:transform .12s;
+  }
+  .habit-btn:active{transform:scale(.88)}
+  .habit-btn.good{background:rgba(61,220,151,.15);border:1px solid rgba(61,220,151,.45)}
+  .habit-btn.bad{background:rgba(255,107,107,.13);border:1px solid rgba(255,107,107,.4)}
+  .habit-btn:disabled{opacity:.4;cursor:default}
+  .habit-main{flex:1;min-width:0}
+  .habit-title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .habit-meta{display:flex;gap:8px;margin-top:4px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+  .chip{background:var(--card2);border-radius:8px;padding:2px 8px}
+  .chip.streak{color:#ffa94d}
+  .habit-del{
+    background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;
+    padding:6px;border-radius:8px;opacity:.6;
+  }
+  .habit-del:hover{color:var(--red);opacity:1}
+  .empty{
+    text-align:center;color:var(--muted);padding:40px 16px;font-size:14px;line-height:1.6;
+  }
+  .empty .big{font-size:40px;display:block;margin-bottom:10px}
+
+  /* ===== Forms ===== */
+  .add-btn{
+    width:100%;padding:14px;border-radius:var(--radius);border:1px dashed var(--border);
+    background:transparent;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;
+    transition:all .15s;
+  }
+  .add-btn:hover{border-color:var(--xp);color:var(--text)}
+  .form{display:none;flex-direction:column;gap:10px}
+  .form.open{display:flex}
+  .form input[type=text]{
+    background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+    color:var(--text);padding:12px;font-size:14px;outline:none;width:100%;
+  }
+  .form input[type=text]:focus{border-color:var(--xp)}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{
+    flex:1;min-width:70px;padding:9px 6px;border-radius:10px;cursor:pointer;font-size:12.5px;
+    background:var(--bg2);border:1px solid var(--border);color:var(--muted);font-weight:600;
+  }
+  .seg button.sel{background:var(--xp);border-color:var(--xp);color:#fff}
+  .seg button.sel.bad-sel{background:var(--red);border-color:var(--red)}
+  .form-actions{display:flex;gap:8px}
+  .btn{
+    padding:12px 18px;border-radius:10px;border:none;cursor:pointer;
+    font-size:14px;font-weight:700;
+  }
+  .btn.primary{background:var(--xp);color:#fff;flex:1}
+  .btn.ghost{background:var(--card2);color:var(--muted)}
+  label.small{font-size:12px;color:var(--muted);font-weight:600}
+
+  /* ===== Stats ===== */
+  .stat-row{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .stat-ico{font-size:22px;width:32px;text-align:center}
+  .stat-body{flex:1}
+  .stat-name{font-size:13px;font-weight:600;display:flex;justify-content:space-between;margin-bottom:5px}
+  .stat-name span:last-child{color:var(--muted);font-variant-numeric:tabular-nums}
+  .stat-bar{height:9px;background:rgba(0,0,0,.35);border-radius:99px;overflow:hidden}
+  .stat-fill{height:100%;border-radius:99px;transition:width .4s}
+  .totals{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .total-cell{background:var(--card2);border-radius:12px;padding:14px;text-align:center}
+  .total-num{font-size:22px;font-weight:800}
+  .total-lbl{font-size:11.5px;color:var(--muted);margin-top:3px}
+
+  /* ===== Shop ===== */
+  .reward{display:flex;align-items:center;gap:12px;background:var(--card);
+    border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px}
+  .reward-buy{
+    display:flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;cursor:pointer;
+    background:rgba(246,196,83,.12);border:1px solid rgba(246,196,83,.4);color:var(--gold);
+    font-weight:700;font-size:14px;white-space:nowrap;
+  }
+  .reward-buy:disabled{opacity:.35;cursor:default}
+
+  /* ===== Achievements ===== */
+  .ach{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--border);
+    border-radius:var(--radius);padding:13px 16px;margin-bottom:10px}
+  .ach.locked{opacity:.45;filter:grayscale(.8)}
+  .ach-ico{font-size:26px;width:36px;text-align:center}
+  .ach-title{font-weight:700;font-size:14px}
+  .ach-desc{font-size:12.5px;color:var(--muted);margin-top:2px}
+
+  /* ===== Toast & levelup ===== */
+  #toasts{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:50;
+    display:flex;flex-direction:column;gap:8px;align-items:center;width:min(92vw,420px)}
+  .toast{
+    background:var(--card2);border:1px solid var(--border);color:var(--text);
+    padding:11px 18px;border-radius:12px;font-size:14px;font-weight:600;
+    box-shadow:0 8px 30px rgba(0,0,0,.45);animation:toastIn .25s ease;
+    text-align:center;width:100%;
+  }
+  .toast.gain{border-color:rgba(61,220,151,.5)}
+  .toast.loss{border-color:rgba(255,107,107,.5)}
+  @keyframes toastIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  #levelup{
+    position:fixed;inset:0;background:rgba(13,16,30,.93);backdrop-filter:blur(6px);z-index:60;
+    display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;
+    text-align:center;padding:20px;
+  }
+  #levelup.show{display:flex;animation:fadeIn .3s}
+  #levelup .lvl-big{animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+  #levelup .btn{flex:0 0 auto}
+  #levelup .evo-badge{
+    background:rgba(246,196,83,.14);border:1px solid rgba(246,196,83,.45);color:var(--gold);
+    border-radius:10px;padding:6px 14px;font-weight:700;font-size:14px;
+  }
+  #levelup h3{font-size:26px}
+  #levelup p{color:var(--muted)}
+  @keyframes pop{from{transform:scale(.3)}to{transform:scale(1)}}
+  .confetti{position:fixed;top:-10px;font-size:20px;z-index:61;animation:fall linear forwards;pointer-events:none}
+  @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:.2}}
+
+  /* ===== Character picker ===== */
+  #charPicker{
+    position:fixed;inset:0;background:rgba(13,16,30,.97);backdrop-filter:blur(6px);z-index:70;
+    display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 16px 40px;
+  }
+  #charPicker.show{display:flex;animation:fadeIn .25s}
+  .picker-box{width:100%;max-width:560px}
+  .picker-box h3{font-size:22px;text-align:center;margin-bottom:6px}
+  .picker-box .sub{color:var(--muted);text-align:center;font-size:13.5px;margin-bottom:18px;line-height:1.5}
+  .char-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:440px){.char-grid{grid-template-columns:1fr}}
+  .char-card{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:16px;cursor:pointer;text-align:left;color:var(--text);
+    transition:transform .12s, border-color .15s;
+  }
+  .char-card:hover{transform:translateY(-2px);border-color:var(--xp)}
+  .char-card.current{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+  .char-art{
+    display:flex;justify-content:center;align-items:center;
+    filter:drop-shadow(0 4px 12px rgba(0,0,0,.45));
+  }
+  .char-stage{
+    text-align:center;font-size:10.5px;color:var(--muted);margin-top:6px;letter-spacing:.02em;
+  }
+  .char-stage b{color:var(--gold);font-weight:700}
+  .char-name{font-weight:800;font-size:15.5px;margin-top:8px}
+  .char-tag{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45;min-height:36px}
+  .char-bonus{
+    margin-top:9px;display:inline-block;font-size:11.5px;font-weight:700;
+    background:rgba(124,92,255,.15);border:1px solid rgba(124,92,255,.45);
+    color:#b3a1ff;border-radius:8px;padding:3px 8px;
+  }
+  .hero-class{color:var(--blue);font-size:12.5px;margin-top:2px}
+
+  .hint{font-size:12.5px;color:var(--muted);line-height:1.55;margin-top:8px}
+  @media(max-width:480px){
+    .hero-top{flex-wrap:wrap}
+    .gold-badge{margin-left:auto}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Character -->
+  <div class="hero">
+    <div class="hero-top">
+      <div class="avatar" id="avatar" title="Сменить персонажа"></div>
+      <div class="hero-info">
+        <input class="hero-name" id="heroName" maxlength="24" spellcheck="false">
+        <div class="hero-rank" id="heroRank"></div>
+        <div class="hero-class" id="heroClass"></div>
+        <div class="hero-lvl" id="heroLvl"></div>
+      </div>
+      <div class="gold-badge">🪙 <span id="gold">0</span></div>
+    </div>
+    <div class="bars">
+      <div class="bar-row">
+        <div class="bar-label">XP</div>
+        <div class="bar"><div class="bar-fill xp" id="xpBar"></div></div>
+        <div class="bar-val" id="xpVal"></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">HP</div>
+        <div class="bar"><div class="bar-fill hp" id="hpBar"></div></div>
+        <div class="bar-val" id="hpVal"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="habits">⚔️ Привычки</button>
+    <button class="tab" data-tab="stats">📊 Статы</button>
+    <button class="tab" data-tab="shop">🛍 Магазин</button>
+    <button class="tab" data-tab="ach">🏆 Награды</button>
+  </div>
+
+  <!-- ===== Habits ===== -->
+  <div class="section active" id="sec-habits">
+    <div id="habitList"></div>
+    <button class="add-btn" id="showHabitForm">＋ Новая привычка</button>
+    <div class="card form" id="habitForm">
+      <input type="text" id="habitName" placeholder="Например: 20 минут чтения" maxlength="60">
+      <label class="small">Тип</label>
+      <div class="seg" id="segType">
+        <button data-v="good" class="sel">💚 Полезная</button>
+        <button data-v="bad">💔 Вредная</button>
+      </div>
+      <label class="small">Сложность</label>
+      <div class="seg" id="segDiff">
+        <button data-v="easy">Легко</button>
+        <button data-v="med" class="sel">Средне</button>
+        <button data-v="hard">Сложно</button>
+      </div>
+      <label class="small" id="statLabel">Какую характеристику качает</label>
+      <div class="seg" id="segStat">
+        <button data-v="str" class="sel">💪 Сила</button>
+        <button data-v="int">🧠 Интеллект</button>
+        <button data-v="dis">🎯 Дисциплина</button>
+        <button data-v="cha">✨ Харизма</button>
+        <button data-v="hlt">❤️ Здоровье</button>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="saveHabit">Создать</button>
+        <button class="btn ghost" id="cancelHabit">Отмена</button>
+      </div>
+    </div>
+    <p class="hint">💚 Полезные привычки отмечаются раз в день — дают опыт, золото и качают характеристику. Серия дней подряд даёт бонус к опыту. 💔 Вредные — отмечай, если сорвался: потеряешь HP. Если HP упадёт до нуля — потеряешь уровень.</p>
+  </div>
+
+  <!-- ===== Stats ===== -->
+  <div class="section" id="sec-stats">
+    <div class="card">
+      <h2>Характеристики</h2>
+      <div id="statList"></div>
+    </div>
+    <div class="card">
+      <h2>Статистика</h2>
+      <div class="totals">
+        <div class="total-cell"><div class="total-num" id="tDone">0</div><div class="total-lbl">выполнено всего</div></div>
+        <div class="total-cell"><div class="total-num" id="tStreak">0</div><div class="total-lbl">лучшая серия</div></div>
+        <div class="total-cell"><div class="total-num" id="tGold">0</div><div class="total-lbl">золота заработано</div></div>
+        <div class="total-cell"><div class="total-num" id="tDays">0</div><div class="total-lbl">активных дней</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Shop ===== -->
+  <div class="section" id="sec-shop">
+    <div id="rewardList"></div>
+    <button class="add-btn" id="showRewardForm">＋ Своя награда</button>
+    <div class="card form" id="rewardForm">
+      <input type="text" id="rewardName" placeholder="Например: серия любимого сериала" maxlength="60">
+      <label class="small">Цена (золото)</label>
+      <div class="seg" id="segPrice">
+        <button data-v="15">🪙 15</button>
+        <button data-v="30" class="sel">🪙 30</button>
+        <button data-v="60">🪙 60</button>
+        <button data-v="120">🪙 120</button>
+      </div>
+      <div class="form-actions">
+        <button class="btn primary" id="saveReward">Добавить</button>
+        <button class="btn ghost" id="cancelReward">Отмена</button>
+      </div>
+    </div>
+    <p class="hint">Придумай себе реальные награды и покупай их за золото, заработанное привычками. Так мозг получает честную «зарплату» за дисциплину.</p>
+  </div>
+
+  <!-- ===== Achievements ===== -->
+  <div class="section" id="sec-ach">
+    <div id="achList"></div>
+  </div>
+</div>
+
+<div id="charPicker">
+  <div class="picker-box">
+    <h3>Выбери персонажа</h3>
+    <p class="sub">Класс определяет твою специализацию: за привычки «своей» стихии персонаж получает больше опыта. Герой растёт вместе с тобой — от ребёнка до мастера с аурой. Сменить класс можно в любой момент, нажав на аватар.</p>
+    <div class="char-grid" id="charGrid"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<div id="levelup">
+  <div class="lvl-big" id="lvlupArt">🎉</div>
+  <div class="evo-badge" id="evoBadge" style="display:none"></div>
+  <h3 id="lvlupTitle">Новый уровень!</h3>
+  <p id="lvlupText"></p>
+  <button class="btn primary" onclick="document.getElementById('levelup').classList.remove('show')">Круто!</button>
+</div>
+
+<script>
+(function(){
+"use strict";
+const LS_KEY = "liferpg_v1";
+const todayStr = () => new Date().toISOString().slice(0,10);
+const yesterdayStr = () => { const d=new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); };
+
+const STATS = {
+  str:{name:"Сила",ico:"💪",color:"#ff8a5c"},
+  int:{name:"Интеллект",ico:"🧠",color:"#5cc8ff"},
+  dis:{name:"Дисциплина",ico:"🎯",color:"#7c5cff"},
+  cha:{name:"Харизма",ico:"✨",color:"#f6c453"},
+  hlt:{name:"Здоровье",ico:"❤️",color:"#3ddc97"},
+};
+const DIFF = {
+  easy:{name:"легко", xp:10, gold:5,  dmg:5},
+  med: {name:"средне",xp:20, gold:10, dmg:10},
+  hard:{name:"сложно",xp:40, gold:20, dmg:18},
+};
+const RANKS = [
+  [1,"Новичок"],[3,"Ученик"],[5,"Искатель"],[8,"Адепт"],[12,"Воин привычек"],
+  [16,"Ветеран"],[20,"Мастер"],[27,"Герой"],[35,"Чемпион"],[45,"Легенда"],[60,"Бессмертный"]
+];
+// ===== character art (Dota-style dark fantasy, 4 growth stages) =====
+// Dota-style dark fantasy vector heroes — 6 classes x 4 growth stages
+const STAGE_PARAMS = [
+  {key:0, name:"Ребёнок",   legH:20, torsoH:24, torsoW:24, headR:12.5, armW:6.5, eyeStyle:"cute"},
+  {key:1, name:"Подросток", legH:30, torsoH:31, torsoW:30, headR:11.5, armW:7.5, eyeStyle:"norm"},
+  {key:2, name:"Взрослый",  legH:38, torsoH:38, torsoW:40, headR:11,   armW:9,   eyeStyle:"fierce"},
+  {key:3, name:"Мастер",    legH:40, torsoH:40, torsoW:42, headR:11,   armW:9.5, eyeStyle:"glow", aura:true},
+];
+
+const CHAR_ART = {
+  athlete:    {skin:"#e8b48c", hairC:"#3d2a1a", cloth:["#8a2f22","#5c1c14"], accent:"#ff6a3c", kind:"warrior"},
+  strategist: {skin:"#e3c39d", hairC:"#5d4030", cloth:["#2f5f9e","#1c3a68"], accent:"#4db8ff", kind:"mage"},
+  pro:        {skin:"#d8ab80", hairC:"#23232b", cloth:["#8a93ad","#4a5470"], accent:"#f6c453", kind:"knight"},
+  leader:     {skin:"#e8b48c", hairC:"#6e2c1e", cloth:["#8a2f3c","#571c28"], accent:"#ffb340", kind:"warlord"},
+  zen:        {skin:"#e3bd92", hairC:"#2f2f38", cloth:["#2f8a5f","#1c5c3c"], accent:"#3ddc97", kind:"monk"},
+  pioneer:    {skin:"#e3c39d", hairC:"#4a3624", cloth:["#4a3f6e","#2c2547"], accent:"#b3a1ff", kind:"ranger"},
+};
+
+const METAL = ["#c3cbe2","#6b7590"];
+const METAL_DARK = "#3a4053";
+const LEATHER = "#6e4f32";
+
+function darken(hex, f){
+  const n = parseInt(hex.slice(1),16);
+  const r=Math.round(((n>>16)&255)*(1-f)), g=Math.round(((n>>8)&255)*(1-f)), b=Math.round((n&255)*(1-f));
+  return `rgb(${r},${g},${b})`;
+}
+
+function charSVG(classId, stage, size){
+  const A = CHAR_ART[classId], P = STAGE_PARAMS[stage];
+  const uid = classId + stage;
+  const cx = 60, ground = 152;
+  const hipY = ground - P.legH;
+  const torsoTop = hipY - P.torsoH;
+  const shoulderY = torsoTop + 4;
+  const headCy = torsoTop - P.headR + 3;
+  const sw = P.torsoW, ww = sw*0.62;
+
+  const G = {cx, ground, hipY, torsoTop, shoulderY, headCy, sw, ww, A, P, uid, stage};
+
+  let defs = `
+  <defs>
+    <linearGradient id="cl${uid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${A.cloth[0]}"/><stop offset="1" stop-color="${A.cloth[1]}"/>
+    </linearGradient>
+    <linearGradient id="mt${uid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${METAL[0]}"/><stop offset="1" stop-color="${METAL[1]}"/>
+    </linearGradient>
+    <radialGradient id="bg${uid}" cx=".5" cy=".32" r=".9">
+      <stop offset="0" stop-color="${darken(A.accent,0.55)}" stop-opacity=".55"/>
+      <stop offset=".55" stop-color="#141728" stop-opacity="1"/>
+      <stop offset="1" stop-color="#0c0e1c" stop-opacity="1"/>
+    </radialGradient>
+    <radialGradient id="fl${uid}" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="${A.accent}" stop-opacity=".5"/>
+      <stop offset="1" stop-color="${A.accent}" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="gl${uid}" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>`;
+
+  let s = "";
+  // ---- card backdrop ----
+  s += `<rect x="2" y="2" width="116" height="166" rx="14" fill="url(#bg${uid})" stroke="${A.accent}" stroke-opacity="${stage===3?0.45:0.2}" stroke-width="1.2"/>`;
+  // light rays
+  s += `<path d="M60 6 L30 74 L48 74 Z M60 6 L74 70 L90 62 Z" fill="#fff" opacity=".025"/>`;
+  // floor glow
+  s += `<ellipse cx="60" cy="${ground+4}" rx="42" ry="10" fill="url(#fl${uid})"/>
+        <ellipse cx="60" cy="${ground+4}" rx="${sw*0.9}" ry="5" fill="#000" opacity=".5"/>`;
+
+  if(P.aura){
+    s += `<ellipse cx="60" cy="${(headCy+ground)/2}" rx="46" ry="${(ground-headCy)/2+16}" fill="url(#fl${uid})" opacity=".7"/>`;
+  }
+
+  s += drawBack(G);      // capes, quiver, banner pole back part
+  s += drawLegs(G);
+  s += drawTorso(G);
+  s += drawArmsAndGear(G);
+  s += drawHead(G);
+  s += drawFront(G);     // fx: runes, particles, lotus
+
+  if(stage===3){ // rising embers
+    const em = (x,y,r,o)=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${A.accent}" opacity="${o}" filter="url(#gl${uid})"/>`;
+    s += em(24, headCy+10, 1.6, .8) + em(97, torsoTop+8, 1.3, .7) + em(20, hipY+6, 1.1, .6) + em(100, headCy-6, 1.0, .75) + em(88, ground-8, 1.4, .5);
+  }
+
+  return `<svg viewBox="0 0 120 170" width="${size}" height="${Math.round(size*170/120)}" xmlns="http://www.w3.org/2000/svg">${defs}${s}</svg>`;
+}
+
+// ---------- torso / legs ----------
+function drawTorso({cx,torsoTop,hipY,sw,ww,A,P,uid,stage}){
+  const kind = A.kind;
+  let s = `<path d="M${cx-sw/2} ${torsoTop+3} Q${cx-sw/2+1} ${torsoTop} ${cx-sw/2+5} ${torsoTop}
+    L${cx+sw/2-5} ${torsoTop} Q${cx+sw/2-1} ${torsoTop} ${cx+sw/2} ${torsoTop+3}
+    L${cx+ww/2} ${hipY} L${cx-ww/2} ${hipY} Z" fill="url(#cl${uid})"/>`;
+  // center light
+  s += `<path d="M${cx-3} ${torsoTop} L${cx+3} ${torsoTop} L${cx+2} ${hipY} L${cx-2} ${hipY} Z" fill="#fff" opacity=".07"/>`;
+
+  if(kind==="warrior"){
+    // bare chest strap + fur trim
+    s += `<path d="M${cx-sw/2+3} ${torsoTop+2} L${cx+ww/2-2} ${hipY-4}" stroke="${LEATHER}" stroke-width="5"/>
+          <circle cx="${cx}" cy="${torsoTop+P.torsoH*0.45}" r="2.2" fill="#c9a86a"/>`;
+    if(stage>=2) s += `<path d="M${cx-sw/2-1} ${torsoTop-1} q${sw*0.25} 6 ${sw/2+1} 4 q-2 -7 -6 -9 Z" fill="#7a5a3c"/>`; // fur
+  }
+  if(kind==="mage" && stage>=1){
+    // robe skirt over legs
+    s += `<path d="M${cx-ww/2} ${hipY-2} L${cx+ww/2} ${hipY-2} L${cx+ww/2+5} ${hipY+P.legH*0.85} L${cx-ww/2-5} ${hipY+P.legH*0.85} Z" fill="url(#cl${uid})"/>
+          <path d="M${cx} ${hipY-2} L${cx+1.5} ${hipY+P.legH*0.85}" stroke="${darken(A.cloth[1],0.3)}" stroke-width="1.4"/>`;
+    // rune trim on hem
+    s += `<path d="M${cx-ww/2-5} ${hipY+P.legH*0.85-4} L${cx+ww/2+5} ${hipY+P.legH*0.85-4}" stroke="${A.accent}" stroke-width="1.6" opacity=".7"/>`;
+  }
+  if(kind==="knight"){
+    // plate lines + emblem
+    s += `<path d="M${cx-sw/2+2} ${torsoTop+P.torsoH*0.4} L${cx+sw/2-2} ${torsoTop+P.torsoH*0.4}" stroke="${METAL_DARK}" stroke-width="2"/>
+          <path d="M${cx-ww/2+1} ${torsoTop+P.torsoH*0.72} L${cx+ww/2-1} ${torsoTop+P.torsoH*0.72}" stroke="${METAL_DARK}" stroke-width="2"/>`;
+    if(stage>=1) s += `<path d="M${cx} ${torsoTop+5} l4.5 5 l-4.5 7 l-4.5 -7 Z" fill="${A.accent}" ${stage===3?`filter="url(#gl${uid})"`:""}/>`;
+  }
+  if(kind==="warlord"){
+    // chest plate diagonal + medal
+    s += `<path d="M${cx-sw/2+2} ${torsoTop+2} L${cx+ww/2} ${hipY-2}" stroke="${darken(A.cloth[1],0.25)}" stroke-width="6"/>`;
+    if(stage>=1) s += `<circle cx="${cx-sw*0.22}" cy="${torsoTop+8}" r="3" fill="${A.accent}"/>`;
+  }
+  if(kind==="monk" && stage>=1){
+    // sash
+    s += `<path d="M${cx-sw/2+3} ${torsoTop+3} L${cx+ww/2-1} ${hipY-2}" stroke="${A.accent}" stroke-width="4" opacity=".85"/>`;
+  }
+  if(kind==="ranger"){
+    // leather vest straps
+    s += `<path d="M${cx-sw*0.28} ${torsoTop} L${cx-sw*0.16} ${hipY}" stroke="${LEATHER}" stroke-width="4"/>
+          <path d="M${cx+sw*0.28} ${torsoTop} L${cx+sw*0.16} ${hipY}" stroke="${LEATHER}" stroke-width="4"/>`;
+  }
+  // belt
+  const beltC = stage===3 ? "#f6c453" : LEATHER;
+  s += `<rect x="${cx-ww/2-1}" y="${hipY-4}" width="${ww+2}" height="5" rx="2" fill="${beltC}"/>
+        <rect x="${cx-3}" y="${hipY-5}" width="6" height="7" rx="1.5" fill="${stage===3?'#ffe9a8':'#c9a86a'}"/>`;
+  return s;
+}
+
+function drawLegs({cx,hipY,ground,ww,A,P,stage,uid}){
+  const lw = Math.max(7, ww*0.36);
+  const gap = ww*0.1;
+  const bootH = stage>=1 ? Math.min(12, P.legH*0.35) : 7;
+  const pantC = darken(A.cloth[1], 0.15);
+  const bootC = stage>=2 && A.kind==="knight" ? METAL[1] : "#2e2620";
+  let s = "";
+  for(const dir of [-1,1]){
+    const x = cx + dir*(gap+lw/2);
+    s += `<path d="M${x-lw/2} ${hipY-2} L${x+lw/2} ${hipY-2} L${x+lw/2-1.5} ${ground-bootH} L${x-lw/2+1.5} ${ground-bootH} Z" fill="${pantC}"/>`;
+    s += `<path d="M${x-lw/2+0.5} ${ground-bootH} L${x+lw/2-0.5} ${ground-bootH} L${x+lw/2+1.5} ${ground} L${x-lw/2-1.5} ${ground} Z" fill="${bootC}"/>`;
+    if(stage>=2) s += `<path d="M${x-lw/2+0.5} ${ground-bootH+2} L${x+lw/2-0.5} ${ground-bootH+2}" stroke="${A.kind==="knight"?METAL[0]:LEATHER}" stroke-width="2"/>`;
+  }
+  return s;
+}
+
+// ---------- arms + weapons ----------
+function limb(x1,y1,x2,y2,w,color){
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${w}" stroke-linecap="round"/>`;
+}
+
+function drawArmsAndGear(G){
+  const {cx,shoulderY,hipY,torsoTop,sw,A,P,uid,stage} = G;
+  const kind = A.kind;
+  const armC = (kind==="warrior"||kind==="monk") ? A.skin : darken(A.cloth[1],0.05);
+  const lShx = cx-sw/2+2, rShx = cx+sw/2-2;
+  const armL = P.torsoH*0.9;
+  let s = "";
+
+  // ---- right arm & main weapon ----
+  const rHx = rShx+7, rHy = shoulderY+armL;
+  s += limb(rShx, shoulderY+2, rHx, rHy, P.armW, armC);
+  s += `<circle cx="${rHx}" cy="${rHy}" r="${P.armW*0.55}" fill="${A.skin}"/>`;
+
+  if(kind==="warrior") s += swordArt(G, rHx, rHy);
+  if(kind==="mage")    s += staffArt(G, rHx, rHy);
+  if(kind==="knight")  s += swordArt(G, rHx, rHy, true);
+  if(kind==="warlord") s += bannerArt(G, rHx, rHy);
+  if(kind==="monk")    s += boStaffArt(G, rHx, rHy);
+  if(kind==="ranger")  s += `<circle cx="${rHx}" cy="${rHy}" r="${P.armW*0.55}" fill="${A.skin}"/>`; // bow is left
+
+  // ---- left arm ----
+  const lHx = lShx-6, lHy = shoulderY+armL;
+  s += limb(lShx, shoulderY+2, lHx, lHy, P.armW, armC);
+  s += `<circle cx="${lHx}" cy="${lHy}" r="${P.armW*0.55}" fill="${A.skin}"/>`;
+
+  if(kind==="knight" && stage>=1) s += shieldArt(G, lHx, lHy-4);
+  if(kind==="ranger" && stage>=1) s += bowArt(G, lHx, lHy);
+  if(kind==="monk" && stage>=1){
+    // beads on left wrist
+    s += `<circle cx="${lHx}" cy="${lHy-2}" r="${P.armW*0.7}" fill="none" stroke="#b3763f" stroke-width="2.2" stroke-dasharray="2.5 1.8"/>`;
+  }
+
+  // ---- pauldrons on top of arms ----
+  if(stage>=2){
+    const pr = P.armW*1.35;
+    const pC = kind==="warrior" ? "#7a5a3c" : (kind==="monk" ? A.cloth[0] : `url(#mt${uid})`);
+    for(const [px] of [[lShx],[rShx]]){
+      s += `<path d="M${px-pr} ${shoulderY+3} Q${px} ${shoulderY-pr*0.9} ${px+pr} ${shoulderY+3} L${px+pr*0.7} ${shoulderY+pr*0.8} Q${px} ${shoulderY+pr*1.1} ${px-pr*0.7} ${shoulderY+pr*0.8} Z" fill="${pC}" stroke="${METAL_DARK}" stroke-width="${kind==="warrior"||kind==="monk"?0:1}"/>`;
+      if(stage===3) s += `<path d="M${px-pr*0.6} ${shoulderY+1} Q${px} ${shoulderY-pr*0.5} ${px+pr*0.6} ${shoulderY+1}" stroke="#f6c453" stroke-width="1.6" fill="none"/>`;
+    }
+  }
+  return s;
+}
+
+function swordArt({A,uid,stage,P}, hx, hy, knight){
+  if(stage===0){ // wooden toy sword
+    return `<g transform="translate(${hx} ${hy}) rotate(-8)">
+      <rect x="-1.8" y="-22" width="3.6" height="22" rx="1.5" fill="#a07a4a"/>
+      <rect x="-5" y="-2" width="10" height="3" rx="1.5" fill="#7a5a3c"/></g>`;
+  }
+  const len = stage===1 ? 30 : 44;
+  const wid = stage>=2 ? 4.6 : 3.4;
+  const flame = stage===3 && !knight;
+  const bladeC = flame ? A.accent : `url(#mt${uid})`;
+  let g = `<g transform="translate(${hx} ${hy}) rotate(-8)">`;
+  if(flame) g += `<path d="M0 ${-len-6} q4 6 1.5 14 q5 -3 4 -12 q3 8 0.5 16 q6 -6 3 -18" stroke="${A.accent}" stroke-width="2" fill="none" opacity=".8" filter="url(#gl${uid})"/>`;
+  g += `<path d="M${-wid/2} -4 L${-wid/2} ${-len+6} L0 ${-len} L${wid/2} ${-len+6} L${wid/2} -4 Z" fill="${bladeC}" ${flame?`filter="url(#gl${uid})"`:""}/>
+    <path d="M0 -4 L0 ${-len+4}" stroke="#fff" stroke-width="0.8" opacity=".5"/>
+    <rect x="-6.5" y="-4.5" width="13" height="3.4" rx="1.6" fill="${stage===3?'#f6c453':'#6e5335'}"/>
+    <rect x="-1.6" y="-1" width="3.2" height="7" rx="1.4" fill="#3a2c1c"/>
+    <circle cx="0" cy="8" r="2" fill="${stage===3?'#f6c453':'#8a6a42'}"/></g>`;
+  return g;
+}
+
+function staffArt({A,uid,stage}, hx, hy){
+  if(stage===0){ // twig with tiny spark
+    return `<line x1="${hx}" y1="${hy+8}" x2="${hx+3}" y2="${hy-26}" stroke="#7a5a3c" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="${hx+3.5}" cy="${hy-28}" r="2.5" fill="${A.accent}" opacity=".8"/>`;
+  }
+  const top = stage===1 ? 34 : 46;
+  const orbR = stage===1 ? 3.5 : stage===2 ? 5 : 6;
+  let s = `<line x1="${hx}" y1="${hy+10}" x2="${hx+4}" y2="${hy-top}" stroke="#4a3624" stroke-width="3.6" stroke-linecap="round"/>`;
+  if(stage>=2) s += `<path d="M${hx+4} ${hy-top} q-6 -4 -2 -9 M${hx+4} ${hy-top} q6 -4 2 -9" stroke="#4a3624" stroke-width="2.4" fill="none"/>`;
+  s += `<circle cx="${hx+4}" cy="${hy-top-(stage>=2?9:3)}" r="${orbR}" fill="${A.accent}" filter="url(#gl${uid})"/>
+        <circle cx="${hx+4-orbR*0.3}" cy="${hy-top-(stage>=2?9:3)-orbR*0.3}" r="${orbR*0.35}" fill="#fff" opacity=".8"/>`;
+  return s;
+}
+
+function shieldArt({A,uid,stage}, x, y){
+  const sc = stage===1 ? 0.8 : 1.15;
+  return `<g transform="translate(${x-3} ${y}) scale(${sc})">
+    <path d="M0 -13 Q8 -11 12 -13 L12 2 Q12 12 0 16 Q-12 12 -12 2 L-12 -13 Q-8 -11 0 -13 Z"
+      fill="url(#mt${uid})" stroke="${stage===3?'#f6c453':METAL_DARK}" stroke-width="1.6"/>
+    <path d="M0 -6 l3.5 4 l-3.5 5.5 l-3.5 -5.5 Z" fill="${A.accent}" ${stage===3?`filter="url(#gl${uid})"`:""}/>
+  </g>`;
+}
+
+function bannerArt({A,uid,stage,headCy}, hx, hy){
+  const topY = headCy - (stage>=2? 26 : 14);
+  let s = `<line x1="${hx+2}" y1="${hy+10}" x2="${hx+2}" y2="${topY}" stroke="#4a3624" stroke-width="3.4" stroke-linecap="round"/>
+    <circle cx="${hx+2}" cy="${topY-2}" r="2.6" fill="${stage===3?'#f6c453':'#8a6a42'}"/>`;
+  if(stage>=1){
+    const fw = stage===1 ? 16 : 24, fh = stage===1 ? 12 : 18;
+    s += `<path d="M${hx+2} ${topY+2} L${hx+2-fw} ${topY+4} L${hx+2-fw+4} ${topY+4+fh/2} L${hx+2-fw} ${topY+4+fh} L${hx+2} ${topY+2+fh} Z"
+      fill="${A.accent}" opacity=".92" ${stage===3?`filter="url(#gl${uid})"`:""}/>
+      <circle cx="${hx+2-fw*0.55}" cy="${topY+4+fh/2}" r="2.4" fill="${darken(A.cloth[1],0.2)}"/>`;
+  }
+  return s;
+}
+
+function boStaffArt({A,uid,stage}, hx, hy){
+  if(stage===0) return `<line x1="${hx-4}" y1="${hy+12}" x2="${hx+6}" y2="${hy-20}" stroke="#a07a4a" stroke-width="3" stroke-linecap="round"/>`;
+  const l = stage===1 ? 24 : 32;
+  let s = `<line x1="${hx-6}" y1="${hy+l*0.7}" x2="${hx+8}" y2="${hy-l}" stroke="#8a6a42" stroke-width="3.4" stroke-linecap="round"/>`;
+  if(stage>=2) s += `<circle cx="${hx+8}" cy="${hy-l}" r="3" fill="none" stroke="${A.accent}" stroke-width="1.8" ${stage===3?`filter="url(#gl${uid})"`:""}/>`;
+  return s;
+}
+
+function bowArt({A,uid,stage}, hx, hy){
+  const sc = stage===1 ? 0.85 : 1.2;
+  const glow = stage===3 ? `filter="url(#gl${uid})"` : "";
+  return `<g transform="translate(${hx} ${hy}) rotate(-14) scale(${sc})">
+    <path d="M0 -26 Q14 0 0 26" stroke="#a3814f" stroke-width="3.6" fill="none" stroke-linecap="round"/>
+    <path d="M0 -26 L0 26" stroke="${stage===3?A.accent:'#cfd6ea'}" stroke-width="1.1" ${glow}/>
+    ${stage>=2?`<path d="M0 0 L18 -2" stroke="#8a6a42" stroke-width="2"/><path d="M18 -2 l-4 -2.4 l0 4.8 Z" fill="${A.accent}" ${glow}/>`:""}
+  </g>`;
+}
+
+// ---------- head ----------
+function drawHead(G){
+  const {cx,headCy,A,P,uid,stage} = G;
+  const r = P.headR;
+  let s = `<circle cx="${cx}" cy="${headCy}" r="${r}" fill="${A.skin}"/>
+    <path d="M${cx-r} ${headCy} a${r} ${r} 0 0 0 ${r*2} 0" fill="#000" opacity=".12"/>`;
+  s += hairArt(G);
+  s += faceArt(G);
+  return s;
+}
+
+function hairArt({cx,headCy,A,P,uid,stage}){
+  const r = P.headR, c = A.hairC, kind = A.kind;
+  let s = "";
+  if(kind==="warrior"){
+    let p = `M${cx-r*0.95} ${headCy-r*0.2} Q${cx-r*0.9} ${headCy-r*1.05} ${cx-r*0.45} ${headCy-r*0.98}`;
+    p += ` L${cx-r*0.35} ${headCy-r*1.3} L${cx-r*0.1} ${headCy-r*1.0}`;
+    p += ` L${cx+r*0.12} ${headCy-r*1.35} L${cx+r*0.32} ${headCy-r*1.0}`;
+    p += ` L${cx+r*0.58} ${headCy-r*1.2} L${cx+r*0.64} ${headCy-r*0.9}`;
+    p += ` Q${cx+r*0.95} ${headCy-r*0.7} ${cx+r*0.95} ${headCy-r*0.15}`;
+    p += ` Q${cx} ${headCy-r*0.5} ${cx-r*0.95} ${headCy-r*0.2} Z`;
+    s += `<path d="${p}" fill="${c}"/>`;
+    s += `<rect x="${cx-r*0.98}" y="${headCy-r*0.5}" width="${r*1.96}" height="${r*0.28}" rx="${r*0.14}" fill="${stage===3?'#f6c453':A.accent}"/>`;
+    if(stage>=2){ // war paint
+      s += `<path d="M${cx-r*0.55} ${headCy+r*0.28} l${r*0.32} ${r*0.18} M${cx+r*0.55} ${headCy+r*0.28} l-${r*0.32} ${r*0.18}" stroke="${A.accent}" stroke-width="1.6"/>`;
+    }
+  }
+  if(kind==="mage"){
+    if(stage===0){
+      s += `<path d="M${cx-r*0.95} ${headCy-r*0.1} Q${cx-r*0.9} ${headCy-r*1.1} ${cx} ${headCy-r*1.02} Q${cx+r*0.95} ${headCy-r*1.05} ${cx+r*0.95} ${headCy-r*0.1} Q${cx} ${headCy-r*0.55} ${cx-r*0.95} ${headCy-r*0.1} Z" fill="${c}"/>`;
+    } else {
+      // hood
+      s += `<path d="M${cx-r*1.12} ${headCy+r*0.55} Q${cx-r*1.3} ${headCy-r*1.0} ${cx} ${headCy-r*1.3}
+        Q${cx+r*1.3} ${headCy-r*1.0} ${cx+r*1.12} ${headCy+r*0.55}
+        Q${cx+r*0.95} ${headCy+r*0.15} ${cx+r*0.8} ${headCy-r*0.25}
+        Q${cx} ${headCy-r*0.7} ${cx-r*0.8} ${headCy-r*0.25}
+        Q${cx-r*0.95} ${headCy+r*0.15} ${cx-r*1.12} ${headCy+r*0.55} Z" fill="url(#cl${uid})"/>`;
+      s += `<path d="M${cx-r*0.8} ${headCy-r*0.25} Q${cx} ${headCy-r*0.7} ${cx+r*0.8} ${headCy-r*0.25}" stroke="${A.accent}" stroke-width="1.2" fill="none" opacity=".6"/>`;
+    }
+  }
+  if(kind==="knight"){
+    if(stage===0){
+      s += `<path d="M${cx-r*0.95} ${headCy-r*0.12} Q${cx-r*0.85} ${headCy-r*1.08} ${cx+r*0.1} ${headCy-r*1.02} Q${cx+r*0.95} ${headCy-r*0.95} ${cx+r*0.92} ${headCy-r*0.2} Q${cx} ${headCy-r*0.6} ${cx-r*0.95} ${headCy-r*0.12} Z" fill="${c}"/>`;
+    } else if(stage===1){
+      // simple cap helm
+      s += `<path d="M${cx-r*1.02} ${headCy-r*0.05} Q${cx-r*0.95} ${headCy-r*1.15} ${cx} ${headCy-r*1.15} Q${cx+r*0.95} ${headCy-r*1.15} ${cx+r*1.02} ${headCy-r*0.05} Z" fill="url(#mt${uid})" stroke="${METAL_DARK}" stroke-width="1"/>`;
+    } else {
+      // full helm with visor slit + plume
+      s += `<path d="M${cx-r*1.05} ${headCy+r*0.75} L${cx-r*1.05} ${headCy-r*0.3} Q${cx-r*0.95} ${headCy-r*1.2} ${cx} ${headCy-r*1.2} Q${cx+r*0.95} ${headCy-r*1.2} ${cx+r*1.05} ${headCy-r*0.3} L${cx+r*1.05} ${headCy+r*0.75} Q${cx} ${headCy+r*1.0} ${cx-r*1.05} ${headCy+r*0.75} Z" fill="url(#mt${uid})" stroke="${METAL_DARK}" stroke-width="1.2"/>`;
+      s += `<rect x="${cx-r*0.72}" y="${headCy-r*0.28}" width="${r*1.44}" height="${r*0.4}" rx="${r*0.2}" fill="#12141f"/>`;
+      const plumeC = stage===3 ? "#f6c453" : A.accent;
+      s += `<path d="M${cx-r*0.16} ${headCy-r*1.2} Q${cx} ${headCy-r*1.9} ${cx+r*0.5} ${headCy-r*1.75} Q${cx+r*0.3} ${headCy-r*1.3} ${cx+r*0.16} ${headCy-r*1.15} Z" fill="${plumeC}"/>`;
+    }
+  }
+  if(kind==="warlord"){
+    s += `<path d="M${cx-r*1.05} ${headCy+r*0.5} Q${cx-r*1.2} ${headCy-r*0.4} ${cx-r*0.8} ${headCy-r*0.9} Q${cx-r*0.2} ${headCy-r*1.25} ${cx+r*0.5} ${headCy-r*1.05} Q${cx+r*1.15} ${headCy-r*0.7} ${cx+r*1.05} ${headCy+r*0.5} Q${cx+r*0.85} ${headCy} ${cx+r*0.7} ${headCy-r*0.35} Q${cx} ${headCy-r*0.65} ${cx-r*0.6} ${headCy-r*0.4} Q${cx-r*0.8} ${headCy-r*0.05} ${cx-r*1.05} ${headCy+r*0.5} Z" fill="${c}"/>`;
+    if(stage>=2){ // beard
+      s += `<path d="M${cx-r*0.6} ${headCy+r*0.35} Q${cx} ${headCy+r*1.35} ${cx+r*0.6} ${headCy+r*0.35} Q${cx+r*0.3} ${headCy+r*0.55} ${cx} ${headCy+r*0.5} Q${cx-r*0.3} ${headCy+r*0.55} ${cx-r*0.6} ${headCy+r*0.35} Z" fill="${c}"/>`;
+    }
+    if(stage===3){ // crown
+      s += `<path d="M${cx-r*0.75} ${headCy-r*1.0} L${cx-r*0.75} ${headCy-r*1.45} L${cx-r*0.35} ${headCy-r*1.1} L${cx} ${headCy-r*1.55} L${cx+r*0.35} ${headCy-r*1.1} L${cx+r*0.75} ${headCy-r*1.45} L${cx+r*0.75} ${headCy-r*1.0} Z" fill="#f6c453" filter="url(#gl${uid})"/>`;
+    }
+  }
+  if(kind==="monk"){
+    s += `<path d="M${cx-r*0.96} ${headCy-r*0.15} Q${cx-r*0.8} ${headCy-r*1.0} ${cx} ${headCy-r*0.98} Q${cx+r*0.8} ${headCy-r*1.0} ${cx+r*0.96} ${headCy-r*0.15} Q${cx} ${headCy-r*0.48} ${cx-r*0.96} ${headCy-r*0.15} Z" fill="${c}"/>
+      <circle cx="${cx}" cy="${headCy-r*1.1}" r="${r*0.28}" fill="${c}"/>`;
+    if(stage>=1) s += `<rect x="${cx-r*0.26}" y="${headCy-r*1.0}" width="${r*0.52}" height="${r*0.13}" rx="${r*0.06}" fill="${stage===3?'#f6c453':A.accent}"/>`;
+    if(stage===3){ // third-eye mark
+      s += `<circle cx="${cx}" cy="${headCy-r*0.45}" r="1.5" fill="${A.accent}" filter="url(#gl${uid})"/>`;
+    }
+  }
+  if(kind==="ranger"){
+    if(stage===0){
+      s += `<path d="M${cx-r*0.95} ${headCy-r*0.1} Q${cx-r*0.85} ${headCy-r*1.1} ${cx+r*0.05} ${headCy-r*1.02} Q${cx+r*0.9} ${headCy-r*1.0} ${cx+r*0.93} ${headCy-r*0.1} Q${cx} ${headCy-r*0.5} ${cx-r*0.95} ${headCy-r*0.1} Z" fill="${c}"/>`;
+    } else {
+      // pointed hood with feather
+      s += `<path d="M${cx-r*1.1} ${headCy+r*0.5} Q${cx-r*1.25} ${headCy-r*0.9} ${cx-r*0.1} ${headCy-r*1.35} L${cx+r*0.6} ${headCy-r*1.9} Q${cx+r*0.55} ${headCy-r*1.2} ${cx+r*1.05} ${headCy-r*0.35} Q${cx+r*1.1} ${headCy+r*0.3} ${cx+r*1.05} ${headCy+r*0.5}
+        Q${cx+r*0.9} ${headCy+r*0.1} ${cx+r*0.78} ${headCy-r*0.3} Q${cx} ${headCy-r*0.72} ${cx-r*0.78} ${headCy-r*0.28} Q${cx-r*0.95} ${headCy+r*0.1} ${cx-r*1.1} ${headCy+r*0.5} Z" fill="url(#cl${uid})"/>`;
+      s += `<path d="M${cx+r*0.45} ${headCy-r*1.5} q${r*0.5} -${r*0.4} ${r*0.85} -${r*0.15} q-${r*0.35} ${r*0.1} -${r*0.6} ${r*0.45} Z" fill="${A.accent}" opacity=".9"/>`;
+    }
+  }
+  return s;
+}
+
+function faceArt({cx,headCy,A,P,uid,stage}){
+  const r = P.headR;
+  const eyeY = headCy + r*0.1, dx = r*0.42;
+  let s = "";
+  if(A.kind==="knight" && stage>=2){
+    // glowing eyes in visor slit
+    const ec = stage===3 ? A.accent : "#cfd6ea";
+    s += `<circle cx="${cx-dx}" cy="${headCy-r*0.08}" r="1.4" fill="${ec}" ${stage===3?`filter="url(#gl${uid})"`:""}/>
+          <circle cx="${cx+dx}" cy="${headCy-r*0.08}" r="1.4" fill="${ec}" ${stage===3?`filter="url(#gl${uid})"`:""}/>`;
+    return s;
+  }
+  if(P.eyeStyle==="cute"){
+    s += `<circle cx="${cx-dx}" cy="${eyeY}" r="2.6" fill="#22202b"/><circle cx="${cx+dx}" cy="${eyeY}" r="2.6" fill="#22202b"/>
+      <circle cx="${cx-dx+0.8}" cy="${eyeY-0.8}" r="0.9" fill="#fff"/><circle cx="${cx+dx+0.8}" cy="${eyeY-0.8}" r="0.9" fill="#fff"/>
+      <path d="M${cx-3.5} ${headCy+r*0.5} q3.5 3 7 0" stroke="#a05a3c" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <ellipse cx="${cx-r*0.62}" cy="${headCy+r*0.32}" rx="2.6" ry="1.7" fill="#e2836f" opacity=".5"/>
+      <ellipse cx="${cx+r*0.62}" cy="${headCy+r*0.32}" rx="2.6" ry="1.7" fill="#e2836f" opacity=".5"/>`;
+    return s;
+  }
+  if(A.kind==="monk" && stage>=1){
+    s += `<path d="M${cx-dx-2.4} ${eyeY} q2.4 2.2 4.8 0" stroke="#22202b" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M${cx+dx-2.4} ${eyeY} q2.4 2.2 4.8 0" stroke="#22202b" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M${cx-2.6} ${headCy+r*0.52} l5.2 0" stroke="#a05a3c" stroke-width="1.4" stroke-linecap="round"/>`;
+    return s;
+  }
+  if(P.eyeStyle==="glow"){
+    s += `<path d="M${cx-dx-2.6} ${eyeY-1} L${cx-dx+1.6} ${eyeY-0.2} L${cx-dx+1.2} ${eyeY+1.4} L${cx-dx-2.2} ${eyeY+0.8} Z" fill="${A.accent}" filter="url(#gl${uid})"/>
+          <path d="M${cx+dx+2.6} ${eyeY-1} L${cx+dx-1.6} ${eyeY-0.2} L${cx+dx-1.2} ${eyeY+1.4} L${cx+dx+2.2} ${eyeY+0.8} Z" fill="${A.accent}" filter="url(#gl${uid})"/>`;
+  } else if(P.eyeStyle==="fierce"){
+    s += `<path d="M${cx-dx-2.6} ${eyeY-1.4} L${cx-dx+1.8} ${eyeY-0.4} L${cx-dx+1.4} ${eyeY+1.2} L${cx-dx-2.2} ${eyeY+0.6} Z" fill="#22202b"/>
+          <path d="M${cx+dx+2.6} ${eyeY-1.4} L${cx+dx-1.8} ${eyeY-0.4} L${cx+dx-1.4} ${eyeY+1.2} L${cx+dx+2.2} ${eyeY+0.6} Z" fill="#22202b"/>`;
+  } else {
+    s += `<circle cx="${cx-dx}" cy="${eyeY}" r="1.9" fill="#22202b"/><circle cx="${cx+dx}" cy="${eyeY}" r="1.9" fill="#22202b"/>`;
+  }
+  // neutral mouth
+  s += `<path d="M${cx-2.6} ${headCy+r*0.55} l5.2 0.4" stroke="#a05a3c" stroke-width="1.5" stroke-linecap="round"/>`;
+  return s;
+}
+
+// ---------- back layer (capes, quiver) ----------
+function drawBack({cx,torsoTop,hipY,ground,shoulderY,sw,A,P,uid,stage}){
+  let s = "";
+  const kind = A.kind;
+  if((kind==="warlord" && stage>=2) || (kind==="knight" && stage===3) || (kind==="warrior" && stage===3)){
+    const capC = kind==="warlord" ? darken(A.cloth[1],0.1) : darken(A.accent,0.6);
+    s += `<path d="M${cx-sw/2+2} ${shoulderY} Q${cx-sw*1.05} ${hipY} ${cx-sw*0.72} ${ground-4}
+      L${cx-sw*0.45} ${ground-12} L${cx-sw*0.15} ${ground-5} L${cx+sw*0.2} ${ground-13} L${cx+sw*0.55} ${ground-8}
+      Q${cx+sw*0.8} ${hipY+4} ${cx+sw/2-2} ${shoulderY} Z" fill="${capC}"/>`;
+  }
+  if(kind==="ranger" && stage>=1){
+    // cloak
+    s += `<path d="M${cx-sw/2+2} ${shoulderY} Q${cx-sw*0.95} ${hipY+6} ${cx-sw*0.6} ${ground-6} L${cx+sw*0.35} ${ground-12} Q${cx+sw*0.6} ${hipY} ${cx+sw/2-2} ${shoulderY} Z" fill="${darken(A.cloth[0],0.12)}"/>`;
+    // quiver over right shoulder
+    s += `<g transform="translate(${cx+sw/2+3} ${torsoTop+2}) rotate(18)">
+      <rect x="-4" y="-2" width="8" height="20" rx="3" fill="${LEATHER}"/>
+      <line x1="-2" y1="-2" x2="-2" y2="-8" stroke="#8a6a42" stroke-width="1.6"/>
+      <line x1="1" y1="-2" x2="1" y2="-9" stroke="#8a6a42" stroke-width="1.6"/>
+      <path d="M-2 -8 l-1.6 -2.6 l3.2 0 Z M1 -9 l-1.6 -2.6 l3.2 0 Z" fill="${A.accent}"/></g>`;
+  }
+  if(kind==="mage" && stage===3){
+    // floating rune ring behind
+    for(let i=0;i<5;i++){
+      const ang = -90 + i*36 - 72;
+      const rx = 38, ry = 14;
+      const x = cx + rx*Math.cos(ang*Math.PI/180);
+      const y = torsoTop + 6 + ry*Math.sin(ang*Math.PI/180);
+      s += `<text x="${x}" y="${y}" font-size="9" fill="${A.accent}" opacity="1" filter="url(#gl${uid})" text-anchor="middle" font-family="serif">${["ᚱ","ᛟ","ᚦ","ᛉ","ᚨ"][i]}</text>`;
+    }
+  }
+  return s;
+}
+
+// ---------- front fx ----------
+function drawFront({cx,ground,A,P,uid,stage}){
+  let s = "";
+  if(A.kind==="monk" && stage===3){
+    s += `<path d="M${cx} ${ground+1} q-11 -1 -13 -10 q7.5 1 10 5.5 q-1.5 -9 3 -13 q4.5 4 3 13 q2.5 -4.5 10 -5.5 q-2 9 -13 10 Z" fill="${A.accent}" opacity=".9" filter="url(#gl${uid})"/>`;
+  }
+  return s;
+}
+
+const CHARACTERS = [
+  {id:"athlete", emoji:"🏋️", name:"Атлет", stat:"str",
+   tag:"Тело — главный проект. Спортзал, бег, форма вместо оправданий.",
+   bonus:"+50% XP за привычки Силы"},
+  {id:"strategist", emoji:"🧠", name:"Стратег", stat:"int",
+   tag:"Книги, курсы, новые навыки. Инвестирует в голову — она окупается лучше всего.",
+   bonus:"+50% XP за привычки Интеллекта"},
+  {id:"pro", emoji:"💼", name:"Профи", stat:"dis",
+   tag:"Карьера, дедлайны, порядок в делах и финансах. Дисциплина — его суперсила.",
+   bonus:"+50% XP за привычки Дисциплины"},
+  {id:"leader", emoji:"🎤", name:"Лидер", stat:"cha",
+   tag:"Люди, связи, переговоры. Знает, что нетворкинг решает не меньше, чем скиллы.",
+   bonus:"+50% XP за привычки Харизмы"},
+  {id:"zen", emoji:"🧘", name:"Дзен-мастер", stat:"hlt",
+   tag:"Сон, питание, ментальное здоровье. Марафон жизни выигрывает отдохнувший.",
+   bonus:"+50% XP за привычки Здоровья"},
+  {id:"pioneer", emoji:"🚀", name:"Первопроходец", stat:null,
+   tag:"Не выбирает одну колею — прокачивает всё сразу: тело, голову, дело и людей.",
+   bonus:"+15% XP за любые привычки"},
+];
+const charById = id => CHARACTERS.find(c=>c.id===id);
+function stageForLevel(l){ return l>=20 ? 3 : l>=12 ? 2 : l>=5 ? 1 : 0; }
+const MAX_HP = 50;
+const ACHIEVEMENTS = [
+  {id:"first",    ico:"👣", title:"Первый шаг",      desc:"Выполни привычку впервые",            test:s=>s.totals.done>=1},
+  {id:"ten",      ico:"🔟", title:"Десятка",          desc:"10 выполненных привычек",             test:s=>s.totals.done>=10},
+  {id:"fifty",    ico:"💯", title:"Полсотни",         desc:"50 выполненных привычек",             test:s=>s.totals.done>=50},
+  {id:"twoH",     ico:"🏔", title:"Восхождение",      desc:"200 выполненных привычек",            test:s=>s.totals.done>=200},
+  {id:"streak7",  ico:"🔥", title:"Неделя огня",      desc:"Серия 7 дней подряд",                 test:s=>s.totals.bestStreak>=7},
+  {id:"streak30", ico:"🌋", title:"Железная воля",    desc:"Серия 30 дней подряд",                test:s=>s.totals.bestStreak>=30},
+  {id:"lvl5",     ico:"⭐", title:"Пятый уровень",    desc:"Достигни 5 уровня",                   test:s=>s.hero.level>=5},
+  {id:"lvl10",    ico:"🌟", title:"Двузначный",       desc:"Достигни 10 уровня",                  test:s=>s.hero.level>=10},
+  {id:"lvl25",    ico:"👑", title:"Четверть сотни",   desc:"Достигни 25 уровня",                  test:s=>s.hero.level>=25},
+  {id:"rich",     ico:"💰", title:"Богач",            desc:"Заработай 500 золота за всё время",   test:s=>s.totals.goldEarned>=500},
+  {id:"buyer",    ico:"🛍", title:"Умеешь отдыхать",  desc:"Купи первую награду в магазине",      test:s=>s.totals.bought>=1},
+  {id:"habits5",  ico:"📜", title:"Стратег",          desc:"Заведи 5 привычек одновременно",      test:s=>s.habits.filter(h=>h.type==="good").length>=5},
+  {id:"stat25",   ico:"🏋️", title:"Специалист",       desc:"Прокачай любую характеристику до 25", test:s=>Object.values(s.hero.stats).some(v=>v>=25)},
+  {id:"days30",   ico:"📅", title:"Месяц в игре",     desc:"30 активных дней",                    test:s=>Object.keys(s.activeDays).length>=30},
+];
+
+// ---------- state ----------
+function defaultState(){
+  return {
+    hero:{name:"Герой", charId:null, level:1, xp:0, hp:MAX_HP, gold:0,
+          stats:{str:0,int:0,dis:0,cha:0,hlt:0}},
+    habits:[],
+    rewards:[
+      {id:rid(), name:"Час игр или сериала", price:30},
+      {id:rid(), name:"Вкусняшка без чувства вины", price:15},
+      {id:rid(), name:"Выходной от всех привычек", price:120},
+    ],
+    achieved:{},
+    activeDays:{},
+    totals:{done:0, bestStreak:0, goldEarned:0, bought:0},
+  };
+}
+function rid(){ return Math.random().toString(36).slice(2,10); }
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return defaultState();
+    const s = JSON.parse(raw);
+    // merge with defaults for forward-compat
+    const d = defaultState();
+    return Object.assign(d, s, {hero:Object.assign(d.hero, s.hero||{}, {stats:Object.assign(d.hero.stats,(s.hero||{}).stats||{})}),
+                                totals:Object.assign(d.totals, s.totals||{})});
+  }catch(e){ return defaultState(); }
+}
+let S = load();
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(S)); }
+
+// ---------- leveling ----------
+function xpNeeded(level){ return 100 + (level-1)*50; }
+function rankFor(level){
+  let r = RANKS[0][1];
+  for(const [lvl,name] of RANKS){ if(level>=lvl) r=name; }
+  return r;
+}
+function gainXp(amount){
+  S.hero.xp += amount;
+  const stageBefore = stageForLevel(S.hero.level);
+  let leveled = false;
+  while(S.hero.xp >= xpNeeded(S.hero.level)){
+    S.hero.xp -= xpNeeded(S.hero.level);
+    S.hero.level++;
+    leveled = true;
+    S.hero.hp = MAX_HP; // level up heals
+  }
+  if(leveled) showLevelUp(stageForLevel(S.hero.level) > stageBefore);
+}
+function loseHp(dmg){
+  S.hero.hp -= dmg;
+  if(S.hero.hp <= 0){
+    if(S.hero.level > 1){
+      S.hero.level--;
+      toast("💀 HP на нуле! Ты потерял уровень…","loss");
+    } else {
+      toast("💀 HP на нуле! Держись, начинаем заново.","loss");
+    }
+    S.hero.xp = 0;
+    S.hero.hp = MAX_HP;
+  }
+}
+
+// ---------- habit actions ----------
+function completeHabit(h){
+  const t = todayStr();
+  if(h.type === "good"){
+    if(h.lastDone === t) return;
+    h.streak = (h.lastDone === yesterdayStr()) ? (h.streak||0)+1 : 1;
+    h.lastDone = t;
+    h.count = (h.count||0)+1;
+
+    const d = DIFF[h.diff];
+    const streakBonus = Math.min(Math.floor((h.streak-1)/3)*5, 25); // +5 xp per 3-day streak step, cap +25
+    let xp = d.xp + streakBonus;
+    const ch = charById(S.hero.charId);
+    let classBonus = false;
+    if(ch){
+      if(ch.stat === null){ xp = Math.round(xp*1.15); classBonus = true; }
+      else if(ch.stat === h.stat){ xp = Math.round(xp*1.5); classBonus = true; }
+    }
+    gainXp(xp);
+    S.hero.gold += d.gold;
+    S.totals.goldEarned += d.gold;
+    S.hero.stats[h.stat] = (S.hero.stats[h.stat]||0)+1;
+    S.totals.done++;
+    if(h.streak > S.totals.bestStreak) S.totals.bestStreak = h.streak;
+    S.activeDays[t] = true;
+
+    toast(`+${xp} XP${classBonus?" ⚡":""}, +${d.gold} 🪙 · ${STATS[h.stat].ico} ${STATS[h.stat].name} +1` +
+          (h.streak>1?` · 🔥 серия ${h.streak}`:""), "gain");
+  } else {
+    const d = DIFF[h.diff];
+    h.count = (h.count||0)+1;
+    h.lastDone = t;
+    loseHp(d.dmg);
+    toast(`−${d.dmg} HP · честность тоже прокачка 💔`,"loss");
+  }
+  checkAchievements();
+  save(); render();
+}
+
+function checkAchievements(){
+  for(const a of ACHIEVEMENTS){
+    if(!S.achieved[a.id] && a.test(S)){
+      S.achieved[a.id] = todayStr();
+      toast(`🏆 Достижение: ${a.title}!`,"gain");
+    }
+  }
+}
+
+// ---------- UI helpers ----------
+function toast(msg, cls){
+  const box = document.getElementById("toasts");
+  const el = document.createElement("div");
+  el.className = "toast " + (cls||"");
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(()=>{ el.style.opacity="0"; el.style.transition="opacity .4s"; }, 2600);
+  setTimeout(()=> el.remove(), 3100);
+}
+function showLevelUp(evolved){
+  const m = document.getElementById("levelup");
+  const ch = charById(S.hero.charId);
+  const stage = stageForLevel(S.hero.level);
+  const art = document.getElementById("lvlupArt");
+  if(ch){ art.innerHTML = charSVG(ch.id, stage, 130); } else { art.textContent = "🎉"; }
+  const evo = document.getElementById("evoBadge");
+  if(evolved && ch){
+    evo.style.display = "";
+    evo.textContent = `⬆ Эволюция: теперь ты ${STAGE_PARAMS[stage].name}!`;
+  } else {
+    evo.style.display = "none";
+  }
+  document.getElementById("lvlupTitle").textContent = `Уровень ${S.hero.level}!`;
+  document.getElementById("lvlupText").textContent =
+    `Ранг: ${rankFor(S.hero.level)} · HP полностью восстановлено`;
+  m.classList.add("show");
+  for(let i=0;i<24;i++){
+    const c = document.createElement("div");
+    c.className="confetti";
+    c.textContent=["🎉","✨","⭐","🎊","💜"][i%5];
+    c.style.left = Math.random()*100+"vw";
+    c.style.animationDuration = (2+Math.random()*2)+"s";
+    c.style.animationDelay = (Math.random()*0.6)+"s";
+    document.body.appendChild(c);
+    setTimeout(()=>c.remove(), 4500);
+  }
+}
+
+// ---------- render ----------
+function render(){
+  const h = S.hero;
+  const ch = charById(h.charId);
+  const stage = stageForLevel(h.level);
+  const avatarEl = document.getElementById("avatar");
+  if(ch){ avatarEl.innerHTML = charSVG(ch.id, stage, 66); }
+  else { avatarEl.textContent = "❔"; avatarEl.style.fontSize = "34px"; }
+  const nameEl = document.getElementById("heroName");
+  if(document.activeElement !== nameEl) nameEl.value = h.name;
+  document.getElementById("heroRank").textContent = `🏅 ${rankFor(h.level)}`;
+  document.getElementById("heroClass").textContent =
+    ch ? `${ch.name} · ${STAGE_PARAMS[stage].name} · ${ch.bonus}` : "Персонаж не выбран";
+  document.getElementById("heroLvl").textContent = `Уровень ${h.level}`;
+  document.getElementById("gold").textContent = h.gold;
+
+  const need = xpNeeded(h.level);
+  document.getElementById("xpBar").style.width = Math.min(100, h.xp/need*100)+"%";
+  document.getElementById("xpVal").textContent = `${h.xp} / ${need}`;
+  document.getElementById("hpBar").style.width = Math.max(0, h.hp/MAX_HP*100)+"%";
+  document.getElementById("hpVal").textContent = `${h.hp} / ${MAX_HP}`;
+
+  renderHabits(); renderStats(); renderShop(); renderAch();
+}
+
+function renderHabits(){
+  const box = document.getElementById("habitList");
+  box.innerHTML = "";
+  if(!S.habits.length){
+    box.innerHTML = `<div class="empty"><span class="big">🗺</span>
+      Твоё приключение начинается здесь.<br>Добавь первую полезную привычку!</div>`;
+    return;
+  }
+  const t = todayStr();
+  for(const hb of S.habits){
+    const doneToday = hb.type==="good" && hb.lastDone===t;
+    const el = document.createElement("div");
+    el.className = "habit" + (doneToday?" done-today":"");
+    const d = DIFF[hb.diff];
+    const meta = hb.type==="good"
+      ? `<span class="chip">${STATS[hb.stat].ico} ${STATS[hb.stat].name}</span>
+         <span class="chip">+${d.xp} XP · +${d.gold} 🪙</span>
+         ${hb.streak>1?`<span class="chip streak">🔥 ${hb.streak}</span>`:""}`
+      : `<span class="chip">💔 вредная</span><span class="chip">−${d.dmg} HP</span>
+         ${hb.count?`<span class="chip">срывов: ${hb.count}</span>`:""}`;
+    el.innerHTML = `
+      <button class="habit-btn ${hb.type}" ${doneToday?"disabled":""}
+              title="${hb.type==="good"?"Выполнено!":"Сорвался"}">${hb.type==="good"?(doneToday?"✅":"⚔️"):"💥"}</button>
+      <div class="habit-main">
+        <div class="habit-title">${esc(hb.name)}</div>
+        <div class="habit-meta">${meta}</div>
+      </div>
+      <button class="habit-del" title="Удалить">✕</button>`;
+    el.querySelector(".habit-btn").addEventListener("click", ()=>completeHabit(hb));
+    el.querySelector(".habit-del").addEventListener("click", ()=>{
+      if(confirm(`Удалить «${hb.name}»?`)){
+        S.habits = S.habits.filter(x=>x.id!==hb.id); save(); render();
+      }
+    });
+    box.appendChild(el);
+  }
+}
+
+function renderStats(){
+  const box = document.getElementById("statList");
+  box.innerHTML = "";
+  const max = Math.max(10, ...Object.values(S.hero.stats));
+  for(const [k,meta] of Object.entries(STATS)){
+    const v = S.hero.stats[k]||0;
+    const row = document.createElement("div");
+    row.className="stat-row";
+    row.innerHTML = `
+      <div class="stat-ico">${meta.ico}</div>
+      <div class="stat-body">
+        <div class="stat-name"><span>${meta.name}</span><span>${v}</span></div>
+        <div class="stat-bar"><div class="stat-fill" style="width:${v/max*100}%;background:${meta.color}"></div></div>
+      </div>`;
+    box.appendChild(row);
+  }
+  document.getElementById("tDone").textContent = S.totals.done;
+  document.getElementById("tStreak").textContent = S.totals.bestStreak;
+  document.getElementById("tGold").textContent = S.totals.goldEarned;
+  document.getElementById("tDays").textContent = Object.keys(S.activeDays).length;
+}
+
+function renderShop(){
+  const box = document.getElementById("rewardList");
+  box.innerHTML = "";
+  if(!S.rewards.length){
+    box.innerHTML = `<div class="empty"><span class="big">🛍</span>Добавь награды, ради которых стоит стараться!</div>`;
+  }
+  for(const r of S.rewards){
+    const el = document.createElement("div");
+    el.className="reward";
+    el.innerHTML = `
+      <div class="habit-main">
+        <div class="habit-title">${esc(r.name)}</div>
+      </div>
+      <button class="reward-buy" ${S.hero.gold<r.price?"disabled":""}>🪙 ${r.price}</button>
+      <button class="habit-del" title="Удалить">✕</button>`;
+    el.querySelector(".reward-buy").addEventListener("click", ()=>{
+      if(S.hero.gold < r.price) return;
+      S.hero.gold -= r.price;
+      S.totals.bought++;
+      toast(`🎁 Награда куплена: ${r.name}. Наслаждайся — честно заработано!`,"gain");
+      checkAchievements(); save(); render();
+    });
+    el.querySelector(".habit-del").addEventListener("click", ()=>{
+      if(confirm(`Удалить награду «${r.name}»?`)){
+        S.rewards = S.rewards.filter(x=>x.id!==r.id); save(); render();
+      }
+    });
+    box.appendChild(el);
+  }
+}
+
+function renderAch(){
+  const box = document.getElementById("achList");
+  box.innerHTML = "";
+  const sorted = [...ACHIEVEMENTS].sort((a,b)=>(!!S.achieved[b.id])-(!!S.achieved[a.id]));
+  for(const a of sorted){
+    const got = !!S.achieved[a.id];
+    const el = document.createElement("div");
+    el.className = "ach" + (got?"":" locked");
+    el.innerHTML = `
+      <div class="ach-ico">${a.ico}</div>
+      <div>
+        <div class="ach-title">${a.title}</div>
+        <div class="ach-desc">${a.desc}${got?` · получено ${S.achieved[a.id]}`:""}</div>
+      </div>`;
+    box.appendChild(el);
+  }
+}
+
+function esc(s){ const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+
+// ---------- events ----------
+document.querySelectorAll(".tab").forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("sec-"+tab.dataset.tab).classList.add("active");
+  });
+});
+
+// ---------- character picker ----------
+function renderCharPicker(){
+  const grid = document.getElementById("charGrid");
+  grid.innerHTML = "";
+  for(const c of CHARACTERS){
+    const btn = document.createElement("button");
+    btn.className = "char-card" + (S.hero.charId===c.id?" current":"");
+    const stage = stageForLevel(S.hero.level);
+    const track = STAGE_PARAMS.map((p,i)=> i===stage ? `<b>${p.name}</b>` : p.name).join(" → ");
+    btn.innerHTML = `
+      <div class="char-art">${charSVG(c.id, stage, 86)}</div>
+      <div class="char-stage">${track}</div>
+      <div class="char-name">${c.name}</div>
+      <div class="char-tag">${c.tag}</div>
+      <span class="char-bonus">⚡ ${c.bonus}</span>`;
+    btn.addEventListener("click", ()=>{
+      const isSwitch = S.hero.charId && S.hero.charId!==c.id;
+      S.hero.charId = c.id;
+      document.getElementById("charPicker").classList.remove("show");
+      if(isSwitch) toast(`${c.emoji} Теперь ты — ${c.name}!`,"gain");
+      save(); render();
+    });
+    grid.appendChild(btn);
+  }
+}
+function openCharPicker(){
+  renderCharPicker();
+  document.getElementById("charPicker").classList.add("show");
+}
+document.getElementById("avatar").addEventListener("click", openCharPicker);
+document.getElementById("heroName").addEventListener("change", e=>{
+  S.hero.name = e.target.value.trim() || "Герой"; save(); render();
+});
+
+// segmented controls
+function segValue(id){ return document.querySelector(`#${id} button.sel`).dataset.v; }
+document.querySelectorAll(".seg").forEach(seg=>{
+  seg.addEventListener("click", e=>{
+    const btn = e.target.closest("button"); if(!btn) return;
+    seg.querySelectorAll("button").forEach(b=>b.classList.remove("sel","bad-sel"));
+    btn.classList.add("sel");
+    if(seg.id==="segType"){
+      if(btn.dataset.v==="bad") btn.classList.add("bad-sel");
+      const isBad = btn.dataset.v==="bad";
+      document.getElementById("segStat").style.display = isBad?"none":"";
+      document.getElementById("statLabel").style.display = isBad?"none":"";
+    }
+  });
+});
+
+// habit form
+const habitForm = document.getElementById("habitForm");
+document.getElementById("showHabitForm").addEventListener("click", ()=>{
+  habitForm.classList.add("open");
+  document.getElementById("habitName").focus();
+});
+document.getElementById("cancelHabit").addEventListener("click", ()=>habitForm.classList.remove("open"));
+document.getElementById("saveHabit").addEventListener("click", ()=>{
+  const name = document.getElementById("habitName").value.trim();
+  if(!name){ document.getElementById("habitName").focus(); return; }
+  S.habits.push({
+    id:rid(), name,
+    type:segValue("segType"),
+    diff:segValue("segDiff"),
+    stat:segValue("segStat"),
+    streak:0, count:0, lastDone:null, created:todayStr(),
+  });
+  document.getElementById("habitName").value="";
+  habitForm.classList.remove("open");
+  checkAchievements(); save(); render();
+});
+
+// reward form
+const rewardForm = document.getElementById("rewardForm");
+document.getElementById("showRewardForm").addEventListener("click", ()=>{
+  rewardForm.classList.add("open");
+  document.getElementById("rewardName").focus();
+});
+document.getElementById("cancelReward").addEventListener("click", ()=>rewardForm.classList.remove("open"));
+document.getElementById("saveReward").addEventListener("click", ()=>{
+  const name = document.getElementById("rewardName").value.trim();
+  if(!name){ document.getElementById("rewardName").focus(); return; }
+  S.rewards.push({id:rid(), name, price:parseInt(segValue("segPrice"),10)});
+  document.getElementById("rewardName").value="";
+  rewardForm.classList.remove("open");
+  save(); render();
+});
+
+// streak decay check on load: if a good habit missed a day, streak resets visually next completion (handled in completeHabit)
+render();
+if(!S.hero.charId) openCharPicker(); // first launch (or old save): pick a character
+})();
+</script>
+</body>
+</html>
