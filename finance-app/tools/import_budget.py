@@ -205,7 +205,7 @@ for name, data in [('accounts', accounts), ('categories', categories), ('project
     (WEB / name).mkdir(parents=True, exist_ok=True)
     for d in data:
         did = doc_id_of(d['id']); json.dump(d, open(WEB / name / f'{did}.json', 'w'), ensure_ascii=False); manifest.append({'collection': name, 'doc_id': did, 'path': str(WEB / name / f'{did}.json')})
-for name in ('invoices', 'obligations', 'payroll', 'cash'):
+for name in ('invoices', 'obligations', 'payroll', 'cash', 'employees', 'vacations'):
     f = OUT / f'{name}.json'
     if f.exists():
         (WEB / name).mkdir(parents=True, exist_ok=True)

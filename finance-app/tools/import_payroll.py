@@ -23,18 +23,20 @@ for sh in wb.sheets():
     m = MONTHS.get(sh.name.strip().lower())
     if not m: continue
     ym = f'{args.year}-{m:02d}'; order.append(ym)
-    lines = []; block = 0; company = 'MOST Project'
+    lines = []; block = 0; company = 'MOST Project'; in_extra = False
     for r in range(sh.nrows):
         row = [sh.cell_value(r, c) for c in range(sh.ncols)]
         name = txt(row[1]) if len(row) > 1 else ''
         if name.startswith('Фамилия'):
-            block += 1; company = 'MOST Project' if block == 1 else 'MOST Architects'; continue
-        if txt(row[2]).startswith('Всего') or name.lower().startswith('доплат'): continue
+            block += 1; company = 'MOST Project' if block == 1 else 'MOST Architects'; in_extra = False; continue
+        if name.lower().startswith('доплат') or txt(row[2]).lower().startswith('доп') or txt(row[0]).lower().startswith('доплат'): in_extra = True; continue
+        if in_extra or txt(row[2]).startswith('Всего'): continue
         if not name or not re.search(r'[А-Яа-яӘәҚқҢңӨөҰұҮүҺһІіA-Za-z]', name) or len(row) < 5: continue
         iin = re.sub(r'\D', '', txt(row[2]))
         if len(iin) != 12 and not num(row[3]) and not num(row[4]): continue
         if name.lower().startswith('доп') or 'дни' in txt(row[2]).lower(): continue
         oklad, actual = round(num(row[3])), round(num(row[4]), 2)
+        if len(iin) != 12 and oklad < 10000: continue
         note = txt(row[5]) if len(row) > 5 else ''
         extra = txt(row[6]) if len(row) > 6 else ''
         comp = 'MOST Architects' if 'ARCHITECTS' in (note + extra).upper() else company

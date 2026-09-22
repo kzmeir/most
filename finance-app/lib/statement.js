@@ -59,6 +59,7 @@
         if ((m = text.match(/Исходящий остаток\s*([\d\s ]+(?:[,.]\d{2})?)/))) { meta.closing = money(m[1]); continue; }
         // строки таблицы (шапку с нумерацией колонок 1..9 пропускаем)
         if (row.items.length >= 5 && row.items.every(i => /^\d$/.test(i.text.trim()))) continue;
+        if (/итого|оборот/i.test(text)) { cur = null; continue; }
         let date = '', no = '', amtItems = [], cp = [], purpose = [], knp = '';
         for (const it of row.items) {
           const t = it.text.trim(); if (!t) continue;
@@ -88,7 +89,7 @@
       o.counterparty = cleanCounterparty(o.counterparty); o.purpose = o.purpose.replace(/\s+/g, ' ').trim();
       if (!o.date) o.date = meta.to || '';
     }
-    return { meta, ops };
+    return { meta, ops: ops.filter(o => o.counterparty || o.purpose) };
   }
   // «ТОО "ПрофТорг" БИН/ИИН 140340012297» → «ТОО "ПрофТорг"»
   function cleanCounterparty(s) {
@@ -122,7 +123,7 @@
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i); const vp = page.getViewport({ scale: 1 }); const tc = await page.getTextContent();
       const items = [];
-      for (const it of tc.items) { if (!it.str || !it.str.trim()) continue; const x0 = it.transform[4], y = it.transform[5]; const h = Math.abs(it.transform[3]) || it.height || 8; items.push({ x0, x1: x0 + (it.width || 0), top: vp.height - y - h, text: it.str }); }
+      for (const it of tc.items) { if (!it.str || !it.str.trim()) continue; const t = it.transform; const [x, y] = vp.convertToViewportPoint(t[4], t[5]); const h = it.height || Math.hypot(t[2], t[3]) || 8; items.push({ x0: x, x1: x + (it.width || 0), top: y - h, text: it.str }); }
       pages.push({ height: vp.height, items });
     }
     return pages;
