@@ -42,3 +42,7 @@ td.amt,th.amt{text-align:right;white-space:nowrap;font-weight:600}.row-old{backg
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;font-size:13.5px;z-index:60;box-shadow:var(--shadow)}
 .notice{background:var(--accent-soft);border-radius:10px;padding:12px 14px;font-size:13.5px;margin-bottom:14px}.notice.warn{background:var(--warn-bg)}
 pre.log{background:var(--panel-2);border-radius:8px;padding:10px;font-size:12px;max-height:280px;overflow:auto}
+/* операции */
+.cell-edit{border:1px dashed transparent;background:transparent;cursor:pointer;padding:2px 6px;border-radius:6px;text-align:left;font:inherit;color:inherit;max-width:220px;white-space:normal}.cell-edit:hover{border-color:var(--line-strong);background:var(--panel-2)}.cell-edit.none{color:var(--crit)}.cell-edit.auto{background:var(--warn-bg);color:var(--warn)}.cell-edit i{font-style:normal;font-size:10px;letter-spacing:.04em;text-transform:uppercase;opacity:.8}
+tr.row-transfer td{color:var(--ink-faint)}tr.row-untagged td:first-child{box-shadow:inset 3px 0 0 var(--crit)}
+.ok-text{color:var(--ok)}.filters label.chip{padding:6px 10px;font-size:12.5px}

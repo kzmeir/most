@@ -7,13 +7,13 @@ const os = require('os');
 const { URL } = require('url');
 const store = require('./lib/store');
 const auth = require('./lib/auth');
-const rules = require('./lib/rules');
-const x1c = require('./lib/export1c');
+const D = require('./lib/domain');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, 'public');
 const SEED_DIR = path.join(__dirname, 'seed');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8' };
+const MAX_OPS = 3000;
 
 store.load();
 
@@ -28,7 +28,7 @@ const err = (res, status, message) => send(res, status, { error: message });
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
-    req.on('data', c => { size += c.length; if (size > 2 * 1024 * 1024) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
+    req.on('data', c => { size += c.length; if (size > 8 * 1024 * 1024) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8');
       if (!raw) return resolve({});
@@ -37,64 +37,14 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
-const today = () => new Date().toISOString().slice(0, 10);
-const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-function daysBetween(a, b) { return Math.max(0, Math.floor((new Date(b) - new Date(a)) / 864e5)); }
+const today = D.todayStr, num = D.num;
 function lanIPs() {
   const out = [];
   for (const list of Object.values(os.networkInterfaces())) for (const i of list) if (i.family === 'IPv4' && !i.internal) out.push(i.address);
   return out;
 }
-
-// ---------- domain hooks ----------
 function userName(id) { const u = store.get().users.find(x => x.id === id); return u ? (u.name || u.login) : ''; }
-function decorateDoc(d) {
-  const end = d.status === 'done' && d.doneAt ? d.doneAt : new Date().toISOString();
-  return Object.assign({}, d, { daysWaiting: d.createdAt ? daysBetween(d.createdAt, end) : 0, requestedByName: userName(d.requestedBy), assignedToName: userName(d.assignedTo), updatedByName: userName(d.updatedBy) });
-}
-function onInvoiceUpdate(before, after, user) {
-  // «оплачено» → запись в расходы (один раз)
-  if (after.status === 'paid' && before.status !== 'paid') {
-    after.paidAt = after.paidAt || today();
-    const exists = store.col('expenses').some(e => e.invoiceId === after.id);
-    if (!exists) store.insert('expenses', { date: after.paidAt, company: after.company || '', recipient: after.contractor || '', amount: num(after.amount), category: 'Счета к оплате', purpose: after.purpose || '', project: after.project || '', invoiceId: after.id, createdBy: user.id });
-  }
-}
-
-// ---------- dashboard ----------
-function dashboard() {
-  const db = store.get();
-  const ym = today().slice(0, 7);
-  const prev = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })();
-  const year = today().slice(0, 4);
-  const sum = (arr, f) => arr.filter(f).reduce((s, x) => s + num(x.amount), 0);
-  const inc = db.income, exp = db.expenses;
-  const incM = sum(inc, x => (x.date || '').startsWith(ym)), expM = sum(exp, x => (x.date || '').startsWith(ym));
-  const incP = sum(inc, x => (x.date || '').startsWith(prev)), expP = sum(exp, x => (x.date || '').startsWith(prev));
-  const incY = sum(inc, x => (x.date || '').startsWith(year)), expY = sum(exp, x => (x.date || '').startsWith(year));
-  const byCompany = {}; for (const x of inc.filter(x => (x.date || '').startsWith(year))) byCompany[x.company || '—'] = (byCompany[x.company || '—'] || 0) + num(x.amount);
-  const byCat = {}; for (const x of exp.filter(x => (x.date || '').startsWith(year))) byCat[x.category || 'Прочее'] = (byCat[x.category || 'Прочее'] || 0) + num(x.amount);
-  const cash = db.cash.map(c => ({ id: c.id, company: c.company, balance: num(c.balance), asOf: c.asOf }));
-  const cashTotal = cash.reduce((s, c) => s + c.balance, 0);
-  const pay = [...db.payroll].sort((a, b) => (b.id > a.id ? 1 : -1))[0];
-  const payrollNet = pay ? num(pay.project) + num(pay.architects) : 0;
-  const payrollGross = Math.round(payrollNet * (1 + num(db.settings.payrollTax || 0.45)));
-  const oblig = db.obligations.reduce((s, o) => s + num(o.monthly), 0);
-  const fixedLoad = payrollGross + oblig;
-  const kpnDeferred = Math.max(0, Math.round((incY - expY) * 0.20));
-  const openInv = db.invoices.filter(i => i.status === 'open'), heldInv = db.invoices.filter(i => i.status === 'held');
-  const queue = db.docs.filter(d => d.status !== 'done').map(decorateDoc);
-  return {
-    asOf: today(), month: ym,
-    cash, cashTotal,
-    month: { ym, income: incM, expenses: expM, net: incM - expM, prevYm: prev, prevIncome: incP, prevExpenses: expP },
-    year: { income: incY, expenses: expY, net: incY - expY, byCompany, byCategory: byCat },
-    fixedLoad: { payrollNet, payrollGross, obligations: oblig, total: fixedLoad, payrollMonth: pay ? pay.id : null },
-    kpnDeferred,
-    invoices: { openCount: openInv.length, openSum: openInv.reduce((s, i) => s + num(i.amount), 0), heldCount: heldInv.length, heldSum: heldInv.reduce((s, i) => s + num(i.amount), 0) },
-    queue: { count: queue.length, maxDays: queue.reduce((m, d) => Math.max(m, d.daysWaiting), 0), overdue: queue.filter(d => d.daysWaiting > 3).length, byStatus: { new: queue.filter(d => d.status === 'new').length, in_progress: queue.filter(d => d.status === 'in_progress').length } },
-  };
-}
+const decorateDoc = d => D.decorateDoc(d, userName);
 
 // ---------- seed ----------
 function seedStatus() {
@@ -107,7 +57,7 @@ function importSeed() {
     const name = f.replace('.json', '');
     const data = JSON.parse(fs.readFileSync(path.join(SEED_DIR, f), 'utf8'));
     if (name === 'settings') { db.settings = Object.assign({}, db.settings, data); report.settings = 'ok'; continue; }
-    if (!store.COLLECTIONS.includes(name)) continue;
+    if (!store.COLLECTIONS.includes(name) || name === 'users') continue;
     if (db[name].length) { report[name] = `пропущено (уже ${db[name].length})`; continue; }
     for (const d of data) { if (!d.id) d.id = store.id(); db[name].push(d); }
     report[name] = data.length;
@@ -125,9 +75,10 @@ async function api(req, res, url, user) {
   if (body.__err) return err(res, 400, body.__err);
   const db = store.get();
   const [seg, id2, seg3] = parts;
+  const qs = Object.fromEntries(url.searchParams.entries());
 
   // --- public ---
-  if (seg === 'status' && method === 'GET') return ok(res, { needsSetup: db.users.length === 0, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '1.0' });
+  if (seg === 'status' && method === 'GET') return ok(res, { needsSetup: db.users.length === 0, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0' });
   if (seg === 'setup' && method === 'POST') {
     if (db.users.length) return err(res, 403, 'Уже настроено');
     if (!body.login || !body.password || String(body.password).length < 6) return err(res, 400, 'Логин и пароль (мин. 6 символов)');
@@ -146,36 +97,33 @@ async function api(req, res, url, user) {
     return send(res, 200, { user: auth.publicUser(u) }, { 'Set-Cookie': auth.sessionCookie(token) });
   }
   if (seg === 'logout' && method === 'POST') { if (user) auth.destroySession(user.token); return send(res, 200, { ok: true }, { 'Set-Cookie': auth.clearCookie() }); }
-  if (seg === 'me' && method === 'GET') return user ? ok(res, { user: { id: user.id, login: user.login, name: user.name, role: user.role, roleLabel: rules.ROLE_LABEL[user.role], isAdmin: rules.isAdmin(user.role) } }) : err(res, 401, 'Не авторизован');
+  if (seg === 'me' && method === 'GET') return user ? ok(res, { user: { id: user.id, login: user.login, name: user.name, role: user.role, roleLabel: D.ROLE_LABEL[user.role], isAdmin: D.isAdmin(user.role) } }) : err(res, 401, 'Не авторизован');
 
   if (!user) return err(res, 401, 'Не авторизован');
   const role = user.role;
-  // список людей (без секретов) — для назначения и отображения имён
-  if (seg === 'people' && method === 'GET') return ok(res, db.users.filter(u => u.active !== false).map(u => ({ id: u.id, name: u.name || u.login, role: u.role, roleLabel: rules.ROLE_LABEL[u.role] })));
+  if (seg === 'people' && method === 'GET') return ok(res, db.users.filter(u => u.active !== false).map(u => ({ id: u.id, name: u.name || u.login, role: u.role, roleLabel: D.ROLE_LABEL[u.role] })));
 
   // --- dashboard / backup / seed / 1c ---
-  if (seg === 'dashboard') { if (!rules.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, dashboard()); }
-  if (seg === 'backups' && method === 'GET') { if (!rules.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, { dir: store.BACKUP_DIR, list: store.listBackups() }); }
+  if (seg === 'dashboard') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.dashboard(db)); }
+  if (seg === 'backups' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, { dir: store.BACKUP_DIR, list: store.listBackups() }); }
   if (seg === 'backup') {
-    if (!rules.isAdmin(role)) return err(res, 403, 'Нет доступа');
+    if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа');
     if (method === 'POST') { const name = store.backup('manual'); store.audit(user.id, 'backup', 'db', name); return ok(res, { name, dir: store.BACKUP_DIR }); }
     if (method === 'GET') { const copy = Object.assign({}, db); delete copy.sessions; return send(res, 200, JSON.stringify(copy, null, 2), { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': `attachment; filename="most-finance-${today()}.json"` }); }
   }
   if (seg === 'seed' && method === 'POST') { if (role !== 'owner') return err(res, 403, 'Только владелец'); const r = importSeed(); store.audit(user.id, 'seed', 'db', null, r); return ok(res, { imported: r }); }
   if (seg === 'export' && id2 === '1c' && method === 'GET') {
-    if (!rules.isAdmin(role)) return err(res, 403, 'Нет доступа');
-    if (seg3 === 'invoices.csv') return send(res, 200, x1c.toCSV(db.invoices, x1c.INVOICE_COLS), { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="invoices-1c.csv"' });
-    if (seg3 === 'docs.csv') return send(res, 200, x1c.toCSV(db.docs, x1c.DOC_COLS), { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="docs-1c.csv"' });
-    return err(res, 404, 'Нет такого экспорта');
+    if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа');
+    const name = (seg3 || '').replace('.csv', ''); const spec = D.CSV[name];
+    if (!spec) return err(res, 404, 'Нет такого экспорта');
+    const rows = name === 'ops' ? D.filterOps(db.ops, qs, db.accounts, db.categories) : db[name];
+    return send(res, 200, D.toCSV(rows, spec.cols), { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}-1c.csv"` });
   }
   if (seg === 'import' && id2 === '1c' && method === 'POST') {
-    if (!rules.isAdmin(role)) return err(res, 403, 'Нет доступа');
-    const target = seg3; if (!['invoices', 'docs'].includes(target)) return err(res, 400, 'invoices или docs');
-    const rows = x1c.parseCSV(body.csv || ''); let n = 0;
-    const map = target === 'invoices'
-      ? r => ({ invoiceDate: r['Дата'] || today(), company: r['Компания'] || '', contractor: r['Контрагент'] || '', amount: num(String(r['Сумма']).replace(/\s/g, '').replace(',', '.')), purpose: r['Назначение'] || '', project: r['Проект'] || '', status: r['Статус'] || 'open', createdBy: user.id, createdAt: new Date().toISOString(), source: '1c' })
-      : r => ({ type: r['Тип'] || 'act', client: r['Клиент'] || '', project: r['Проект'] || '', amount: num(String(r['Сумма']).replace(/\s/g, '').replace(',', '.')), description: r['Описание'] || '', status: r['Статус'] || 'new', requestedBy: user.id, createdAt: new Date().toISOString(), source: '1c' });
-    for (const r of rows) { store.insert(target, map(r)); n++; }
+    if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа');
+    const target = seg3; const spec = D.CSV[target]; if (!spec) return err(res, 400, 'invoices, docs или ops');
+    const rows = D.parseCSV(body.csv || ''); let n = 0;
+    for (const r of rows) { const d = Object.assign(spec.fromRow(r), { createdBy: user.id, createdAt: new Date().toISOString(), source: '1c' }); if (target === 'docs') d.requestedBy = user.id; store.insert(target, d); n++; }
     store.audit(user.id, 'import1c', target, null, { rows: n });
     return ok(res, { imported: n });
   }
@@ -185,7 +133,7 @@ async function api(req, res, url, user) {
     if (role !== 'owner') return err(res, 403, 'Только владелец');
     if (method === 'GET') return ok(res, db.users.map(auth.publicUser));
     if (method === 'POST') {
-      if (!body.login || !body.password || !rules.ROLES.includes(body.role)) return err(res, 400, 'Логин, пароль, роль');
+      if (!body.login || !body.password || !D.ROLES.includes(body.role)) return err(res, 400, 'Логин, пароль, роль');
       if (db.users.some(u => u.login === String(body.login).trim().toLowerCase())) return err(res, 409, 'Такой логин уже есть');
       const { salt, hash } = auth.hashPassword(body.password);
       const u = store.insert('users', { login: String(body.login).trim().toLowerCase(), name: body.name || body.login, role: body.role, salt, passHash: hash, active: true, createdAt: new Date().toISOString() });
@@ -195,7 +143,7 @@ async function api(req, res, url, user) {
       const u = store.find('users', id2); if (!u) return err(res, 404, 'Нет пользователя');
       const patch = {};
       if (body.name) patch.name = body.name;
-      if (body.role && rules.ROLES.includes(body.role)) { if (u.id === user.id && body.role !== 'owner') return err(res, 400, 'Нельзя снять роль владельца с себя'); patch.role = body.role; }
+      if (body.role && D.ROLES.includes(body.role)) { if (u.id === user.id && body.role !== 'owner') return err(res, 400, 'Нельзя снять роль владельца с себя'); patch.role = body.role; }
       if (typeof body.active === 'boolean') { if (u.id === user.id && !body.active) return err(res, 400, 'Нельзя отключить себя'); patch.active = body.active; }
       if (body.password) { const { salt, hash } = auth.hashPassword(body.password); patch.salt = salt; patch.passHash = hash; }
       const r = store.update('users', id2, patch); store.audit(user.id, 'update', 'users', id2); return ok(res, auth.publicUser(r));
@@ -204,14 +152,24 @@ async function api(req, res, url, user) {
   }
   // --- settings ---
   if (seg === 'settings') {
-    if (method === 'GET') { if (!rules.can(role, 'settings', 'read')) return err(res, 403, 'Нет доступа'); return ok(res, db.settings); }
-    if (method === 'PUT') { if (!rules.can(role, 'settings', 'write')) return err(res, 403, 'Только владелец'); db.settings = Object.assign({}, db.settings, body); store.save(); store.audit(user.id, 'update', 'settings', null); return ok(res, db.settings); }
+    if (method === 'GET') { if (!D.can(role, 'settings', 'read')) return err(res, 403, 'Нет доступа'); return ok(res, db.settings); }
+    if (method === 'PUT') { if (!D.can(role, 'settings', 'write')) return err(res, 403, 'Только владелец'); db.settings = Object.assign({}, db.settings, body); store.save(); store.audit(user.id, 'update', 'settings', null); return ok(res, db.settings); }
+  }
+
+  // --- операции: фильтры, сводки ---
+  if (seg === 'ops' && method === 'GET') {
+    if (!D.can(role, 'ops', 'read')) return err(res, 403, 'Нет доступа к разделу');
+    if (id2 === 'months') return ok(res, D.monthsList(db.ops));
+    if (id2 === 'summary') return ok(res, D.projectSummary(D.filterOps(db.ops, qs, db.accounts, db.categories), db.categories));
+    if (id2) { const d = store.find('ops', id2); return d ? ok(res, d) : err(res, 404, 'Не найдено'); }
+    const list = D.filterOps(db.ops, qs, db.accounts, db.categories).sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(a.id)));
+    return ok(res, { total: list.length, totals: D.totals(list, db.categories), items: list.slice(0, MAX_OPS) });
   }
 
   // --- generic collections ---
   if (!store.COLLECTIONS.includes(seg) || seg === 'users') return err(res, 404, 'Нет такого раздела');
   const action = method === 'GET' ? 'read' : 'write';
-  if (!rules.can(role, seg, action)) return err(res, 403, action === 'read' ? 'Нет доступа к разделу' : 'Только просмотр');
+  if (!D.can(role, seg, action)) return err(res, 403, action === 'read' ? 'Нет доступа к разделу' : 'Только просмотр');
   const list = db[seg];
   if (method === 'GET' && !id2) return ok(res, seg === 'docs' ? list.map(decorateDoc) : list);
   if (method === 'GET' && id2) { const d = store.find(seg, id2); return d ? ok(res, seg === 'docs' ? decorateDoc(d) : d) : err(res, 404, 'Не найдено'); }
@@ -219,19 +177,23 @@ async function api(req, res, url, user) {
     const doc = Object.assign({}, body, { createdAt: new Date().toISOString(), createdBy: user.id }); delete doc.id;
     if (seg === 'docs') { doc.status = doc.status || 'new'; doc.requestedBy = user.id; }
     if (seg === 'invoices') { doc.status = doc.status || 'open'; doc.invoiceDate = doc.invoiceDate || today(); }
-    if (seg === 'payroll' && body.id) doc.id = body.id;
-    if (seg === 'cash' && body.id) doc.id = body.id;
-    if ('amount' in doc) doc.amount = num(doc.amount);
+    if (seg === 'ops') { doc.date = doc.date || today(); doc.debit = num(doc.debit); doc.credit = num(doc.credit); doc.source = doc.source || 'manual'; delete doc.auto; delete doc.autoProject; }
+    if (['payroll', 'cash', 'accounts', 'categories', 'projects'].includes(seg) && body.id) { doc.id = String(body.id); if (store.find(seg, doc.id)) return err(res, 409, 'Такой код уже есть'); }
+    for (const k of ['amount', 'sum', 'paid', 'remaining', 'toPay', 'toClose', 'closedActs', 'byBudget', 'monthly', 'monthsLeft', 'balance', 'contractNoVat', 'targetCost', 'invoiceAmount']) if (k in doc) doc[k] = num(doc[k]);
     const r = store.insert(seg, doc); store.audit(user.id, 'create', seg, r.id); return ok(res, seg === 'docs' ? decorateDoc(r) : r);
   }
   if (method === 'PUT' && id2) {
     const before = store.find(seg, id2); if (!before) return err(res, 404, 'Не найдено');
     const patch = Object.assign({}, body); delete patch.id; delete patch.createdAt; delete patch.createdBy;
-    if ('amount' in patch) patch.amount = num(patch.amount);
+    for (const k of ['amount', 'sum', 'paid', 'remaining', 'toPay', 'toClose', 'closedActs', 'byBudget', 'monthly', 'monthsLeft', 'balance', 'contractNoVat', 'targetCost', 'invoiceAmount', 'debit', 'credit']) if (k in patch) patch[k] = num(patch[k]);
     if (seg === 'docs') { if (patch.status === 'done' && before.status !== 'done') patch.doneAt = new Date().toISOString(); if (patch.status === 'in_progress' && !before.startedAt) patch.startedAt = new Date().toISOString(); patch.updatedBy = user.id; }
+    if (seg === 'ops') { if ('category' in patch) patch.auto = false; if ('project' in patch) patch.autoProject = false; }
     const after = Object.assign({}, before, patch);
-    if (seg === 'invoices') onInvoiceUpdate(before, after, user);
-    const r = store.update(seg, id2, Object.assign(patch, seg === 'invoices' && after.paidAt ? { paidAt: after.paidAt } : {}));
+    if (seg === 'invoices' && after.status === 'paid' && before.status !== 'paid') {
+      after.paidAt = after.paidAt || today(); patch.paidAt = after.paidAt;
+      if (!db.ops.some(o => o.invoiceId === after.id)) { const op = store.insert('ops', Object.assign(D.invoiceToOp(after, db.settings, db.accounts), { createdBy: user.id, createdAt: new Date().toISOString() })); patch.opId = op.id; }
+    }
+    const r = store.update(seg, id2, patch);
     store.audit(user.id, 'update', seg, id2); return ok(res, seg === 'docs' ? decorateDoc(r) : r);
   }
   if (method === 'DELETE' && id2) { if (!store.remove(seg, id2)) return err(res, 404, 'Не найдено'); store.audit(user.id, 'delete', seg, id2); return ok(res, { ok: true }); }
@@ -242,6 +204,7 @@ async function api(req, res, url, user) {
 function serveStatic(req, res, url) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/' || !path.extname(p)) p = '/index.html';
+  if (p === '/domain.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'domain.js'))); }
   const file = path.normalize(path.join(PUBLIC, p));
   if (!file.startsWith(PUBLIC)) return err(res, 403, 'forbidden');
   fs.readFile(file, (e, data) => {

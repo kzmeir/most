@@ -9,10 +9,10 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const KEEP_BACKUPS = 60;
 
-const COLLECTIONS = ['users','docs','invoices','projects','income','expenses','payroll','obligations','cash','taxes','audit'];
+const COLLECTIONS = require('./domain').COLLECTIONS;
 
 function emptyDb() {
-  const db = { settings: { companies: ['MOST Project', 'MOST Architects'], vatRate: 0.16, payrollTax: 0.45, usdRate: 525 }, sessions: {} };
+  const db = { settings: JSON.parse(JSON.stringify(require('./domain').DEFAULT_SETTINGS)), sessions: {} };
   for (const c of COLLECTIONS) db[c] = [];
   return db;
 }
@@ -32,6 +32,13 @@ function load() {
   // добить недостающие коллекции (миграция на лету)
   for (const c of COLLECTIONS) if (!Array.isArray(db[c])) db[c] = [];
   if (!db.settings) db.settings = emptyDb().settings;
+  // миграция старой модели (income/expenses/taxes → ops)
+  if (!db.ops.length && ((db.income || []).length || (db.expenses || []).length)) {
+    const acc = c => ((db.settings.defaultAccounts || {})[c]) || 'nal';
+    for (const x of db.income || []) db.ops.push({ id: x.id, date: x.date, account: acc(x.company), debit: 0, credit: Number(x.amount) || 0, counterparty: x.client || '', purpose: x.purpose || '', project: x.project || '', category: 'Рабочий проект', comment: '', source: 'migrated' });
+    for (const x of [...(db.expenses || []), ...(db.taxes || [])]) db.ops.push({ id: x.id, date: x.date, account: acc(x.company), debit: Number(x.amount) || 0, credit: 0, counterparty: x.recipient || x.kind || '', purpose: x.purpose || x.note || '', project: x.project || '', category: x.category || (x.kind ? 'Налоги' : ''), comment: '', source: 'migrated' });
+    delete db.income; delete db.expenses; delete db.taxes;
+  }
   if (!db.sessions) db.sessions = {};
   return db;
 }
