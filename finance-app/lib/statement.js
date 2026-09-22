@@ -109,11 +109,17 @@
   // ключ для поиска дубликатов среди существующих операций
   const dupKey = o => [o.account, o.date, Math.round(Number(o.debit) || 0), Math.round(Number(o.credit) || 0), String(o.opNo || '')].join('|');
   const dupKeyLoose = o => [o.account, o.date, Math.round(Number(o.debit) || 0), Math.round(Number(o.credit) || 0), String(o.counterparty || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '').slice(0, 12)].join('|');
+  // строгий ключ (с номером документа) или «мягкий» — но каждая существующая операция может закрыть только один дубликат
   function dedupe(newOps, existing) {
-    const keys = new Set(), loose = new Set();
-    for (const o of existing) { keys.add(dupKey(o)); loose.add(dupKeyLoose(o)); }
+    const keys = new Set(), loose = new Map();
+    for (const o of existing) { keys.add(dupKey(o)); const k = dupKeyLoose(o); loose.set(k, (loose.get(k) || 0) + 1); }
     const fresh = [], dup = [];
-    for (const o of newOps) { if ((o.opNo && keys.has(dupKey(o))) || loose.has(dupKeyLoose(o))) dup.push(o); else fresh.push(o); }
+    for (const o of newOps) {
+      const lk = dupKeyLoose(o);
+      if (o.opNo && keys.has(dupKey(o))) { dup.push(o); loose.set(lk, (loose.get(lk) || 1) - 1); continue; }
+      if ((loose.get(lk) || 0) > 0) { dup.push(o); loose.set(lk, loose.get(lk) - 1); continue; }
+      fresh.push(o);
+    }
     return { fresh, dup };
   }
 

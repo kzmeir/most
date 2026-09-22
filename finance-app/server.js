@@ -67,7 +67,7 @@ function importSeed() {
 
 // ---------- API ----------
 async function api(req, res, url, user) {
-  const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
+  const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(p => { try { return decodeURIComponent(p); } catch { return p; } });
   const method = req.method;
   const mutating = ['POST', 'PUT', 'DELETE'].includes(method);
   if (mutating && req.headers['x-requested-with'] !== 'fetch') return err(res, 403, 'CSRF: нет заголовка');
@@ -109,7 +109,7 @@ async function api(req, res, url, user) {
   if (seg === 'backup') {
     if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа');
     if (method === 'POST') { const name = store.backup('manual'); store.audit(user.id, 'backup', 'db', name); return ok(res, { name, dir: store.BACKUP_DIR }); }
-    if (method === 'GET') { const copy = Object.assign({}, db); delete copy.sessions; return send(res, 200, JSON.stringify(copy, null, 2), { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': `attachment; filename="most-finance-${today()}.json"` }); }
+    if (method === 'GET') { const copy = Object.assign({}, db, { users: db.users.map(auth.publicUser) }); delete copy.sessions; return send(res, 200, JSON.stringify(copy, null, 2), { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': `attachment; filename="most-finance-${today()}.json"` }); }
   }
   if (seg === 'seed' && method === 'POST') { if (role !== 'owner') return err(res, 403, 'Только владелец'); const r = importSeed(); store.audit(user.id, 'seed', 'db', null, r); return ok(res, { imported: r }); }
   if (seg === 'export' && id2 === '1c' && method === 'GET') {
@@ -123,8 +123,8 @@ async function api(req, res, url, user) {
     if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа');
     const target = seg3; const spec = D.CSV[target]; if (!spec) return err(res, 400, 'invoices, docs или ops');
     const rows = D.parseCSV(body.csv || ''); let n = 0;
-    for (const r of rows) { const d = Object.assign(spec.fromRow(r), { createdBy: user.id, createdAt: new Date().toISOString(), source: '1c' }); if (target === 'docs') d.requestedBy = user.id; store.insert(target, d); n++; }
-    store.audit(user.id, 'import1c', target, null, { rows: n });
+    for (const r of rows) { const d = Object.assign(spec.fromRow(r), { id: store.id(), createdBy: user.id, createdAt: new Date().toISOString(), source: '1c' }); if (target === 'docs') d.requestedBy = user.id; db[target].push(d); n++; }
+    store.audit(user.id, 'import1c', target, null, { rows: n }); store.save();
     return ok(res, { imported: n });
   }
 
@@ -174,10 +174,10 @@ async function api(req, res, url, user) {
       const doc = Object.assign({}, it, { createdAt: new Date().toISOString(), createdBy: user.id, source: it.source || 'statement' }); delete doc.id;
       doc.date = doc.date || today(); doc.debit = num(doc.debit); doc.credit = num(doc.credit); doc.account = doc.account || body.account || 'nal';
       if (body.autoTag !== false) Object.assign(doc, D.suggest(doc, hist));
-      store.insert('ops', doc); n++;
+      doc.id = store.id(); db.ops.push(doc); n++;
     }
     if (body.cash && body.cash.company) { const id = body.cash.id || ('acc-' + (body.account || 'x')); const c = store.find('cash', id); const rec = { id, company: body.cash.company, account: body.cash.account || body.account || '', balance: num(body.cash.balance), asOf: body.cash.asOf || today() }; if (c) store.update('cash', id, rec); else store.insert('cash', rec); }
-    store.audit(user.id, 'import-statement', 'ops', null, { rows: n, account: body.account || '' });
+    store.audit(user.id, 'import-statement', 'ops', null, { rows: n, account: body.account || '' }); store.save();
     return ok(res, { imported: n });
   }
 

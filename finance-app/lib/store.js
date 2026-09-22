@@ -108,6 +108,7 @@ function audit(userId, action, collection, docId, extra) {
   const a = get().audit;
   a.push({ ts: new Date().toISOString(), userId, action, collection, docId, extra: extra || null });
   if (a.length > 5000) a.splice(0, a.length - 5000);
+  persist();
 }
 
 module.exports = { load, save, persist, backup, listBackups, get, id, col, insert, update, remove, find, audit, COLLECTIONS, DATA_DIR, DB_FILE, BACKUP_DIR };

@@ -157,7 +157,7 @@
   // ---- дашборд ----
   function dashboard(db, asOf) {
     asOf = asOf || todayStr(); const ym = asOf.slice(0, 7), year = asOf.slice(0, 4);
-    const prev = (() => { const d = new Date(asOf); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })();
+    const prev = (() => { const y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)); const py = m === 1 ? y - 1 : y, pm = m === 1 ? 12 : m - 1; return `${py}-${String(pm).padStart(2, '0')}`; })();
     const cats = db.categories || [], accs = db.accounts || [], settings = Object.assign({}, DEFAULT_SETTINGS, db.settings || {});
     const opsY = filterOps(db.ops, { year }, accs, cats), opsM = opsY.filter(o => o.date.slice(0, 7) === ym), opsP = filterOps(db.ops, { ym: prev }, accs, cats);
     const tY = totals(opsY, cats), tM = totals(opsM, cats), tP = totals(opsP, cats);
