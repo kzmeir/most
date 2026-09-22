@@ -166,6 +166,21 @@ async function api(req, res, url, user) {
     return ok(res, { total: list.length, totals: D.totals(list, db.categories), items: list.slice(0, MAX_OPS) });
   }
 
+  if (seg === 'ops' && id2 === 'bulk' && method === 'POST') {
+    if (!D.can(role, 'ops', 'write')) return err(res, 403, 'Только просмотр');
+    const items = Array.isArray(body.items) ? body.items : []; if (!items.length) return err(res, 400, 'Нет операций');
+    const hist = D.buildHistory(db.ops); let n = 0;
+    for (const it of items) {
+      const doc = Object.assign({}, it, { createdAt: new Date().toISOString(), createdBy: user.id, source: it.source || 'statement' }); delete doc.id;
+      doc.date = doc.date || today(); doc.debit = num(doc.debit); doc.credit = num(doc.credit); doc.account = doc.account || body.account || 'nal';
+      if (body.autoTag !== false) Object.assign(doc, D.suggest(doc, hist));
+      store.insert('ops', doc); n++;
+    }
+    if (body.cash && body.cash.company) { const id = body.cash.id || ('acc-' + (body.account || 'x')); const c = store.find('cash', id); const rec = { id, company: body.cash.company, account: body.cash.account || body.account || '', balance: num(body.cash.balance), asOf: body.cash.asOf || today() }; if (c) store.update('cash', id, rec); else store.insert('cash', rec); }
+    store.audit(user.id, 'import-statement', 'ops', null, { rows: n, account: body.account || '' });
+    return ok(res, { imported: n });
+  }
+
   // --- generic collections ---
   if (!store.COLLECTIONS.includes(seg) || seg === 'users') return err(res, 404, 'Нет такого раздела');
   const action = method === 'GET' ? 'read' : 'write';
@@ -204,6 +219,7 @@ async function api(req, res, url, user) {
 function serveStatic(req, res, url) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/' || !path.extname(p)) p = '/index.html';
+  if (p === '/statement.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'statement.js'))); }
   if (p === '/domain.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'domain.js'))); }
   const file = path.normalize(path.join(PUBLIC, p));
   if (!file.startsWith(PUBLIC)) return err(res, 403, 'forbidden');

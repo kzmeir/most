@@ -165,6 +165,19 @@ async function route(path, opts) {
       const list = D.filterOps(v.ops, qs, v.accounts, v.categories).sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(a.id)));
       return ok({ total: list.length, totals: D.totals(list, v.categories), items: list.slice(0, MAX_OPS) });
     }
+    if (method === 'POST' && id2 === 'bulk') {
+      const items = Array.isArray(body.items) ? body.items : []; if (!items.length) return err(400, 'Нет операций');
+      const hist = D.buildHistory(v.ops); const byYm = {}; let n = 0;
+      for (const it of items) {
+        const doc = Object.assign({}, it, { createdAt: new Date().toISOString(), createdBy: me.id, source: it.source || 'statement' }); delete doc.id;
+        doc.date = doc.date || today(); doc.debit = num(doc.debit); doc.credit = num(doc.credit); doc.account = doc.account || body.account || 'nal';
+        if (body.autoTag !== false) Object.assign(doc, D.suggest(doc, hist));
+        doc.id = `op-${doc.date.replace(/-/g, '')}-${uid().slice(0, 8)}`; (byYm[doc.date.slice(0, 7)] = byYm[doc.date.slice(0, 7)] || []).push(doc); n++;
+      }
+      for (const [ym, its] of Object.entries(byYm)) { const m = months.get(ym) || { ym, items: [] }; await writeMonth(ym, [...(m.items || []), ...its]); }
+      if (body.cash && body.cash.company) { const id = body.cash.id || ('acc-' + (body.account || 'x')); await write('cash', { id, company: body.cash.company, account: body.cash.account || body.account || '', balance: num(body.cash.balance), asOf: body.cash.asOf || today() }); }
+      await audit('import-statement', 'ops', null, { rows: n, account: body.account || '' }); return ok({ imported: n });
+    }
     if (method === 'POST') { const doc = Object.assign({}, body, { createdAt: new Date().toISOString(), createdBy: me.id }); delete doc.id; delete doc.auto; delete doc.autoProject; doc.date = doc.date || today(); doc.debit = num(doc.debit); doc.credit = num(doc.credit); doc.source = doc.source || 'manual'; const r = await insertOp(doc); await audit('create', 'ops', r.id); return ok(r); }
     if (method === 'PUT' && id2) { const patch = Object.assign({}, body); delete patch.id; delete patch.createdAt; delete patch.createdBy; if ('debit' in patch) patch.debit = num(patch.debit); if ('credit' in patch) patch.credit = num(patch.credit); if ('category' in patch) patch.auto = false; if ('project' in patch) patch.autoProject = false; const r = await updateOp(id2, patch); if (!r) return err(404, 'Не найдено'); await audit('update', 'ops', id2); return ok(r); }
     if (method === 'DELETE' && id2) { if (!(await deleteOp(id2))) return err(404, 'Не найдено'); await audit('delete', 'ops', id2); return ok({ ok: true }); }

@@ -6,7 +6,7 @@
   else root.MostDomain = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const COLLECTIONS = ['users', 'docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'ops', 'accounts', 'categories', 'payroll', 'obligations', 'cash', 'audit'];
+  const COLLECTIONS = ['users', 'docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'ops', 'accounts', 'categories', 'payroll', 'employees', 'vacations', 'obligations', 'cash', 'audit'];
   const PM_READ = ['docs', 'invoices', 'projects', 'contracts', 'subcontracts'];
   const ROLES = ['owner', 'partner', 'accountant', 'pm'];
   const ADMIN = ['owner', 'partner', 'accountant'];
@@ -49,6 +49,10 @@
       if (q.category && o.category !== q.category) return false;
       if (q.kind && catKind(categories, o.category) !== q.kind) return false;
       if (q.untagged && o.category && o.project && !o.auto && !o.autoProject) return false;
+      if (q.counterparty && (o.counterparty || '') !== q.counterparty) return false;
+      if (q.min && Math.max(num(o.debit), num(o.credit)) < num(q.min)) return false;
+      if (q.max && Math.max(num(o.debit), num(o.credit)) > num(q.max)) return false;
+      if (q.source && (o.source || '') !== q.source) return false;
       if (t && !((o.counterparty || '') + ' ' + (o.purpose || '') + ' ' + (o.comment || '') + ' ' + (o.project || '')).toLowerCase().includes(t)) return false;
       return true;
     });
@@ -89,6 +93,60 @@
     const company = inv.company || ''; const acc = (settings.defaultAccounts || {})[company] || (accounts.find(a => a.company === company && a.active) || {}).id || 'nal';
     return { date: inv.paidAt || todayStr(), account: acc, debit: num(inv.amount), credit: 0, counterparty: inv.contractor || '', purpose: inv.purpose || '', project: inv.project || '', category: inv.category || '', comment: 'по счёту к оплате', invoiceId: inv.id, source: 'invoice' };
   }
+
+  // ---- автоподсказки категории/проекта по истории операций ----
+  const OWN = /most\s*(project|architects)|мост/i;
+  const normCp = s => String(s || '').toLowerCase().replace(/[«»"'“”]|тоо|ип|ао|\s+/g, '');
+  function buildHistory(ops) {
+    const cat = {}, proj = {};
+    for (const o of ops) {
+      const k = normCp(o.counterparty); if (!k) continue;
+      if (o.category && !o.auto) { (cat[k] = cat[k] || {})[o.category] = (cat[k][o.category] || 0) + 1; }
+      if (o.project && !o.autoProject && o.date) { if (!proj[k] || o.date > proj[k].date) proj[k] = { date: o.date, project: o.project }; }
+    }
+    return { cat, proj };
+  }
+  const NO_PROJECT = ['Перевод между счетами', 'Депозит', 'Банк', 'Налоги', 'НДС', 'Расходы налоги по зп', 'Расходы по зп'];
+  function suggest(o, hist, todayIso) {
+    const out = {}; const p = (o.purpose || '').toLowerCase(), cp = o.counterparty || '';
+    let cat = '';
+    if (OWN.test(cp) && p.includes('депозит')) cat = 'Депозит';
+    else if (OWN.test(cp)) cat = 'Перевод между счетами';
+    else if (/угд|государственная корпорация|правительство для граждан|департамент государственных доходов/i.test(cp)) cat = (p.includes('ндс') && !p.includes('в т.ч')) ? 'НДС' : (/опв|ипн|осмс|восмс|социальн/.test(p) ? 'Расходы налоги по зп' : 'Налоги');
+    else if (/kaspi bank/i.test(cp) && /комисси|вознагражд/.test(p)) cat = 'Банк';
+    else if (/заработн|зарплат|аванс сотрудник/.test(p)) cat = 'Расходы по зп';
+    else if (num(o.credit) && /авторск/.test(p)) cat = 'Авторский надзор';
+    else if (num(o.credit) && /эскиз/.test(p)) cat = 'Эскизный проект';
+    else if (num(o.credit) && /рабоч|\bрп\b|проектн/.test(p)) cat = 'Рабочий проект';
+    else { const h = hist.cat[normCp(cp)]; if (h) { const top = Object.entries(h).sort((a, b) => b[1] - a[1])[0]; const total = Object.values(h).reduce((a, b) => a + b, 0); if (top[1] >= 2 && top[1] / total >= 0.6) cat = top[0]; } }
+    if (cat && !o.category) { out.category = cat; out.auto = true; }
+    const effCat = o.category || cat;
+    if (!o.project) {
+      if (effCat === 'Перевод между счетами' || effCat === 'Депозит') out.project = effCat;
+      else if (!NO_PROJECT.includes(effCat)) { const h = hist.proj[normCp(cp)]; const limit = new Date(todayIso || todayStr()); limit.setMonth(limit.getMonth() - 15); if (h && h.date >= limit.toISOString().slice(0, 10)) { out.project = h.project; out.autoProject = true; } }
+    }
+    return out;
+  }
+
+  // ---- отпуска: календарные дни без праздников РК, накопление 24 дня/год ----
+  const HOLIDAYS_FIXED = ['01-01', '01-02', '01-07', '03-08', '03-21', '03-22', '03-23', '05-01', '05-07', '05-09', '07-06', '08-30', '10-25', '12-16'];
+  const HOLIDAYS_EXTRA = { 2024: ['06-16'], 2025: ['06-06'], 2026: ['05-27'], 2027: ['05-16'] }; // Курбан-айт
+  function isHoliday(iso) { const y = iso.slice(0, 4), md = iso.slice(5); return HOLIDAYS_FIXED.includes(md) || (HOLIDAYS_EXTRA[y] || []).includes(md); }
+  function vacationDays(from, to) {
+    if (!from || !to || to < from) return 0; let n = 0; const d = new Date(from + 'T00:00:00Z'), end = new Date(to + 'T00:00:00Z');
+    while (d <= end) { const iso = d.toISOString().slice(0, 10); if (!isHoliday(iso)) n++; d.setUTCDate(d.getUTCDate() + 1); }
+    return n;
+  }
+  function vacationBalance(emp, vacations, asOf) {
+    asOf = asOf || todayStr(); const perYear = num(emp.vacationDays) || 24;
+    const start = emp.hired || emp.vacationStart || (asOf.slice(0, 4) + '-01-01'); const end = emp.resigned && emp.resigned < asOf ? emp.resigned : asOf;
+    const months = Math.max(0, (new Date(end) - new Date(start)) / (365.25 * 864e5) * 12);
+    const accrued = Math.round(months * perYear / 12 * 10) / 10 + num(emp.vacationCarry);
+    const mine = vacations.filter(v => v.employeeId === emp.id && (v.type || 'vacation') === 'vacation' && v.from <= asOf);
+    const used = mine.reduce((s, v) => s + (num(v.days) || vacationDays(v.from, v.to)), 0);
+    return { accrued: Math.round(accrued * 10) / 10, used, balance: Math.round((accrued - used) * 10) / 10, since: start };
+  }
+  const VACATION_TYPES = { vacation: 'Отпуск', sick: 'Больничный', unpaid: 'За свой счёт', trip: 'Командировка' };
 
   // ---- очередь к бухгалтеру / АВР ----
   function decorateDoc(d, nameOf) {
@@ -151,5 +209,5 @@
       fromRow: r => ({ date: r['Дата'] || todayStr(), account: r['Счёт'] || 'nal', debit: amt(r['Дебет']), credit: amt(r['Кредит']), counterparty: r['Контрагент'] || '', purpose: r['Назначение'] || '', project: r['Проект'] || '', category: r['Категория'] || '', comment: r['Комментарий'] || '' }) },
   };
 
-  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV };
+  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES };
 });
