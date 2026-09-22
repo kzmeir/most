@@ -12,6 +12,8 @@ const D = require('./lib/domain');
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, 'public');
 const SEED_DIR = path.join(__dirname, 'seed');
+const FILES_DIR = path.join(store.DATA_DIR, 'files'); // файлы счетов (PDF/картинки)
+const FILE_TYPES = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8' };
 const MAX_OPS = 3000;
 
@@ -28,7 +30,7 @@ const err = (res, status, message) => send(res, status, { error: message });
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
-    req.on('data', c => { size += c.length; if (size > 8 * 1024 * 1024) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
+    req.on('data', c => { size += c.length; if (size > 32 * 1024 * 1024) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8');
       if (!raw) return resolve({});
@@ -128,6 +130,41 @@ async function api(req, res, url, user) {
     return ok(res, { imported: n });
   }
 
+  // --- счета к оплате: загрузка списком из файла и файл счёта ---
+  if (seg === 'invoices' && id2 === 'bulk' && method === 'POST') {
+    if (!D.can(role, 'invoices', 'write')) return err(res, 403, 'Только просмотр');
+    const items = Array.isArray(body.items) ? body.items : []; if (!items.length) return err(res, 400, 'Нет счетов');
+    const keys = new Set(db.invoices.map(D.invoiceKey)); const created = []; let skipped = 0;
+    for (const it of items) {
+      const doc = { company: String(it.company || ''), contractor: String(it.contractor || '').trim(), amount: num(it.amount), purpose: String(it.purpose || ''), project: String(it.project || ''), category: String(it.category || ''), number: String(it.number || ''), invoiceDate: it.invoiceDate || today(), status: ['open', 'held', 'paid'].includes(it.status) ? it.status : 'open', source: it.source || 'file', createdAt: new Date().toISOString(), createdBy: user.id };
+      if (!doc.contractor || !doc.amount) { skipped++; continue; }
+      const k = D.invoiceKey(doc); if (!it.force && keys.has(k)) { skipped++; continue; } keys.add(k);
+      created.push(Object.assign({}, store.insert('invoices', doc), { ref: it.ref }));
+    }
+    store.audit(user.id, 'import-invoices', 'invoices', null, { rows: created.length, skipped }); store.save();
+    return ok(res, { imported: created.length, skipped, items: created });
+  }
+  if (seg === 'invoices' && id2 && seg3 === 'file') {
+    if (!D.can(role, 'invoices', 'write')) return err(res, 403, 'Только просмотр');
+    const inv = store.find('invoices', id2); if (!inv) return err(res, 404, 'Не найдено');
+    const dropOld = () => { if (inv.file && inv.file.key) { try { fs.unlinkSync(path.join(FILES_DIR, path.basename(inv.file.key))); } catch { } } };
+    if (method === 'POST') {
+      const type = String(body.type || ''); if (!FILE_TYPES[type]) return err(res, 400, 'Разрешены PDF, JPG, PNG, WebP');
+      const data = Buffer.from(String(body.data || ''), 'base64'); if (!data.length) return err(res, 400, 'Пустой файл'); if (data.length > 20 * 1024 * 1024) return err(res, 400, 'Файл больше 20 МБ');
+      fs.mkdirSync(FILES_DIR, { recursive: true }); dropOld();
+      const key = `${String(id2).replace(/[^\w-]/g, '')}-${Date.now()}${FILE_TYPES[type]}`; fs.writeFileSync(path.join(FILES_DIR, key), data);
+      const r = store.update('invoices', id2, { file: { name: String(body.name || 'файл').slice(0, 120), type, size: data.length, key, uploadedAt: new Date().toISOString(), uploadedBy: user.id } });
+      store.audit(user.id, 'file', 'invoices', id2); return ok(res, r);
+    }
+    if (method === 'DELETE') { dropOld(); const r = store.update('invoices', id2, { file: null }); store.audit(user.id, 'file-delete', 'invoices', id2); return ok(res, r); }
+  }
+  if (seg === 'files' && id2 && method === 'GET') {
+    if (!D.can(role, 'invoices', 'read')) return err(res, 403, 'Нет доступа');
+    const key = path.basename(id2); const inv = db.invoices.find(i => i.file && i.file.key === key); const file = path.join(FILES_DIR, key);
+    if (!inv || !fs.existsSync(file)) return err(res, 404, 'Файл не найден');
+    return send(res, 200, fs.readFileSync(file), { 'Content-Type': inv.file.type, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(inv.file.name)}`, 'Cache-Control': 'private, max-age=3600' });
+  }
+
   // --- users (owner) ---
   if (seg === 'users') {
     if (role !== 'owner') return err(res, 403, 'Только владелец');
@@ -211,7 +248,10 @@ async function api(req, res, url, user) {
     const r = store.update(seg, id2, patch);
     store.audit(user.id, 'update', seg, id2); return ok(res, seg === 'docs' ? decorateDoc(r) : r);
   }
-  if (method === 'DELETE' && id2) { if (!store.remove(seg, id2)) return err(res, 404, 'Не найдено'); store.audit(user.id, 'delete', seg, id2); return ok(res, { ok: true }); }
+  if (method === 'DELETE' && id2) {
+    if (seg === 'invoices') { const d = store.find(seg, id2); if (d && d.file && d.file.key) { try { fs.unlinkSync(path.join(FILES_DIR, path.basename(d.file.key))); } catch { } } }
+    if (!store.remove(seg, id2)) return err(res, 404, 'Не найдено'); store.audit(user.id, 'delete', seg, id2); return ok(res, { ok: true });
+  }
   return err(res, 405, 'Метод не поддерживается');
 }
 
@@ -220,6 +260,7 @@ function serveStatic(req, res, url) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/' || !path.extname(p)) p = '/index.html';
   if (p === '/statement.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'statement.js'))); }
+  if (p === '/xlsx.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'xlsx.js'))); }
   if (p === '/domain.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'domain.js'))); }
   const file = path.normalize(path.join(PUBLIC, p));
   if (!file.startsWith(PUBLIC)) return err(res, 403, 'forbidden');

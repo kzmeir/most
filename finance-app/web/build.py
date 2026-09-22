@@ -11,6 +11,7 @@ css = css.replace(m.group(0), '@media(prefers-color-scheme:dark){:root:not([data
 app = (APP / 'public/app.js').read_text()
 domain = (APP / 'lib/domain.js').read_text()
 statement = (APP / 'lib/statement.js').read_text()
+xlsx = (APP / 'lib/xlsx.js').read_text()
 server = (APP / 'web/db-server.js').read_text()
 html = f'''<title>MOST Финансы</title>
 <style>{css}</style>
@@ -20,6 +21,7 @@ html = f'''<title>MOST Финансы</title>
 <script>window.__PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';</script>
 <script>{domain}</script>
 <script>{statement}</script>
+<script>{xlsx}</script>
 <script>{server}</script>
 <script>{app}</script>
 '''

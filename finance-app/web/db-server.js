@@ -7,7 +7,8 @@ const D = window.MostDomain;
 const COLS = D.COLLECTIONS.filter(c => !['users', 'audit', 'ops'].includes(c)); // обычные коллекции: документ = запись
 const AUDIT_MAX = 300, MAX_OPS = 3000;
 
-let db = null, user = null, dl = null, me = null, myRole = null;
+let db = null, user = null, dl = null, assets = null, me = null, myRole = null;
+const FILE_TYPES = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 const cache = {}; for (const c of COLS) cache[c] = new Map();
 let months = new Map(); // ym -> {ym, items:[]}
 let settings = Object.assign({}, D.DEFAULT_SETTINGS), rolesDoc = { owner: null, roles: {} }, auditItems = [];
@@ -40,7 +41,7 @@ const waitFirst = (name, subscribe) => new Promise(resolve => {
 });
 async function init() {
   if (!window.claude || !window.claude.use) return;
-  [db, user, dl] = await Promise.all([claude.use('db'), claude.use('user'), claude.use('downloads')]);
+  [db, user, dl, assets] = await Promise.all([claude.use('db'), claude.use('user'), claude.use('downloads'), claude.use('assets')]);
   if (!user) return;
   me = await user.me();
   if (!db || !me.id) return;
@@ -183,6 +184,36 @@ async function route(path, opts) {
     if (method === 'DELETE' && id2) { if (!(await deleteOp(id2))) return err(404, 'Не найдено'); await audit('delete', 'ops', id2); return ok({ ok: true }); }
   }
 
+  // --- счета к оплате: загрузка списком и файл счёта (хранилище файлов артефакта) ---
+  if (seg === 'invoices' && id2 === 'bulk' && method === 'POST') {
+    if (!can('invoices', 'write')) return err(403, 'Только просмотр');
+    const items = Array.isArray(body.items) ? body.items : []; if (!items.length) return err(400, 'Нет счетов');
+    const keys = new Set(col('invoices').map(D.invoiceKey)); const created = []; let skipped = 0;
+    for (const it of items) {
+      const doc = { id: uid(), company: String(it.company || ''), contractor: String(it.contractor || '').trim(), amount: num(it.amount), purpose: String(it.purpose || ''), project: String(it.project || ''), category: String(it.category || ''), number: String(it.number || ''), invoiceDate: it.invoiceDate || today(), status: ['open', 'held', 'paid'].includes(it.status) ? it.status : 'open', source: it.source || 'file', createdAt: new Date().toISOString(), createdBy: me.id };
+      if (!doc.contractor || !doc.amount) { skipped++; continue; }
+      const k = D.invoiceKey(doc); if (!it.force && keys.has(k)) { skipped++; continue; } keys.add(k);
+      created.push(Object.assign({}, await write('invoices', doc), { ref: it.ref }));
+    }
+    await audit('import-invoices', 'invoices', null, { rows: created.length, skipped });
+    return ok({ imported: created.length, skipped, items: created });
+  }
+  if (seg === 'invoices' && id2 && seg3 === 'file') {
+    if (!can('invoices', 'write')) return err(403, 'Только просмотр');
+    const inv = cache.invoices.get(id2); if (!inv) return err(404, 'Не найдено');
+    if (!assets) return err(503, 'Хранилище файлов недоступно для этого аккаунта');
+    const dropOld = async () => { if (inv.file && inv.file.key) { try { await assets.delete(inv.file.key); } catch (e) { console.warn('asset delete', e); } } };
+    if (method === 'POST') {
+      const type = String(body.type || ''); if (!FILE_TYPES[type]) return err(400, 'Разрешены PDF, JPG, PNG, WebP');
+      const bin = Uint8Array.from(atob(String(body.data || '')), c => c.charCodeAt(0)); if (!bin.length) return err(400, 'Пустой файл'); if (bin.length > 20 * 1024 * 1024) return err(400, 'Файл больше 20 МБ');
+      let up; try { up = await assets.upload(new Blob([bin], { type }), { type }); } catch (e) { return err(500, 'Не удалось сохранить файл: ' + ((e && (e.message || e.code)) || e)); }
+      await dropOld();
+      const r = await write('invoices', Object.assign({}, inv, { file: { name: String(body.name || 'файл').slice(0, 120), type, size: up.sizeBytes || bin.length, key: up.id, uploadedAt: new Date().toISOString(), uploadedBy: me.id } }));
+      await audit('file', 'invoices', id2); return ok(r);
+    }
+    if (method === 'DELETE') { await dropOld(); const r = await write('invoices', Object.assign({}, inv, { file: null })); await audit('file-delete', 'invoices', id2); return ok(r); }
+  }
+
   // --- обычные коллекции ---
   if (!COLS.includes(seg)) return err(404, 'Нет такого раздела');
   const action = method === 'GET' ? 'read' : 'write'; if (!can(seg, action)) return err(403, action === 'read' ? 'Нет доступа к разделу' : 'Только просмотр');
@@ -209,7 +240,10 @@ async function route(path, opts) {
     }
     const r = await write(seg, after); await audit('update', seg, id2); return ok(seg === 'docs' ? (await decorateDocs([r]))[0] : r);
   }
-  if (method === 'DELETE' && id2) { if (!(await removeDoc(seg, id2))) return err(404, 'Не найдено'); await audit('delete', seg, id2); return ok({ ok: true }); }
+  if (method === 'DELETE' && id2) {
+    if (seg === 'invoices' && assets) { const d = cache.invoices.get(id2); if (d && d.file && d.file.key) { try { await assets.delete(d.file.key); } catch (e) { console.warn('asset delete', e); } } }
+    if (!(await removeDoc(seg, id2))) return err(404, 'Не найдено'); await audit('delete', seg, id2); return ok({ ok: true });
+  }
   return err(405, 'Метод не поддерживается');
 }
 window.__apiFetch = (path, opts) => route(path, opts).catch(e => { console.error(e); return err(500, 'Ошибка: ' + (e && e.message || e)); });

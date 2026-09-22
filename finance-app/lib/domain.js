@@ -53,7 +53,7 @@
       if (q.min && Math.max(num(o.debit), num(o.credit)) < num(q.min)) return false;
       if (q.max && Math.max(num(o.debit), num(o.credit)) > num(q.max)) return false;
       if (q.source && (o.source || '') !== q.source) return false;
-      if (t && !((o.counterparty || '') + ' ' + (o.purpose || '') + ' ' + (o.comment || '') + ' ' + (o.project || '')).toLowerCase().includes(t)) return false;
+      if (t && !((o.counterparty || '') + ' ' + (o.purpose || '') + ' ' + (o.comment || '') + ' ' + (o.project || '') + ' ' + (o.opNo || '')).toLowerCase().includes(t)) return false;
       return true;
     });
   }
@@ -205,9 +205,81 @@
       fromRow: r => ({ invoiceDate: r['Дата'] || todayStr(), company: r['Компания'] || '', contractor: r['Контрагент'] || '', amount: amt(r['Сумма']), purpose: r['Назначение'] || '', project: r['Проект'] || '', status: r['Статус'] || 'open' }) },
     docs: { cols: [{ key: 'createdAt', title: 'Создан' }, { key: 'type', title: 'Тип' }, { key: 'number', title: 'Номер' }, { key: 'actDate', title: 'Дата АВР' }, { key: 'client', title: 'Клиент' }, { key: 'company', title: 'Компания' }, { key: 'project', title: 'Проект' }, { key: 'amount', title: 'Сумма' }, { key: 'description', title: 'Описание' }, { key: 'status', title: 'Статус' }, { key: 'signed', title: 'Подписан' }, { key: 'paid', title: 'Оплачен' }],
       fromRow: r => ({ type: r['Тип'] || 'act', number: r['Номер'] || '', actDate: r['Дата АВР'] || '', client: r['Клиент'] || '', company: r['Компания'] || '', project: r['Проект'] || '', amount: amt(r['Сумма']), description: r['Описание'] || '', status: r['Статус'] || 'new', signed: /да|true|1/i.test(r['Подписан'] || ''), paid: /да|true|1/i.test(r['Оплачен'] || '') }) },
-    ops: { cols: [{ key: 'date', title: 'Дата' }, { key: 'account', title: 'Счёт' }, { key: 'debit', title: 'Дебет' }, { key: 'credit', title: 'Кредит' }, { key: 'counterparty', title: 'Контрагент' }, { key: 'purpose', title: 'Назначение' }, { key: 'project', title: 'Проект' }, { key: 'category', title: 'Категория' }, { key: 'comment', title: 'Комментарий' }],
-      fromRow: r => ({ date: r['Дата'] || todayStr(), account: r['Счёт'] || 'nal', debit: amt(r['Дебет']), credit: amt(r['Кредит']), counterparty: r['Контрагент'] || '', purpose: r['Назначение'] || '', project: r['Проект'] || '', category: r['Категория'] || '', comment: r['Комментарий'] || '' }) },
+    ops: { cols: [{ key: 'opNo', title: '№ операции' }, { key: 'date', title: 'Дата' }, { key: 'account', title: 'Счёт' }, { key: 'debit', title: 'Дебет' }, { key: 'credit', title: 'Кредит' }, { key: 'counterparty', title: 'Контрагент' }, { key: 'purpose', title: 'Назначение' }, { key: 'project', title: 'Проект' }, { key: 'category', title: 'Категория' }, { key: 'comment', title: 'Комментарий' }],
+      fromRow: r => ({ opNo: r['№ операции'] || r['№'] || '', date: r['Дата'] || todayStr(), account: r['Счёт'] || 'nal', debit: amt(r['Дебет']), credit: amt(r['Кредит']), counterparty: r['Контрагент'] || '', purpose: r['Назначение'] || '', project: r['Проект'] || '', category: r['Категория'] || '', comment: r['Комментарий'] || '' }) },
   };
 
-  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES };
+  // ---- счета к оплате: импорт из файла (Excel/CSV-реестр или текст PDF-счёта) ----
+  const normName = s => String(s || '').toLowerCase().replace(/[«»"'“”]/g, '').replace(/\s+/g, ' ').trim();
+  const invoiceKey = i => [normName(i.company), normName(i.contractor), Math.round(num(i.amount)), normName(i.purpose).slice(0, 24)].join('|');
+  const isNumLike = v => typeof v === 'number' || /^[\d\s ]+([,.]\d+)?$/.test(String(v).trim());
+  const isDate = v => /^\d{4}-\d{2}-\d{2}/.test(String(v)) || /^\d{2}\.\d{2}\.\d{4}$/.test(String(v));
+  const toIso = v => { const s = String(v); const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : (s.match(/^\d{4}-\d{2}-\d{2}/) || [''])[0]; };
+  // наша компания по названию/тексту: «Проджект итого», «Покупатель: MOST Project ТОО», «Мост»
+  function companyOf(s) {
+    const t = String(s || '').toLowerCase();
+    if (/project|проджект|прожект/.test(t)) return 'MOST Project';
+    if (/architect|архитект|(^|[^а-яё])мост([^а-яё]|$)/.test(t)) return 'MOST Architects';
+    if (/pana/.test(t)) return 'ИП PANA Design';
+    return '';
+  }
+  const HEAD = { contractor: /контрагент|поставщик|получател|кому|наименование|организац|исполнител/i, amount: /сумма|amount|к оплате/i, purpose: /назнач|описан|за что|коммент|основани|услуг/i, project: /проект|объект/i, company: /^компания$|наша|плательщик|покупател|заказчик/i, date: /дата/i, status: /статус/i, number: /номер|^№/i };
+  // rows: массив массивов (xlsx) или объектов (csv). Заголовок ищем в первых 10 строках, иначе колонки угадываем по содержимому.
+  function invoicesFromRows(rows, defaults) {
+    defaults = defaults || {};
+    rows = (rows || []).map(r => Array.isArray(r) ? r : Object.values(r)).filter(r => r.some(c => c !== '' && c != null));
+    if (!rows.length) return { items: [], mapping: null };
+    let hdr = -1, map = null;
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const m = {}; let hits = 0;
+      rows[i].forEach((c, j) => { if (typeof c !== 'string') return; for (const [k, re] of Object.entries(HEAD)) if (re.test(c.trim()) && m[k] === undefined) { m[k] = j; hits++; break; } });
+      if (hits >= 2 && m.amount !== undefined && m.contractor !== undefined) { hdr = i; map = m; break; }
+    }
+    const data = hdr >= 0 ? rows.slice(hdr + 1) : rows;
+    if (!map) {
+      const n = Math.max(...data.map(r => r.length)); const score = [];
+      for (let j = 0; j < n; j++) { const vals = data.map(r => r[j]).filter(v => v !== '' && v != null); score.push({ j, num: vals.filter(v => isNumLike(v) && !isDate(v)).length, date: vals.filter(isDate).length, text: vals.filter(v => typeof v === 'string' && !isDate(v) && !isNumLike(v)).length }); }
+      map = {};
+      const amountCol = score.filter(s => s.num > 0).sort((a, b) => b.num - a.num)[0]; if (!amountCol) return { items: [], mapping: null }; map.amount = amountCol.j;
+      const dateCol = score.filter(s => s.date > 0 && s.j !== map.amount).sort((a, b) => b.date - a.date)[0]; if (dateCol) map.date = dateCol.j;
+      const texts = score.filter(s => s.text > 0 && s.j !== map.amount && s.j !== map.date).sort((a, b) => a.j - b.j);
+      if (texts[0]) map.contractor = texts[0].j; if (texts[1]) map.purpose = texts[1].j; if (texts[2]) map.project = texts[2].j;
+    }
+    const items = []; let pending = [];
+    for (const r of data) {
+      const cells = r.map(c => c == null ? '' : c); const line = cells.map(String).join(' ');
+      if (/итого|всего/i.test(line)) { const co = companyOf(line) || defaults.company || ''; for (const p of pending) if (!p.company) p.company = co; pending = []; continue; }
+      const amount = num(String(cells[map.amount] ?? '').replace(/\s/g, '').replace(',', '.'));
+      const contractor = String(map.contractor !== undefined ? cells[map.contractor] : '').trim();
+      if (!amount || !contractor) continue;
+      const it = { company: map.company !== undefined ? (companyOf(cells[map.company]) || String(cells[map.company] || '').trim()) : '', contractor, amount, purpose: String(map.purpose !== undefined ? cells[map.purpose] : '').trim(), project: String(map.project !== undefined ? cells[map.project] : '').trim(), number: String(map.number !== undefined ? cells[map.number] : '').trim(), invoiceDate: map.date !== undefined ? toIso(cells[map.date]) : '', status: 'open' };
+      if (map.status !== undefined && /held|придерж/i.test(String(cells[map.status]))) it.status = 'held';
+      items.push(it); pending.push(it);
+    }
+    for (const it of items) { if (!it.invoiceDate) it.invoiceDate = defaults.invoiceDate || todayStr(); if (!it.company) it.company = defaults.company || ''; }
+    return { items, mapping: map };
+  }
+  // текст PDF-счёта (типовая форма «Счет на оплату № … от …») → поля счёта
+  const RU_MONTHS = { января: 1, февраля: 2, марта: 3, апреля: 4, мая: 5, июня: 6, июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12 };
+  function parseInvoiceText(text) {
+    const t = String(text || '').replace(/[ \t ]+/g, ' ');
+    const out = { number: '', invoiceDate: '', contractor: '', company: '', amount: 0, purpose: '' };
+    const money = s => num(String(s).replace(/\s/g, '').replace(',', '.'));
+    let m = t.match(/Сч[её]т(?:[- ]фактура)?\s*(?:на оплату)?\s*№?\s*([\w\-\/]+)\s+от\s+(\d{1,2})\s+([а-яё]+)\s+(\d{4})/i);
+    if (m) { out.number = m[1]; const mo = RU_MONTHS[m[3].toLowerCase()]; if (mo) out.invoiceDate = `${m[4]}-${String(mo).padStart(2, '0')}-${m[2].padStart(2, '0')}`; }
+    else if ((m = t.match(/Сч[её]т(?:[- ]фактура)?\s*(?:на оплату)?\s*№?\s*([\w\-\/]+)\s+от\s+(\d{2})\.(\d{2})\.(\d{4})/i))) { out.number = m[1]; out.invoiceDate = `${m[4]}-${m[3]}-${m[2]}`; }
+    if ((m = t.match(/Поставщик:\s*(?:БИН\s*\/?\s*ИИН\s*\d+\s*,?\s*)?([^\n,]+)/i))) out.contractor = m[1].trim();
+    else if ((m = t.match(/Бенефициар:[^\n]*\n([^\n]+)/i))) out.contractor = m[1].replace(/\s*KZ\w{18}.*$/, '').trim();
+    if ((m = t.match(/Покупатель:\s*([^\n]+)/i))) out.company = companyOf(m[1]);
+    if ((m = t.match(/Всего к оплате:?\s*([\d\s]+[,.]\d{2})/i)) && money(m[1])) out.amount = money(m[1]);
+    else if ((m = t.match(/на сумму\s*([\d\s]+[,.]\d{2})/i))) out.amount = money(m[1]);
+    else if ((m = t.match(/Итого(?:\s*с\s*НДС)?:?\s*([\d\s]+[,.]\d{2})/i))) out.amount = money(m[1]);
+    const names = []; const body = t.split(/№\s*(?:Код\s*)?Наименование/i)[1];
+    if (body) for (const line of body.split('\n')) { if (/^\s*(Итого|Всего)/i.test(line)) break; const mm = line.match(/^\s*\d+\s+(?:\d{6,}\s+)?(.+?)\s+[\d\s,.]+\s+\S+\s+[\d\s,.]+\s+[\d\s,.]+\s*$/); if (mm) names.push(mm[1].trim()); }
+    out.purpose = names.join('; ').slice(0, 200);
+    if (out.number) out.purpose = `Счёт № ${out.number}${out.purpose ? ': ' + out.purpose : ''}`;
+    return out;
+  }
+
+  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf };
 });
