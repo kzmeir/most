@@ -49,6 +49,9 @@ function lanIPs() {
 function userName(id) { const u = store.get().users.find(x => x.id === id); return u ? (u.name || u.login) : ''; }
 const decorateDoc = d => D.decorateDoc(d, userName);
 
+// публичный адрес из туннеля (пишет tools/serve-internet.js)
+function publicUrl() { try { const f = path.join(store.DATA_DIR, 'tunnel-url.txt'); if (!fs.existsSync(f)) return ''; const st = fs.statSync(f); if (Date.now() - st.mtimeMs > 7 * 864e5) return ''; return fs.readFileSync(f, 'utf8').trim(); } catch { return ''; } }
+
 // ---------- seed ----------
 function seedStatus() {
   if (!fs.existsSync(SEED_DIR)) return { available: false, files: [] };
@@ -81,7 +84,7 @@ async function api(req, res, url, user) {
   const qs = Object.fromEntries(url.searchParams.entries());
 
   // --- public ---
-  if (seg === 'status' && method === 'GET') return ok(res, { needsSetup: db.users.length === 0, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0' });
+  if (seg === 'status' && method === 'GET') return ok(res, { publicUrl: publicUrl(), needsSetup: db.users.length === 0, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0' });
   if (seg === 'setup' && method === 'POST') {
     if (db.users.length) return err(res, 403, 'Уже настроено');
     if (!body.login || !body.password || String(body.password).length < 6) return err(res, 400, 'Логин и пароль (мин. 6 символов)');

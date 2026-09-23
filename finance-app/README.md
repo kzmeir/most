@@ -99,8 +99,11 @@ node tools/add_user.js aigerim Sekret2026 secretary "Айгерим"
 
 **Доступ из интернета без VPN** — через Cloudflare Tunnel (бесплатно, HTTPS, порт наружу не открывается):
 
-1. На MostServer один раз установите cloudflared: `winget install Cloudflare.cloudflared` (Windows) или `brew install cloudflared` (macOS).
-2. Запускайте `start-internet.bat` вместо `start.bat`. В окне появится адрес вида `https://xxxx.trycloudflare.com` — отправьте его сотрудникам вместе с логином и паролем. Такой адрес меняется при каждом запуске.
-3. Постоянный адрес (например, `finance.most-a.com`): в аккаунте Cloudflare выполните один раз `cloudflared tunnel login`, `cloudflared tunnel create most-finance`, `cloudflared tunnel route dns most-finance finance.most-a.com`, затем запишите имя туннеля `most-finance` в файл `tunnel.txt` рядом с `start-internet.bat`. Дальше тот же `start-internet.bat` поднимает постоянный адрес.
+1. На MostServer один раз установите cloudflared: `winget install Cloudflare.cloudflared` (Windows) или `brew install cloudflared` (macOS). Либо положите `cloudflared.exe` рядом с `server.js`.
+2. Запускайте `start-internet.bat` вместо `start.bat`: он поднимает сервер и туннель и перезапускает их при сбоях. Адрес вида `https://xxxx.trycloudflare.com` появляется в окне и в системе: Настройки → «Доступ из интернета» (кнопка «Скопировать»). Отправьте его сотрудникам вместе с логином и паролем.
+3. Автозапуск при включении MostServer: один раз запустите `install-autostart.bat` от имени администратора.
+4. Адрес быстрого туннеля меняется при каждом запуске. Постоянный адрес (например, `finance.most-a.com`): в аккаунте Cloudflare выполните один раз `cloudflared tunnel login`, `cloudflared tunnel create most-finance`, `cloudflared tunnel route dns most-finance finance.most-a.com`, запишите имя `most-finance` в файл `tunnel.txt` рядом с `server.js` и перезапустите `start-internet.bat`.
+
+**Перенос данных из веб-версии claude.ai в офисную**: в веб-версии Настройки → «Скачать всю базу (JSON)», затем в офисной Настройки → «Восстановить из файла» под владельцем. Переносятся все записи; прикреплённые файлы (PDF счетов и договоров) нужно прикрепить заново. После переноса ведите учёт в одном месте.
 
 Что защищает вход снаружи: пароли хранятся хэшами (scrypt), сессии в httpOnly-cookie на 30 дней, не больше 10 попыток входа за 15 минут с одного адреса (за туннелем адрес берётся из заголовка `CF-Connecting-IP`, переменная `TRUST_PROXY=1` выставляется скриптом). Для дополнительной защиты в Cloudflare Zero Trust можно включить бесплатный вход по коду на почту перед открытием страницы.
