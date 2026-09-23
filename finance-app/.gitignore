@@ -3,3 +3,6 @@ data/
 .DS_Store
 seed/
 web/dist/
+tests/tmp/
+tests/fixtures/*
+!tests/fixtures/statement.xlsx
