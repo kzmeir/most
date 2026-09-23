@@ -19,7 +19,7 @@ const today = D.todayStr, num = D.num, uid = () => (crypto.randomUUID ? crypto.r
 const sortKey = d => d.date || d.invoiceDate || d.createdAt || d.id || '';
 const col = c => [...cache[c].values()].sort((a, b) => (sortKey(a) < sortKey(b) ? -1 : sortKey(a) > sortKey(b) ? 1 : 0));
 const allOps = () => { const out = []; for (const m of months.values()) for (const o of m.items || []) out.push(o); return out; };
-const view = () => ({ ops: allOps(), settings, docs: col('docs'), invoices: col('invoices'), projects: col('projects'), contracts: col('contracts'), subcontracts: col('subcontracts'), proposals: col('proposals'), accounts: col('accounts'), categories: col('categories'), payroll: col('payroll'), obligations: col('obligations'), cash: col('cash') });
+const view = () => ({ ops: allOps(), settings, docs: col('docs'), invoices: col('invoices'), projects: col('projects'), contracts: col('contracts'), subcontracts: col('subcontracts'), proposals: col('proposals'), counterparties: col('counterparties'), stages: col('stages'), accounts: col('accounts'), categories: col('categories'), payroll: col('payroll'), obligations: col('obligations'), cash: col('cash') });
 
 // ---------- доступ ----------
 function computeRole() { if (!me || !me.id) return null; if (me.isOwner) return 'owner'; if (me.canEdit) return rolesDoc.roles[me.id] || 'partner'; return 'pm'; }
@@ -109,7 +109,7 @@ const NUMKEYS = ['amount', 'sum', 'paid', 'remaining', 'toPay', 'toClose', 'clos
 async function route(path, opts) {
   await initP;
   const method = (opts && opts.method) || 'GET'; const body = (opts && opts.body) || {};
-  const [p, qstr] = path.replace(/^\/+/, '').split('?'); const [seg, id2, seg3] = p.split('/').filter(Boolean);
+  const [p, qstr] = path.replace(/^\/+/, '').split('?'); const [seg, id2, seg3] = p.split('/').filter(Boolean).map(x => { try { return decodeURIComponent(x); } catch { return x; } });
   const qs = Object.fromEntries(new URLSearchParams(qstr || '').entries());
   if (seg === 'status') return ok({ needsSetup: false, web: true, hasData: months.size > 0 || COLS.some(c => cache[c].size > 0), seed: { available: false, files: [] }, version: '2.1-web', lastBackupAt: settings.lastBackupAt || null });
   if (!window.claude || !window.claude.use) return err(503, 'Эта версия работает только внутри claude.ai.');
@@ -128,6 +128,31 @@ async function route(path, opts) {
     return err(400, 'В веб-версии нажмите «Скачать всю базу (JSON)»');
   }
   if (seg === 'seed') return err(400, 'Данные уже загружены');
+  if (seg === 'counterparties' && id2 === 'rebuild' && method === 'POST') {
+    if (!can('counterparties', 'write')) return err(403, 'Только просмотр');
+    const fresh = D.buildCounterparties(view()); for (let i = 0; i < fresh.length; i += 8) { await Promise.all(fresh.slice(i, i + 8).map(c => write('counterparties', c))); lastOwnWrite = Date.now(); }
+    await audit('rebuild', 'counterparties', null, { added: fresh.length }); return ok({ added: fresh.length, total: cache.counterparties.size });
+  }
+  if (seg === 'counterparties' && id2 === 'stats') return D.isAdmin(role) ? ok(D.counterpartyStats(view())) : err(403, 'Нет доступа');
+  if (seg === 'counterparties' && id2 && seg3 === 'merge' && method === 'POST') {
+    if (!can('counterparties', 'write')) return err(403, 'Только просмотр');
+    const src = cache.counterparties.get(id2), dst = cache.counterparties.get(body.into); if (!src || !dst || src.id === dst.id) return err(400, 'Укажите, с кем объединить');
+    const aliases = [...new Set([...(dst.aliases || []), src.name, src.short, ...(src.aliases || [])].filter(x => x && x !== dst.name))];
+    const r = await write('counterparties', Object.assign({}, dst, { aliases, bin: dst.bin || src.bin, iban: dst.iban || src.iban, contact: dst.contact || src.contact })); await removeDoc('counterparties', src.id);
+    await audit('merge', 'counterparties', dst.id, { from: src.id }); return ok(r);
+  }
+  if (seg === 'ops' && id2 === 'allocate' && method === 'POST') {
+    if (!can('ops', 'write')) return err(403, 'Только просмотр');
+    const list = D.allocateIncome(view(), { all: !!body.all, ids: Array.isArray(body.ids) ? body.ids : null });
+    if (body.apply && list.length) { const byYm = {}; for (const a of list) (byYm[a.date.slice(0, 7)] = byYm[a.date.slice(0, 7)] || []).push(a); for (const [ym, as] of Object.entries(byYm)) { const m = months.get(ym); if (!m) continue; const items = m.items.map(o => { const a = as.find(x => x.id === o.id); return a ? Object.assign({}, o, { project: a.project, contractId: a.contractId, autoProject: true, allocReason: a.reason }) : o; }); await writeMonth(ym, items); } await audit('allocate', 'ops', null, { rows: list.length }); }
+    return ok({ proposals: list, applied: body.apply ? list.length : 0 });
+  }
+  if (seg === 'contracts' && id2 === 'facts') { if (!D.isAdmin(role)) return err(403, 'Нет доступа'); const v = view(); const resolve = D.cpResolver(v.counterparties); const out = {}; for (const c of v.contracts) out[c.id] = D.contractFacts(c, v, resolve, v.projects); return ok(out); }
+  if (seg === 'projects' && id2 && seg3 === 'card' && method === 'GET') {
+    if (!can('projects', 'read')) return err(403, 'Нет доступа');
+    const p = cache.projects.get(id2) || col('projects').find(x => x.name === id2); if (!p) return err(404, 'Проект не найден');
+    const admin = D.isAdmin(role); const v = view(); return ok(D.projectCard(p, admin ? v : Object.assign({}, v, { ops: [] }), admin));
+  }
   if (seg === 'balances') return D.isAdmin(role) ? ok(D.accountBalances(allOps(), col('cash'), col('accounts'), qs.asOf)) : err(403, 'Нет доступа');
   if (seg === 'obligations' && id2 === 'invoices' && method === 'POST') {
     if (!can('obligations', 'write')) return err(403, 'Только просмотр');
@@ -178,8 +203,8 @@ async function route(path, opts) {
     if (role !== 'owner') return err(403, 'Только владелец');
     if (method === 'GET') { const ids = [me.id, ...Object.keys(rolesDoc.roles)]; const nm = await names(ids); return ok(ids.map(id => ({ id, login: '', name: nm[id], role: id === me.id ? 'owner' : rolesDoc.roles[id], active: true }))); }
     const saveRoles = async () => { lastOwnWrite = Date.now(); await db.doc('meta/roles').set(rolesDoc); };
-    if (method === 'POST') { if (!body.id || !['partner', 'accountant'].includes(body.role)) return err(400, 'Человек и роль'); if (body.id === me.id) return err(400, 'Это вы'); rolesDoc = Object.assign({}, rolesDoc, { roles: Object.assign({}, rolesDoc.roles, { [body.id]: body.role }) }); await saveRoles(); await audit('create', 'users', body.id); return ok({ ok: true }); }
-    if (method === 'PUT' && id2) { if (!['partner', 'accountant'].includes(body.role)) return err(400, 'Роль'); rolesDoc = Object.assign({}, rolesDoc, { roles: Object.assign({}, rolesDoc.roles, { [id2]: body.role }) }); await saveRoles(); await audit('update', 'users', id2); return ok({ ok: true }); }
+    if (method === 'POST') { if (!body.id || !['partner', 'accountant', 'secretary'].includes(body.role)) return err(400, 'Человек и роль'); if (body.id === me.id) return err(400, 'Это вы'); rolesDoc = Object.assign({}, rolesDoc, { roles: Object.assign({}, rolesDoc.roles, { [body.id]: body.role }) }); await saveRoles(); await audit('create', 'users', body.id); return ok({ ok: true }); }
+    if (method === 'PUT' && id2) { if (!['partner', 'accountant', 'secretary'].includes(body.role)) return err(400, 'Роль'); rolesDoc = Object.assign({}, rolesDoc, { roles: Object.assign({}, rolesDoc.roles, { [id2]: body.role }) }); await saveRoles(); await audit('update', 'users', id2); return ok({ ok: true }); }
     if (method === 'DELETE' && id2) { const roles = Object.assign({}, rolesDoc.roles); delete roles[id2]; rolesDoc = Object.assign({}, rolesDoc, { roles }); await saveRoles(); await audit('delete', 'users', id2); return ok({ ok: true }); }
   }
   if (seg === 'settings') {
@@ -209,6 +234,7 @@ async function route(path, opts) {
         if (body.autoTag !== false) Object.assign(doc, D.suggest(doc, hist));
         doc.id = `op-${doc.date.replace(/-/g, '')}-${uid().slice(0, 8)}`; (byYm[doc.date.slice(0, 7)] = byYm[doc.date.slice(0, 7)] || []).push(doc); n++;
       }
+      const allNew = Object.values(byYm).flat(); const alloc = D.allocateIncome(Object.assign({}, v, { ops: allNew }), { ids: allNew.map(o => o.id) }); for (const a of alloc) { const o = allNew.find(x => x.id === a.id); if (o) Object.assign(o, { project: a.project, contractId: a.contractId, autoProject: true, allocReason: a.reason }); }
       for (const [ym, its] of Object.entries(byYm)) { const m = months.get(ym) || { ym, items: [] }; await writeMonth(ym, [...(m.items || []), ...its]); }
       if (body.cash && body.cash.company) { const id = body.cash.id || ('acc-' + (body.account || 'x')); await write('cash', { id, company: body.cash.company, account: body.cash.account || body.account || '', balance: num(body.cash.balance), asOf: body.cash.asOf || today() }); }
       await audit('import-statement', 'ops', null, { rows: n, account: body.account || '' }); return ok({ imported: n });

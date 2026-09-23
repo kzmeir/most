@@ -130,12 +130,22 @@ for o in ops:
 # ---------- реестры ----------
 ws = wb['Реестр договоров']
 contracts = []
-for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True)):
-    r = tuple(r) + (None,) * 20
-    if not txt(r[3]) or not num(r[7]): continue
-    contracts.append({'id': f'ct-{len(contracts)+1:03d}', 'code': txt(r[0]), 'name': txt(r[1]), 'dept': txt(r[2]), 'title': txt(r[3]), 'clientShort': txt(r[4]), 'client': txt(r[5]),
-                      'company': txt(r[6]).replace('«', '').replace('»', ''), 'sum': num(r[7]), 'paid': num(r[8]), 'remaining': num(r[9]), 'toPay': num(r[10]), 'toClose': num(r[11]), 'closedActs': num(r[12]),
-                      'link': txt(r[13]), 'note': txt(r[14]), 'signed': yes(r[15]), 'closed': yes(r[16]), 'source': 'budget'})
+def contract_row(r):
+    return {'code': txt(r[0]), 'name': txt(r[1]), 'dept': txt(r[2]), 'title': txt(r[3]), 'clientShort': txt(r[4]), 'client': txt(r[5]),
+            'company': txt(r[6]).replace('«', '').replace('»', ''), 'sum': num(r[7]), 'paid': num(r[8]), 'remaining': num(r[9]), 'toPay': num(r[10]), 'toClose': num(r[11]), 'closedActs': num(r[12]),
+            'link': txt(r[13]), 'note': txt(r[14]), 'signed': yes(r[15]), 'closed': yes(r[16]), 'source': 'budget'}
+garbage = lambda r: bool(re.search(r'ХХХХ|удаляем', ' '.join(txt(x) for x in r[:7]), re.I))
+# два прохода: сначала строки с номером и суммой (id ct-001… стабильны), затем остальные строки с данными договора (ДС, договоры без суммы)
+rows_all = [tuple(r) + (None,) * 20 for r in ws.iter_rows(min_row=2, values_only=True)]
+for r in rows_all:
+    if not txt(r[3]) or not num(r[7]) or garbage(r): continue
+    contracts.append(dict(id=f'ct-{len(contracts)+1:03d}', **contract_row(r)))
+for r in rows_all:
+    if (txt(r[3]) and num(r[7])) or garbage(r): continue
+    if not (txt(r[0]) or txt(r[1])) or not (txt(r[3]) or txt(r[5]) or num(r[7]) or num(r[8])): continue
+    c = contract_row(r)
+    if not c['title'] and not c['sum'] and not c['paid'] and re.search(r'млн|аренд', c['client'] + c['note'] + txt(r[7]), re.I): c['note'] = (c['note'] + ' ' + txt(r[7])).strip()
+    contracts.append(dict(id=f'ct-{len(contracts)+1:03d}', **c))
 ws = wb['Реестр договоров с подрядчиками']
 subcontracts = []
 for r in ws.iter_rows(min_row=2, values_only=True):
@@ -168,6 +178,14 @@ for p in old_projects:
 for p in projects_ref:
     if p['id'] in seen or p['name'] in seen: continue
     projects.append({'id': p['id'], 'name': p['name'], 'client': '', 'contractNoVat': 0, 'targetCost': 0, 'status': 'archive'}); seen.add(p['id'])
+# проекты из реестра договоров (код + название, заказчик кратко, статус по открытым договорам)
+reg = {}
+for c in contracts:
+    if not c['code'] or c['code'] in seen or c['code'] in ('АВТОРСКИЙ НАДЗОР',): continue
+    r = reg.setdefault(c['code'], {'id': c['code'], 'name': c['name'] or c['code'], 'client': c['clientShort'] or c['client'], 'contractNoVat': 0, 'targetCost': 0, 'status': 'archive'})
+    if not c['closed']: r['status'] = 'В работе'
+    r['contractNoVat'] += c['sum']
+for r in reg.values(): projects.append(r); seen.add(r['id'])
 
 # ---------- проверка остатков ----------
 bal = collections.defaultdict(float)

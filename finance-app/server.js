@@ -124,6 +124,33 @@ async function api(req, res, url, user) {
     store.save(); store.audit(user.id, 'restore', 'db', before, report);
     return ok(res, { restored: report, backupBefore: before });
   }
+  // --- контрагенты: построить справочник, статистика, объединение ---
+  if (seg === 'counterparties' && id2 === 'rebuild' && method === 'POST') {
+    if (!D.can(role, 'counterparties', 'write')) return err(res, 403, 'Только просмотр');
+    const fresh = D.buildCounterparties(db); for (const c of fresh) db.counterparties.push(c);
+    store.audit(user.id, 'rebuild', 'counterparties', null, { added: fresh.length }); store.save(); return ok(res, { added: fresh.length, total: db.counterparties.length });
+  }
+  if (seg === 'counterparties' && id2 === 'stats' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.counterpartyStats(db)); }
+  if (seg === 'counterparties' && id2 && seg3 === 'merge' && method === 'POST') {
+    if (!D.can(role, 'counterparties', 'write')) return err(res, 403, 'Только просмотр');
+    const src = store.find('counterparties', id2), dst = store.find('counterparties', body.into); if (!src || !dst || src.id === dst.id) return err(res, 400, 'Укажите, с кем объединить');
+    const aliases = [...new Set([...(dst.aliases || []), src.name, src.short, ...(src.aliases || [])].filter(x => x && x !== dst.name))];
+    store.update('counterparties', dst.id, { aliases, bin: dst.bin || src.bin, iban: dst.iban || src.iban, contact: dst.contact || src.contact }); store.remove('counterparties', src.id);
+    store.audit(user.id, 'merge', 'counterparties', dst.id, { from: src.id }); return ok(res, store.find('counterparties', dst.id));
+  }
+  // --- авторазнесение приходов по договорам/проектам ---
+  if (seg === 'ops' && id2 === 'allocate' && method === 'POST') {
+    if (!D.can(role, 'ops', 'write')) return err(res, 403, 'Только просмотр');
+    const list = D.allocateIncome(db, { all: !!body.all, ids: Array.isArray(body.ids) ? body.ids : null });
+    if (body.apply) { for (const a of list) store.update('ops', a.id, { project: a.project, contractId: a.contractId, autoProject: true, allocReason: a.reason }); store.audit(user.id, 'allocate', 'ops', null, { rows: list.length }); store.save(); }
+    return ok(res, { proposals: list, applied: body.apply ? list.length : 0 });
+  }
+  if (seg === 'contracts' && id2 === 'facts' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); const resolve = D.cpResolver(db.counterparties); const out = {}; for (const c of db.contracts) out[c.id] = D.contractFacts(c, db, resolve, db.projects); return ok(res, out); }
+  if (seg === 'projects' && id2 && seg3 === 'card' && method === 'GET') {
+    if (!D.can(role, 'projects', 'read')) return err(res, 403, 'Нет доступа');
+    const p = store.find('projects', id2) || db.projects.find(x => x.name === id2); if (!p) return err(res, 404, 'Проект не найден');
+    const admin = D.isAdmin(role); return ok(res, D.projectCard(p, admin ? db : Object.assign({}, db, { ops: [] }), admin));
+  }
   if (seg === 'balances' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.accountBalances(db.ops, db.cash, db.accounts, qs.asOf)); }
   if (seg === 'obligations' && id2 === 'invoices' && method === 'POST') {
     if (!D.can(role, 'obligations', 'write')) return err(res, 403, 'Только просмотр');
@@ -236,6 +263,7 @@ async function api(req, res, url, user) {
       if (body.autoTag !== false) Object.assign(doc, D.suggest(doc, hist));
       doc.id = store.id(); db.ops.push(doc); n++;
     }
+    const added = db.ops.slice(-n).map(o => o.id); for (const a of D.allocateIncome(db, { ids: added })) { const o = store.find('ops', a.id); if (o) Object.assign(o, { project: a.project, contractId: a.contractId, autoProject: true, allocReason: a.reason }); }
     if (body.cash && body.cash.company) { const id = body.cash.id || ('acc-' + (body.account || 'x')); const c = store.find('cash', id); const rec = { id, company: body.cash.company, account: body.cash.account || body.account || '', balance: num(body.cash.balance), asOf: body.cash.asOf || today() }; if (c) store.update('cash', id, rec); else store.insert('cash', rec); }
     store.audit(user.id, 'import-statement', 'ops', null, { rows: n, account: body.account || '' }); store.save();
     return ok(res, { imported: n });

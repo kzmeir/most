@@ -6,11 +6,12 @@
   else root.MostDomain = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const COLLECTIONS = ['users', 'docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'ops', 'accounts', 'categories', 'payroll', 'employees', 'vacations', 'obligations', 'cash', 'audit'];
-  const PM_READ = ['docs', 'invoices', 'projects', 'contracts', 'subcontracts'];
-  const ROLES = ['owner', 'partner', 'accountant', 'pm'];
+  const COLLECTIONS = ['users', 'docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'counterparties', 'stages', 'ops', 'accounts', 'categories', 'payroll', 'employees', 'vacations', 'obligations', 'cash', 'audit'];
+  const PM_READ = ['docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'counterparties', 'stages'];
+  const SECRETARY_WRITE = ['docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'counterparties', 'stages']; // секретарь: документы и справочники, без денег
+  const ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm'];
   const ADMIN = ['owner', 'partner', 'accountant'];
-  const ROLE_LABEL = { owner: 'Владелец', partner: 'Партнёр', accountant: 'Бухгалтер', pm: 'Проджект-менеджер' };
+  const ROLE_LABEL = { owner: 'Владелец', partner: 'Партнёр', accountant: 'Бухгалтер', secretary: 'Секретарь', pm: 'Проджект-менеджер' };
   const KINDS = { expense: 'Расход', income: 'Доход', transfer: 'Перевод между своими счетами', tax: 'Налоги', payroll: 'Зарплата', owner: 'Вывод учредителям' };
   const DEFAULT_SETTINGS = { companies: ['MOST Project', 'MOST Architects'], vatRate: 0.16, payrollTax: 0.45, usdRate: 525, defaultAccounts: { 'MOST Project': 'PROJECT осн', 'MOST Architects': 'MOST' } };
 
@@ -19,6 +20,7 @@
     if (collection === 'users') return role === 'owner';
     if (collection === 'settings') return action === 'read' ? ADMIN.includes(role) : role === 'owner';
     if (ADMIN.includes(role)) return true;
+    if (role === 'secretary') return SECRETARY_WRITE.includes(collection);
     return PM_READ.includes(collection) && action === 'read';
   }
   const isAdmin = r => ADMIN.includes(r);
@@ -350,6 +352,138 @@
     return { year, company: q.company || '', months, total: { income: t.income, expense: t.expense, net: t.net, n: t.n }, byCompany, categories: catRows, projectsIn: projIn, projectsOut: projOut, counterparties };
   }
 
+
+  // ---- контрагенты: нормализация имён, справочник, сопоставление ----
+  const LEGAL = /(^|\s)(тоо|too|llp|llc|ltd|ип|ао|оао|зао|осоо|ооо|филиал|акционерное общество|товарищество с ограниченной ответственностью|индивидуальный предприниматель)(?=\s|$)/gi;
+  function cpNorm(s) { return String(s || '').toLowerCase().replace(/[«»"'“”„`]/g, ' ').replace(/\s*(?:бин\/иин|бин|иин)\s*\d{12}.*$/i, '').replace(LEGAL, ' ').replace(/[^a-zа-яё0-9]+/gi, ' ').trim().replace(/\s+/g, ' '); }
+  const cpId = () => 'cp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  // resolve(name) → запись справочника или null: точное совпадение по имени/псевдонимам, иначе вхождение (от 8 символов)
+  function cpResolver(counterparties) {
+    const exact = new Map(); const keys = [];
+    for (const c of counterparties || []) for (const n of [c.name, c.short].concat(c.aliases || [])) { const k = cpNorm(n); if (k && !exact.has(k)) { exact.set(k, c); if (k.length >= 8) keys.push([k, c]); } }
+    const cache = new Map();
+    return name => { const k = cpNorm(name); if (!k) return null; if (cache.has(k)) return cache.get(k); let r = exact.get(k) || null; if (!r) for (const [kk, c] of keys) { if (k.includes(kk) || (k.length >= 8 && kk.includes(k))) { r = c; break; } } cache.set(k, r); return r; };
+  }
+  // собрать справочник из договоров, подрядчиков, счетов и операций (только те, кого ещё нет)
+  function buildCounterparties(db) {
+    const resolve = cpResolver(db.counterparties || []); const out = []; const byKey = new Map();
+    const add = (name, kind, extra) => {
+      name = String(name || '').trim(); const k = cpNorm(name); if (!k || k.length < 2 || resolve(name)) return;
+      let rec = byKey.get(k);
+      if (!rec) for (const [kk, r] of byKey) if (kk.length >= 8 && k.length >= 8 && (k.includes(kk) || kk.includes(k))) { rec = r; break; }
+      if (!rec) { rec = { id: cpId(), name, short: '', kind, bin: '', iban: '', aliases: [], contact: '', note: '', createdAt: new Date().toISOString(), source: 'auto' }; byKey.set(k, rec); out.push(rec); }
+      else if (name !== rec.name && !rec.aliases.includes(name)) rec.aliases.push(name);
+      if (kind === 'client') rec.kind = 'client'; else if (kind === 'contractor' && rec.kind !== 'client') rec.kind = 'contractor';
+      if (extra && extra.short && !rec.short) rec.short = extra.short;
+    };
+    for (const c of db.contracts || []) add(c.client || c.clientShort, 'client', { short: c.clientShort });
+    for (const c of db.subcontracts || []) add(c.contractor, 'contractor');
+    for (const i of db.invoices || []) add(i.contractor, 'supplier');
+    const cnt = {}; for (const o of db.ops || []) { const n = String(o.counterparty || '').trim(); if (n) cnt[n] = (cnt[n] || 0) + 1; }
+    for (const [n, k] of Object.entries(cnt)) if (k >= 2) add(n, 'other');
+    for (const r of out) if (!r.short && r.aliases.length) { const s = [r.name].concat(r.aliases).sort((a, b) => a.length - b.length)[0]; if (s !== r.name) r.short = s; }
+    return out;
+  }
+  function counterpartyStats(db) {
+    const resolve = cpResolver(db.counterparties || []); const cats = db.categories || [], projects = db.projects || []; const st = {};
+    const get = c => st[c.id] || (st[c.id] = { contracts: 0, contractsSum: 0, subcontracts: 0, subSum: 0, invoicesOpen: 0, income: 0, expense: 0, ops: 0, lastOp: '', projects: new Set() });
+    for (const c of db.contracts || []) { const cp = resolve(c.client) || resolve(c.clientShort); if (cp) { const s = get(cp); s.contracts++; s.contractsSum += num(c.sum); const p = contractProject(c, projects); if (p) s.projects.add(p.id); } }
+    for (const c of db.subcontracts || []) { const cp = resolve(c.contractor); if (cp) { const s = get(cp); s.subcontracts++; s.subSum += num(c.sum); if (c.project) s.projects.add(c.project); } }
+    for (const i of db.invoices || []) { const cp = resolve(i.contractor); if (cp && i.status !== 'paid') get(cp).invoicesOpen += num(i.amount); }
+    for (const o of db.ops || []) { const cp = resolve(o.counterparty); if (!cp) continue; const s = get(cp); s.ops++; if (o.date > s.lastOp) s.lastOp = o.date; if (catKind(cats, o.category) === 'transfer') continue; s.income += num(o.credit); s.expense += num(o.debit); if (o.project) s.projects.add(o.project); }
+    for (const k of Object.keys(st)) st[k].projects = [...st[k].projects];
+    return st;
+  }
+
+  // ---- связки проект → договор → акт → операция ----
+  function contractProject(c, projects) {
+    if (!c) return null; projects = projects || [];
+    if (c.projectId) { const p = projects.find(p => p.id === c.projectId); if (p) return p; }
+    return projects.find(p => p.id === c.code) || projects.find(p => p.name === c.name || p.id === c.name || p.name === c.code) || null;
+  }
+  const contractsOf = (projectId, contracts, projects) => (contracts || []).filter(c => { const p = contractProject(c, projects); return p && p.id === projectId; });
+  function docContract(d, contracts, projects, resolve) {
+    if (d.contractId) return (contracts || []).find(c => c.id === d.contractId) || null;
+    const p = (projects || []).find(p => p.id === d.project || p.name === d.project); if (!p) return null;
+    const cs = contractsOf(p.id, contracts, projects); if (cs.length <= 1) return cs[0] || null;
+    if (resolve) { const dc = resolve(d.client); const m = dc ? cs.filter(c => resolve(c.client) === dc || resolve(c.clientShort) === dc) : []; if (m.length) return m[0]; }
+    return cs.find(c => !c.closed) || cs[0];
+  }
+  function contractFacts(c, db, resolve, projects) {
+    projects = projects || db.projects || []; const cats = db.categories || []; const p = contractProject(c, projects);
+    resolve = resolve || cpResolver(db.counterparties || []); const cpc = resolve(c.client) || resolve(c.clientShort);
+    const pays = (db.ops || []).filter(o => num(o.credit) && catKind(cats, o.category) !== 'transfer' && (o.contractId === c.id || (!o.contractId && p && (o.project === p.id || o.project === p.name) && cpc && resolve(o.counterparty) === cpc)));
+    const acts = (db.docs || []).filter(d => d.contractId === c.id);
+    return { paidFact: pays.reduce((s, o) => s + num(o.credit), 0), paymentsN: pays.length, lastPayment: pays.reduce((m, o) => o.date > m ? o.date : m, ''), actsSum: acts.reduce((s, d) => s + num(d.amount), 0), actsN: acts.length, projectId: p ? p.id : '' };
+  }
+  // авторазнесение приходов по договорам/проектам клиента
+  function allocateIncome(db, opts) {
+    opts = opts || {}; const cats = db.categories || [], projects = db.projects || [], contracts = db.contracts || [], docs = db.docs || [];
+    const resolve = cpResolver(db.counterparties || []);
+    const byCp = new Map(); const push = (k, c) => { if (!k) return; if (!byCp.has(k)) byCp.set(k, []); if (!byCp.get(k).includes(c)) byCp.get(k).push(c); };
+    for (const c of contracts) { const cp = resolve(c.client) || resolve(c.clientShort); push(cp ? cp.id : cpNorm(c.client), c); if (!cp && c.clientShort) push(cpNorm(c.clientShort), c); }
+    const out = [];
+    for (const o of db.ops || []) {
+      if (!num(o.credit)) continue; const kind = catKind(cats, o.category); if (kind === 'transfer' || kind === 'owner' || kind === 'payroll') continue;
+      if (o.project && !o.autoProject && !opts.all) continue;
+      if (opts.ids && !opts.ids.includes(o.id)) continue;
+      const cp = resolve(o.counterparty); const nk = cpNorm(o.counterparty); if (!cp && !nk) continue;
+      let cands = (cp ? byCp.get(cp.id) : null) || byCp.get(nk) || [];
+      if (!cands.length && nk.length >= 4) { for (const [k, cs] of byCp) if (k.length >= 4 && (nk.includes(k) || k.includes(nk))) { cands = cs; break; } }
+      if (!cands.length) continue;
+      const text = `${o.purpose || ''} ${o.comment || ''}`.toLowerCase(); let pick = null, reason = '';
+      const byNo = cands.filter(c => { const m = String(c.title || '').match(/\d{1,4}-\d{2}(?:-[а-яa-z]+)?/i); return m && text.includes(m[0].toLowerCase()); });
+      if (byNo.length === 1) { pick = byNo[0]; reason = 'номер договора в назначении'; }
+      if (!pick) { const m = text.match(/(?:сч[её]т|авр|акт)[^\d]{0,14}(\d{1,5})/); if (m) { const d = docs.find(d => String(d.number || '').replace(/\D/g, '') === m[1] && (!cp || resolve(d.client) === cp)); const c = d && docContract(d, contracts, projects, resolve); if (c && cands.includes(c)) { pick = c; reason = 'номер акта/счёта в назначении'; } } }
+      if (!pick) { const byName = cands.filter(c => { const p = contractProject(c, projects); return [c.name, c.code, p && p.name, p && p.id].filter(x => x && String(x).length >= 4).some(n => text.includes(String(n).toLowerCase())); }); if (byName.length === 1) { pick = byName[0]; reason = 'название проекта в назначении'; } }
+      if (!pick) { const open = cands.filter(c => !c.closed); if (open.length === 1) { pick = open[0]; reason = 'единственный открытый договор клиента'; } else if (cands.length === 1) { pick = cands[0]; reason = 'единственный договор клиента'; } else if (open.length > 1) { const rem = open.filter(c => num(c.remaining) > 0 || num(c.toPay) > 0); if (rem.length === 1) { pick = rem[0]; reason = 'единственный договор клиента с остатком'; } } }
+      if (!pick) continue;
+      const p = contractProject(pick, projects); const projectId = p ? p.id : (pick.code || pick.name);
+      if (o.project === projectId && o.contractId === pick.id && !o.autoProject) continue;
+      out.push({ id: o.id, date: o.date, counterparty: o.counterparty, credit: num(o.credit), current: o.project || '', project: projectId, contractId: pick.id, contract: `${pick.name || pick.code}${pick.title ? ' · ' + pick.title : ''}`, reason, candidates: cands.length });
+    }
+    return out;
+  }
+
+  // ---- стадии и карточка проекта: план/факт ----
+  const STAGE_STATUS = { plan: 'План', work: 'В работе', done: 'Сдана', paid: 'Оплачена', hold: 'Пауза' };
+  function projectCard(project, db, admin) {
+    const projects = db.projects || [], contracts = db.contracts || [], docs = db.docs || [], cats = db.categories || [];
+    const resolve = cpResolver(db.counterparties || []);
+    const stages = (db.stages || []).filter(s => s.projectId === project.id).sort((a, b) => num(a.order) - num(b.order) || String(a.start || '').localeCompare(String(b.start || '')));
+    const cts = contractsOf(project.id, contracts, projects);
+    const acts = docs.filter(d => d.project === project.id || d.project === project.name || (d.contractId && cts.some(c => c.id === d.contractId)));
+    const subs = (db.subcontracts || []).filter(s => s.project === project.id || s.project === project.name);
+    const ops = admin ? (db.ops || []).filter(o => o.project === project.id || o.project === project.name) : [];
+    const inc = ops.filter(o => num(o.credit) && catKind(cats, o.category) !== 'transfer'), exp = ops.filter(o => num(o.debit) && catKind(cats, o.category) !== 'transfer');
+    const income = inc.reduce((s, o) => s + num(o.credit), 0), expense = exp.reduce((s, o) => s + num(o.debit), 0);
+    const byMonth = {}; for (const o of inc.concat(exp)) { const k = (o.date || '').slice(0, 7); const m = byMonth[k] || (byMonth[k] = { income: 0, expense: 0 }); m.income += num(o.credit); m.expense += num(o.debit); }
+    const stageRows = stages.map(s => { const sInc = inc.filter(o => o.stageId === s.id).reduce((a, o) => a + num(o.credit), 0), sExp = exp.filter(o => o.stageId === s.id).reduce((a, o) => a + num(o.debit), 0); const sActs = acts.filter(d => d.stageId === s.id); return Object.assign({}, s, { factIncome: sInc, factExpense: sExp, actsSum: sActs.reduce((a, d) => a + num(d.amount), 0), actsPaid: sActs.filter(d => d.paid).reduce((a, d) => a + num(d.amount), 0) }); });
+    const planIncome = stages.reduce((s, x) => s + num(x.planSum), 0) || cts.reduce((s, c) => s + num(c.sum), 0) || num(project.contractNoVat);
+    const planCost = stages.reduce((s, x) => s + num(x.planCost), 0) || num(project.targetCost);
+    const progress = stages.length ? Math.round(stages.reduce((s, x) => s + num(x.progress) * (num(x.planSum) || 1), 0) / (stages.reduce((s, x) => s + (num(x.planSum) || 1), 0) || 1)) : null;
+    return {
+      project, client: project.client || (cts[0] && (cts[0].clientShort || cts[0].client)) || '', admin: !!admin,
+      contracts: cts.map(c => Object.assign({}, c, admin ? contractFacts(c, db, resolve, projects) : { actsN: acts.filter(d => d.contractId === c.id).length })),
+      acts, subcontracts: subs, stages: stageRows, progress,
+      plan: { income: planIncome, expense: planCost, margin: planIncome - planCost },
+      fact: { income, expense, margin: income - expense, marginPct: income ? (income - expense) / income : null, n: ops.length, untagged: ops.filter(o => !o.category || o.auto).length, actsSum: acts.reduce((s, d) => s + num(d.amount), 0), actsPaid: acts.filter(d => d.paid).reduce((s, d) => s + num(d.amount), 0), subSum: subs.reduce((s, x) => s + num(x.sum), 0), subPaid: subs.reduce((s, x) => s + num(x.paid), 0) },
+      byCategory: groupSum(exp, 'category', cats, 'debit'), byMonth,
+    };
+  }
+
+  // ---- коммерческое предложение: расчёт ----
+  function kpCalc(kp) {
+    kp = kp || {}; const areas = (kp.areas || []).map(a => Object.assign({}, a, { m2: num(a.m2) })); const area = num(kp.areaTotal) || areas.reduce((s, a) => s + a.m2, 0);
+    const rate = num(kp.rate); const vat = num(kp.vatRate); const vatIncluded = kp.vatIncluded !== false;
+    const stages = (kp.stages || []).map(s => { const share = num(s.share) / 100; const r = kp.fixed ? 0 : Math.round(rate * share * 100) / 100; const sum = kp.fixed ? num(s.sum) : Math.round(area * rate * share); return Object.assign({}, s, { shareNum: share, rateStage: r, sum }); });
+    const itemsSum = (kp.items || []).reduce((s, i) => s + num(i.qty) * num(i.price), 0);
+    const total = kp.fixed ? (stages.length ? stages.reduce((s, x) => s + x.sum, 0) : itemsSum) : (kp.mode === 'fixed' ? itemsSum : Math.round(area * rate));
+    const noVat = vatIncluded ? total / (1 + vat) : total, vatSum = vatIncluded ? total - noVat : total * vat, withVat = vatIncluded ? total : total + vatSum;
+    const weeks = stages.reduce((s, x) => s + num(x.weeks), 0);
+    return { area, rate, stages, total, noVat: Math.round(noVat * 100) / 100, vatSum: Math.round(vatSum * 100) / 100, withVat: Math.round(withVat * 100) / 100, weeks, vatIncluded, vatRate: vat };
+  }
+
   // ---- восстановление из JSON-бэкапа: какие коллекции есть в файле ----
   function backupCollections(data) {
     if (!data || typeof data !== 'object') return null;
@@ -358,5 +492,5 @@
     return cols;
   }
 
-  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections };
+  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, SECRETARY_WRITE, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc };
 });
