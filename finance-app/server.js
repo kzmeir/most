@@ -91,7 +91,8 @@ async function api(req, res, url, user) {
     return send(res, 200, { user: auth.publicUser(u) }, { 'Set-Cookie': auth.sessionCookie(token) });
   }
   if (seg === 'login' && method === 'POST') {
-    const ip = req.socket.remoteAddress || '';
+    // за туннелем/прокси (TRUST_PROXY=1) реальный IP приходит в заголовке, иначе лимит попыток блокировал бы всех сразу
+    const ip = (process.env.TRUST_PROXY ? (req.headers['cf-connecting-ip'] || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) : '') || req.socket.remoteAddress || '';
     if (!auth.loginAllowed(ip)) return err(res, 429, 'Слишком много попыток. Подождите 15 минут.');
     const u = db.users.find(x => x.login === String(body.login || '').trim().toLowerCase() && x.active !== false);
     if (!u || !auth.verifyPassword(body.password || '', u.salt, u.passHash)) { auth.noteFailedLogin(ip); return err(res, 401, 'Неверный логин или пароль'); }
