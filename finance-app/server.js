@@ -14,6 +14,7 @@ const PUBLIC = path.join(__dirname, 'public');
 const SEED_DIR = path.join(__dirname, 'seed');
 const FILES_DIR = path.join(store.DATA_DIR, 'files'); // файлы счетов (PDF/картинки)
 const FILE_TYPES = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+const FILE_COLS = ['invoices', 'docs', 'contracts', 'subcontracts', 'proposals']; // где можно прикрепить файл
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8' };
 const MAX_OPS = 3000;
 
@@ -113,6 +114,25 @@ async function api(req, res, url, user) {
     if (method === 'POST') { const name = store.backup('manual'); store.audit(user.id, 'backup', 'db', name); return ok(res, { name, dir: store.BACKUP_DIR }); }
     if (method === 'GET') { const copy = Object.assign({}, db, { users: db.users.map(auth.publicUser) }); delete copy.sessions; return send(res, 200, JSON.stringify(copy, null, 2), { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': `attachment; filename="most-finance-${today()}.json"` }); }
   }
+  // --- восстановление из JSON-бэкапа (владелец): пользователи и сессии сохраняются, остальное заменяется ---
+  if (seg === 'restore' && method === 'POST') {
+    if (role !== 'owner') return err(res, 403, 'Только владелец');
+    const data = body.data; const cols = D.backupCollections(data); if (!cols) return err(res, 400, 'Это не файл бэкапа «MOST Финансы» (нет операций, счетов или актов)');
+    const before = store.backup('before-restore'); const report = {};
+    for (const c of cols) { db[c] = data[c].map(d => Object.assign({}, d, { id: d.id || store.id() })); report[c] = db[c].length; }
+    if (data.settings && typeof data.settings === 'object') { db.settings = Object.assign({}, db.settings, data.settings); report.settings = 'ok'; }
+    store.save(); store.audit(user.id, 'restore', 'db', before, report);
+    return ok(res, { restored: report, backupBefore: before });
+  }
+  if (seg === 'balances' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.accountBalances(db.ops, db.cash, db.accounts, qs.asOf)); }
+  if (seg === 'obligations' && id2 === 'invoices' && method === 'POST') {
+    if (!D.can(role, 'obligations', 'write')) return err(res, 403, 'Только просмотр');
+    const ym = /^\d{4}-\d{2}$/.test(body.ym || '') ? body.ym : today().slice(0, 7);
+    const items = D.obligationInvoices(db.obligations, db.invoices, ym, db.settings); const created = [];
+    for (const it of items) { created.push(store.insert('invoices', Object.assign(it, { createdAt: new Date().toISOString(), createdBy: user.id }))); const o = store.find('obligations', it.obligationId); if (o && o.monthsLeft !== null && o.monthsLeft !== undefined && o.monthsLeft !== '') store.update('obligations', o.id, { monthsLeft: Math.max(0, num(o.monthsLeft) - 1) }); }
+    store.audit(user.id, 'obligation-invoices', 'invoices', null, { ym, rows: created.length }); store.save();
+    return ok(res, { ym, created: created.length, skipped: db.obligations.length - created.length, items: created });
+  }
   if (seg === 'seed' && method === 'POST') { if (role !== 'owner') return err(res, 403, 'Только владелец'); const r = importSeed(); store.audit(user.id, 'seed', 'db', null, r); return ok(res, { imported: r }); }
   if (seg === 'export' && id2 === '1c' && method === 'GET') {
     if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа');
@@ -144,24 +164,26 @@ async function api(req, res, url, user) {
     store.audit(user.id, 'import-invoices', 'invoices', null, { rows: created.length, skipped }); store.save();
     return ok(res, { imported: created.length, skipped, items: created });
   }
-  if (seg === 'invoices' && id2 && seg3 === 'file') {
-    if (!D.can(role, 'invoices', 'write')) return err(res, 403, 'Только просмотр');
-    const inv = store.find('invoices', id2); if (!inv) return err(res, 404, 'Не найдено');
+  if (FILE_COLS.includes(seg) && id2 && seg3 === 'file') {
+    if (!D.can(role, seg, 'write')) return err(res, 403, 'Только просмотр');
+    const inv = store.find(seg, id2); if (!inv) return err(res, 404, 'Не найдено');
     const dropOld = () => { if (inv.file && inv.file.key) { try { fs.unlinkSync(path.join(FILES_DIR, path.basename(inv.file.key))); } catch { } } };
     if (method === 'POST') {
       const type = String(body.type || ''); if (!FILE_TYPES[type]) return err(res, 400, 'Разрешены PDF, JPG, PNG, WebP');
       const data = Buffer.from(String(body.data || ''), 'base64'); if (!data.length) return err(res, 400, 'Пустой файл'); if (data.length > 20 * 1024 * 1024) return err(res, 400, 'Файл больше 20 МБ');
       fs.mkdirSync(FILES_DIR, { recursive: true }); dropOld();
-      const key = `${String(id2).replace(/[^\w-]/g, '')}-${Date.now()}${FILE_TYPES[type]}`; fs.writeFileSync(path.join(FILES_DIR, key), data);
-      const r = store.update('invoices', id2, { file: { name: String(body.name || 'файл').slice(0, 120), type, size: data.length, key, uploadedAt: new Date().toISOString(), uploadedBy: user.id } });
-      store.audit(user.id, 'file', 'invoices', id2); return ok(res, r);
+      const key = `${seg}-${String(id2).replace(/[^\w-]/g, '')}-${Date.now()}${FILE_TYPES[type]}`; fs.writeFileSync(path.join(FILES_DIR, key), data);
+      const r = store.update(seg, id2, { file: { name: String(body.name || 'файл').slice(0, 120), type, size: data.length, key, uploadedAt: new Date().toISOString(), uploadedBy: user.id } });
+      store.audit(user.id, 'file', seg, id2); return ok(res, seg === 'docs' ? decorateDoc(r) : r);
     }
-    if (method === 'DELETE') { dropOld(); const r = store.update('invoices', id2, { file: null }); store.audit(user.id, 'file-delete', 'invoices', id2); return ok(res, r); }
+    if (method === 'DELETE') { dropOld(); const r = store.update(seg, id2, { file: null }); store.audit(user.id, 'file-delete', seg, id2); return ok(res, seg === 'docs' ? decorateDoc(r) : r); }
   }
   if (seg === 'files' && id2 && method === 'GET') {
-    if (!D.can(role, 'invoices', 'read')) return err(res, 403, 'Нет доступа');
-    const key = path.basename(id2); const inv = db.invoices.find(i => i.file && i.file.key === key); const file = path.join(FILES_DIR, key);
+    const key = path.basename(id2); let inv = null, owner = '';
+    for (const c of FILE_COLS) { const f = db[c].find(i => i.file && i.file.key === key); if (f) { inv = f; owner = c; break; } }
+    const file = path.join(FILES_DIR, key);
     if (!inv || !fs.existsSync(file)) return err(res, 404, 'Файл не найден');
+    if (!D.can(role, owner, 'read')) return err(res, 403, 'Нет доступа');
     return send(res, 200, fs.readFileSync(file), { 'Content-Type': inv.file.type, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(inv.file.name)}`, 'Cache-Control': 'private, max-age=3600' });
   }
 
@@ -197,6 +219,7 @@ async function api(req, res, url, user) {
   if (seg === 'ops' && method === 'GET') {
     if (!D.can(role, 'ops', 'read')) return err(res, 403, 'Нет доступа к разделу');
     if (id2 === 'months') return ok(res, D.monthsList(db.ops));
+    if (id2 === 'report') return ok(res, D.report(db.ops, qs, db.accounts, db.categories));
     if (id2 === 'summary') return ok(res, D.projectSummary(D.filterOps(db.ops, qs, db.accounts, db.categories), db.categories));
     if (id2) { const d = store.find('ops', id2); return d ? ok(res, d) : err(res, 404, 'Не найдено'); }
     const list = D.filterOps(db.ops, qs, db.accounts, db.categories).sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(a.id)));
@@ -240,6 +263,7 @@ async function api(req, res, url, user) {
     for (const k of ['amount', 'sum', 'paid', 'remaining', 'toPay', 'toClose', 'closedActs', 'byBudget', 'monthly', 'monthsLeft', 'balance', 'contractNoVat', 'targetCost', 'invoiceAmount', 'debit', 'credit']) if (k in patch) patch[k] = num(patch[k]);
     if (seg === 'docs') { if (patch.status === 'done' && before.status !== 'done') patch.doneAt = new Date().toISOString(); if (patch.status === 'in_progress' && !before.startedAt) patch.startedAt = new Date().toISOString(); patch.updatedBy = user.id; }
     if (seg === 'ops') { if ('category' in patch) patch.auto = false; if ('project' in patch) patch.autoProject = false; }
+    if (seg === 'invoices' && 'approved' in patch) { patch.approved = patch.approved === true || patch.approved === 'true'; if (patch.approved !== !!before.approved) { if (!['owner', 'partner'].includes(role)) return err(res, 403, 'Согласовать оплату может владелец или партнёр'); patch.approvedBy = patch.approved ? user.id : null; patch.approvedAt = patch.approved ? new Date().toISOString() : null; } }
     const after = Object.assign({}, before, patch);
     if (seg === 'invoices' && after.status === 'paid' && before.status !== 'paid') {
       after.paidAt = after.paidAt || today(); patch.paidAt = after.paidAt;
@@ -249,7 +273,7 @@ async function api(req, res, url, user) {
     store.audit(user.id, 'update', seg, id2); return ok(res, seg === 'docs' ? decorateDoc(r) : r);
   }
   if (method === 'DELETE' && id2) {
-    if (seg === 'invoices') { const d = store.find(seg, id2); if (d && d.file && d.file.key) { try { fs.unlinkSync(path.join(FILES_DIR, path.basename(d.file.key))); } catch { } } }
+    if (FILE_COLS.includes(seg)) { const d = store.find(seg, id2); if (d && d.file && d.file.key) { try { fs.unlinkSync(path.join(FILES_DIR, path.basename(d.file.key))); } catch { } } }
     if (!store.remove(seg, id2)) return err(res, 404, 'Не найдено'); store.audit(user.id, 'delete', seg, id2); return ok(res, { ok: true });
   }
   return err(res, 405, 'Метод не поддерживается');

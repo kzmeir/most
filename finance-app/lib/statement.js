@@ -134,5 +134,30 @@
     }
     return pages;
   }
-  return { parse, lines, columns, cleanCounterparty, guessAccount, dedupe, fromPdfJs };
+  // выписка из Excel/CSV (Kaspi, Halyk и др.): колонки по заголовку — дата, дебет/кредит или сумма, контрагент, назначение, № документа
+  const H = { date: /^дата(?!\s*валют)/i, debit: /дебет|расход|списан|debit/i, credit: /кредит|приход|поступ|зачисл|credit/i, amount: /^сумма|amount/i, cp: /контрагент|наименование|получател|плательщик|корреспондент|бенефициар|отправител/i, purpose: /назнач|детали|описание|основание|purpose/i, opNo: /№\s*док|номер\s*док|документ|референс|№\s*опер|номер\s*опер|reference|^№$/i, knp: /кнп/i, iban: /иик|iban|счет контрагента|счёт контрагента/i };
+  const toIsoDate = v => { if (v == null || v === '') return ''; if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10); const s = String(v).trim(); let m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/); if (m) return `${m[3]}-${m[2]}-${m[1]}`; m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[0] : ''; };
+  const cellNum = v => { if (typeof v === 'number') return v; const s = String(v == null ? '' : v).replace(/[\s ]/g, '').replace(',', '.').replace(/[^\d.\-]/g, ''); const n = Number(s); return isNaN(n) ? 0 : n; };
+  function fromRows(rows) {
+    rows = (rows || []).map(r => Array.isArray(r) ? r : Object.values(r)).filter(r => r.some(c => c !== '' && c != null));
+    let map = null, hdr = -1;
+    for (let i = 0; i < Math.min(rows.length, 30) && !map; i++) {
+      const m = {}; rows[i].forEach((c, j) => { if (typeof c !== 'string') return; const s = c.trim(); for (const [k, re] of Object.entries(H)) if (re.test(s) && m[k] === undefined) { m[k] = j; break; } });
+      if (m.date !== undefined && (m.amount !== undefined || m.debit !== undefined || m.credit !== undefined) && (m.cp !== undefined || m.purpose !== undefined)) { map = m; hdr = i; }
+    }
+    if (!map) return { meta: {}, ops: [], mapping: null };
+    const ops = []; const meta = { iban: '', client: '', from: '', to: '', opening: null, closing: null };
+    for (const r of rows.slice(hdr + 1)) {
+      const date = toIsoDate(r[map.date]); if (!date) continue;
+      let debit = 0, credit = 0;
+      if (map.debit !== undefined || map.credit !== undefined) { debit = Math.abs(cellNum(map.debit !== undefined ? r[map.debit] : 0)); credit = Math.abs(cellNum(map.credit !== undefined ? r[map.credit] : 0)); }
+      else { const a = cellNum(r[map.amount]); if (a < 0) debit = -a; else credit = a; }
+      if (!debit && !credit) continue;
+      const text = r.map(String).join(' '); if (/итого|оборот|остаток/i.test(text) && !(map.cp !== undefined && String(r[map.cp] || '').trim())) continue;
+      ops.push({ date, opNo: map.opNo !== undefined ? String(r[map.opNo] ?? '').replace(/\.0$/, '').trim() : '', debit, credit, counterparty: cleanCounterparty(map.cp !== undefined ? String(r[map.cp] ?? '') : ''), purpose: String(map.purpose !== undefined ? (r[map.purpose] ?? '') : '').replace(/\s+/g, ' ').trim(), knp: map.knp !== undefined ? String(r[map.knp] ?? '').trim() : '' });
+    }
+    if (ops.length) { meta.from = ops.reduce((m, o) => !m || o.date < m ? o.date : m, ''); meta.to = ops.reduce((m, o) => o.date > m ? o.date : m, ''); }
+    return { meta, ops: ops.filter(o => o.counterparty || o.purpose), mapping: map };
+  }
+  return { parse, lines, columns, cleanCounterparty, guessAccount, dedupe, fromPdfJs, fromRows };
 });

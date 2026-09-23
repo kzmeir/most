@@ -281,5 +281,82 @@
     return out;
   }
 
-  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf };
+  // ---- остатки по счетам: опорный остаток (из выписки / введён вручную) + операции после него ----
+  function cashAnchor(cashRows, acc) {
+    const tail = acc.iban ? String(acc.iban).slice(-4) : '';
+    const list = (cashRows || []).filter(c => c.account === acc.id || c.id === 'acc-' + acc.id || (tail && c.account && String(c.account).includes(tail)));
+    return list.sort((a, b) => String(b.asOf || '').localeCompare(String(a.asOf || '')))[0] || null;
+  }
+  function accountBalances(ops, cashRows, accounts, asOf) {
+    asOf = asOf || todayStr();
+    return (accounts || []).filter(a => a.active !== false).map(a => {
+      const anchor = cashAnchor(cashRows, a);
+      const mine = (ops || []).filter(o => o.account === a.id && (o.date || '') <= asOf);
+      const after = anchor ? mine.filter(o => (o.date || '') > String(anchor.asOf || '')) : [];
+      const delta = after.reduce((s, o) => s + num(o.credit) - num(o.debit), 0);
+      const lastOp = mine.reduce((m, o) => (o.date || '') > m ? o.date : m, '');
+      return { id: a.id, company: a.company || '', name: a.name || a.id, anchor: anchor ? { id: anchor.id, balance: num(anchor.balance), asOf: anchor.asOf || '' } : null, opsAfter: after.length, delta, balance: anchor ? num(anchor.balance) + delta : null, lastOp };
+    });
+  }
+
+  // ---- платёжный календарь: открытые счета по срокам оплаты ----
+  function paymentCalendar(invoices, today) {
+    today = today || todayStr();
+    const d = new Date(today + 'T00:00:00Z'); const dow = (d.getUTCDay() + 6) % 7; // 0 = понедельник
+    const iso = x => x.toISOString().slice(0, 10);
+    const weekEnd = iso(new Date(d.getTime() + (6 - dow) * 864e5)), nextWeekEnd = iso(new Date(d.getTime() + (13 - dow) * 864e5));
+    const groups = { overdue: [], today: [], week: [], next: [], later: [], nodate: [] };
+    for (const i of invoices || []) {
+      if (i.status === 'paid') continue;
+      const due = i.dueDate || '';
+      if (!due) groups.nodate.push(i); else if (due < today) groups.overdue.push(i); else if (due === today) groups.today.push(i); else if (due <= weekEnd) groups.week.push(i); else if (due <= nextWeekEnd) groups.next.push(i); else groups.later.push(i);
+    }
+    for (const k of Object.keys(groups)) groups[k].sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')) || num(b.amount) - num(a.amount));
+    const sum = list => list.reduce((s, i) => s + num(i.amount), 0);
+    const out = {}; for (const [k, list] of Object.entries(groups)) out[k] = { items: list, sum: sum(list), approved: sum(list.filter(i => i.approved)), n: list.length };
+    out.weekEnd = weekEnd; out.nextWeekEnd = nextWeekEnd;
+    out.summary = { overdue: out.overdue.sum, thisWeek: out.overdue.sum + out.today.sum + out.week.sum, unapproved: (invoices || []).filter(i => i.status === 'open' && !i.approved).length, unapprovedSum: sum((invoices || []).filter(i => i.status === 'open' && !i.approved)) };
+    return out;
+  }
+  const CAL_LABEL = { overdue: 'Просрочено', today: 'Сегодня', week: 'До конца недели', next: 'Следующая неделя', later: 'Позже', nodate: 'Без срока' };
+
+  // ---- счета из обязательных платежей за месяц ----
+  function obligationInvoices(obligations, invoices, ym, settings) {
+    const [y, m] = ym.split('-').map(Number); const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const month = `${MONTHS_RU[m - 1]} ${y}`; const out = [];
+    for (const o of obligations || []) {
+      if (!num(o.monthly) || (o.monthsLeft !== null && o.monthsLeft !== undefined && o.monthsLeft !== '' && num(o.monthsLeft) <= 0)) continue;
+      if ((invoices || []).some(i => i.obligationId === o.id && i.obligationYm === ym)) continue;
+      const dd = Math.min(Math.max(1, num(o.dueDay) || 10), days);
+      out.push({ company: o.company || ((settings && settings.companies) || [])[0] || '', contractor: o.contractor || o.name, amount: num(o.monthly), purpose: `${o.name} — ${month}`, project: o.project || '', category: o.category || '', invoiceDate: `${ym}-01`, dueDate: `${ym}-${String(dd).padStart(2, '0')}`, status: 'open', source: 'obligation', obligationId: o.id, obligationYm: ym });
+    }
+    return out;
+  }
+  const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+
+  // ---- отчёт: месяцы года, категории, проекты, компании ----
+  function report(ops, q, accounts, categories) {
+    const year = String(q.year || todayStr().slice(0, 4));
+    const list = filterOps(ops, { year, company: q.company || '', account: q.account || '' }, accounts, categories);
+    const months = []; let cum = 0;
+    for (let m = 1; m <= 12; m++) { const ym = `${year}-${String(m).padStart(2, '0')}`; const t = totals(list.filter(o => (o.date || '').slice(0, 7) === ym), categories); cum += t.net; months.push({ ym, income: t.income, expense: t.expense, net: t.net, cum, n: t.n }); }
+    const t = totals(list, categories);
+    const byCompany = {}; for (const o of list) { if (catKind(categories, o.category) === 'transfer') continue; const c = accountCompany(accounts, o.account) || o.account; const s = byCompany[c] || (byCompany[c] = { income: 0, expense: 0 }); s.income += num(o.credit); s.expense += num(o.debit); }
+    const catRows = Object.entries(groupSum(list.filter(o => num(o.debit)), 'category', categories, 'debit')).map(([k, v]) => ({ key: k, sum: v, share: t.expense ? v / t.expense : 0 })).sort((a, b) => b.sum - a.sum);
+    const projIn = Object.entries(groupSum(list.filter(o => num(o.credit)), 'project', categories, 'credit')).map(([k, v]) => ({ key: k, sum: v })).sort((a, b) => b.sum - a.sum);
+    const projOut = Object.entries(groupSum(list.filter(o => num(o.debit)), 'project', categories, 'debit')).map(([k, v]) => ({ key: k, sum: v })).sort((a, b) => b.sum - a.sum);
+    const cpOut = {}; for (const o of list) { if (!num(o.debit) || catKind(categories, o.category) === 'transfer') continue; const k = o.counterparty || '—'; cpOut[k] = (cpOut[k] || 0) + num(o.debit); }
+    const counterparties = Object.entries(cpOut).map(([k, v]) => ({ key: k, sum: v })).sort((a, b) => b.sum - a.sum).slice(0, 30);
+    return { year, company: q.company || '', months, total: { income: t.income, expense: t.expense, net: t.net, n: t.n }, byCompany, categories: catRows, projectsIn: projIn, projectsOut: projOut, counterparties };
+  }
+
+  // ---- восстановление из JSON-бэкапа: какие коллекции есть в файле ----
+  function backupCollections(data) {
+    if (!data || typeof data !== 'object') return null;
+    const cols = COLLECTIONS.filter(c => c !== 'users' && Array.isArray(data[c]));
+    if (!cols.includes('ops') && !cols.includes('invoices') && !cols.includes('docs')) return null;
+    return cols;
+  }
+
+  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections };
 });
