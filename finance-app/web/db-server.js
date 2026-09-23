@@ -120,7 +120,7 @@ async function route(path, opts) {
   if (seg === 'me') return ok({ user: { id: me.id, login: '', name: me.name || 'Вы', role, roleLabel: role === 'partner' && !rolesDoc.roles[me.id] ? 'Полный доступ' : D.ROLE_LABEL[role], isAdmin: D.isAdmin(role) } });
   if (seg === 'logout') return ok({ ok: true });
   if (seg === 'people') return ok(await peopleList());
-  if (seg === 'dashboard') return D.isAdmin(role) ? ok(D.dashboard(view())) : err(403, 'Нет доступа');
+  if (seg === 'dashboard') return D.canDashboard(role) ? ok(D.dashboard(view())) : err(403, 'Нет доступа');
   if (seg === 'backups') return D.isAdmin(role) ? ok({ dir: 'claude.ai', list: [] }) : err(403, 'Нет доступа');
   if (seg === 'backup') {
     if (!D.isAdmin(role)) return err(403, 'Нет доступа');
@@ -307,6 +307,7 @@ async function route(path, opts) {
   }
   return err(405, 'Метод не поддерживается');
 }
+window.__saveFile = async (filename, data) => { if (!dl) return false; try { await dl.save({ filename, data }); return true; } catch (e) { if (e && e.code !== 'declined') console.warn('save', e); return false; } };
 window.__apiFetch = (path, opts) => route(path, opts).catch(e => { console.error(e); return err(500, 'Ошибка: ' + (e && e.message || e)); });
 window.__userSearch = async q => { await initP; if (!user) return []; const hits = await user.search(q || ''); return hits.map(h => ({ id: h.id, name: h.name })); };
 

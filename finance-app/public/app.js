@@ -3,7 +3,7 @@
 'use strict';
 const $ = s => document.querySelector(s);
 const state = { user: null, status: null, people: [], settings: null, accounts: [], categories: [], projects: [], counterparties: [] };
-const ADMIN = ['owner', 'partner', 'accountant'];
+const ADMIN = ['owner', 'partner', 'accountant', 'secretary'];
 const isAdmin = () => state.user && ADMIN.includes(state.user.role);
 const isOwner = () => state.user && state.user.role === 'owner';
 const canR = col => !!state.user && window.MostDomain.can(state.user.role, col, 'read');
@@ -98,7 +98,7 @@ function renderLogin() {
 
 // ---- app shell ----
 const NAV = [
-  { id: 'dashboard', label: 'Дашборд', icon: '▦', admin: true },
+  { id: 'dashboard', label: 'Дашборд', icon: '▦', dash: true },
   { id: 'ops', label: 'Операции', icon: '⇅', admin: true },
   { id: 'docs', label: 'Акты и счета клиентам', icon: '📋', col: 'docs' },
   { id: 'invoices', label: 'Счета к оплате', icon: '🧾', col: 'invoices' },
@@ -111,9 +111,10 @@ const NAV = [
   { id: 'obligations', label: 'Обязательные платежи', icon: '🔁', admin: true },
   { id: 'reports', label: 'Отчёты', icon: '📊', admin: true },
   { id: 'settings', label: 'Настройки', icon: '⚙', admin: true },
+  { id: 'help', label: 'Инструкция', icon: '?' },
 ];
 function renderApp() {
-  const nav = NAV.filter(n => n.col ? canR(n.col) : (!n.admin || isAdmin()));
+  const nav = NAV.filter(n => n.dash ? window.MostDomain.canDashboard(state.user.role) : n.col ? canR(n.col) : (!n.admin || isAdmin()));
   $('#app').innerHTML = `<div class="shell"><aside class="side" id="side"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>финансы</small></b></div><nav class="nav" id="nav">${nav.map(n => `<a href="#/${n.id}" data-id="${n.id}"><span>${n.icon}</span>${esc(n.label)}<span class="badge" id="badge-${n.id}" hidden></span></a>`).join('')}</nav><div class="me"><b>${esc(state.user.name)}</b><span class="muted">${esc(state.user.roleLabel || state.user.role)}</span>${state.status.web ? '' : '<br><button class="btn sm" id="logout" style="margin-top:8px">Выйти</button>'}</div></aside><div><div class="topbar"><button class="icon-btn" id="burger">☰</button><b>most · финансы</b></div><main class="main" id="main"></main></div></div>`;
   if (!$('#dl-cp')) document.body.insertAdjacentHTML('beforeend', '<datalist id="dl-cp"></datalist><datalist id="dl-projects"></datalist>'); refreshCpList();
   if ($('#logout')) $('#logout').onclick = async () => { await api('/logout', { method: 'POST' }); state.user = null; location.hash = ''; renderLogin(); };
@@ -774,9 +775,15 @@ function kpEditor(r, kp, onSave) {
   };
   const showTotal = () => { const c = window.MostDomain.kpCalc(collect()); $('#kp-total').textContent = `Итого: ${money(c.total)}${c.vatIncluded ? ` (без НДС ${money(c.noVat)})` : ''}`; };
   form.oninput = showTotal; showTotal();
-  $('#kp-preview').onclick = () => { const html = kpHtml(collect()); $('#kp-out').innerHTML = `<p style="margin:0 0 6px;display:flex;gap:8px"><button class="btn" type="button" id="kp-print">🖨 Печать / сохранить в PDF</button><a class="btn" id="kp-dl" download="КП-${esc((collect().object || 'MOST').replace(/[^\wа-яё\- ]/gi, '').slice(0, 40))}.html">⇩ Скачать HTML</a></p><iframe id="kp-frame" class="preview-frame" style="height:75vh;background:#fff"></iframe>`; const fr = $('#kp-frame'); fr.srcdoc = html; $('#kp-print').onclick = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { toast('Откройте HTML-файл в браузере и нажмите Ctrl+P'); } }; const a = $('#kp-dl'); const blob = new Blob([html], { type: 'text/html' }); a.href = URL.createObjectURL(blob); };
+  $('#kp-preview').onclick = () => { const html = kpHtml(collect()); const fname = `КП-${(collect().object || 'MOST').replace(/[^\wа-яё\- ]/gi, '').slice(0, 40)}.html`; const web = !!(state.status && state.status.web); $('#kp-out').innerHTML = `<p style="margin:0 0 6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">${web ? '' : '<button class="btn" type="button" id="kp-print">🖨 Печать / сохранить в PDF</button>'}<a class="btn" id="kp-dl" download="${esc(fname)}">⇩ Скачать HTML</a><span class="faint">${web ? 'Скачанный файл откройте в браузере и нажмите Ctrl+P → «Сохранить как PDF».' : 'PDF: в окне печати выберите «Сохранить как PDF».'}</span></p><iframe id="kp-frame" class="preview-frame" style="height:75vh;background:#fff"></iframe>`; const fr = $('#kp-frame'); fr.srcdoc = html; if ($('#kp-print')) $('#kp-print').onclick = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { toast('Откройте HTML-файл в браузере и нажмите Ctrl+P'); } }; const a = $('#kp-dl'); if (window.__saveFile) a.onclick = e => { e.preventDefault(); window.__saveFile(fname, html).then(ok => toast(ok ? 'Файл сохранён' : 'Скачивание отменено')); }; else { const blob = new Blob([html], { type: 'text/html' }); a.href = URL.createObjectURL(blob); } };
   form.onsubmit = async e => { e.preventDefault(); const out = collect(); const c = window.MostDomain.kpCalc(out); try { await onSave(out, c.total); closeModal(); } catch (er) { form.querySelector('.error').textContent = er.message; } };
 }
+
+// ---- help: инструкция ----
+SECTIONS.help = async main => {
+  const secs = (window.MostHelp && window.MostHelp.sections) || [];
+  main.innerHTML = head('Инструкция', 'Как пользоваться системой: вход, разделы, типовые задачи. Разделы, к которым у вас нет доступа, в меню не показываются.') + `<div class="help">${secs.map(([t, h], i) => `<details class="card"${i < 2 ? ' open' : ''}><summary><b>${esc(t)}</b></summary><div class="help-body">${h}</div></details>`).join('')}</div>`;
+};
 
 // ---- settings ----
 SECTIONS.settings = async main => {
@@ -791,7 +798,7 @@ SECTIONS.settings = async main => {
   main.innerHTML = head('Настройки') +
     (!st.hasData && st.seed.available && isOwner() ? `<div class="notice">База пустая. <button class="btn primary sm" data-act="seed">Загрузить данные из таблицы «Бюджет МОСТ»</button> — операции с 2018 года, договоры, подрядчики, АВР, КП, справочники.</div>` : '') +
     (isOwner() && st.web ? accessBlock(users) : '') +
-    (isOwner() && !st.web ? `<h2>Пользователи и роли</h2>${tbl([{ t: 'Имя' }, { t: 'Логин' }, { t: 'Роль' }, { t: 'Статус' }, { t: '' }], users.map(u => `<tr><td><b>${esc(u.name)}</b></td><td class="muted">${esc(u.login)}</td><td>${esc(ROLE[u.role] || u.role)}</td><td>${u.active ? '<span class="chip ok">активен</span>' : '<span class="chip neutral">отключён</span>'}</td><td><div class="actions"><button class="btn sm" data-act="userEdit" data-id="${u.id}">✎</button>${u.id !== state.user.id ? `<button class="btn sm" data-act="userToggle" data-id="${u.id}" data-active="${u.active}">${u.active ? 'Отключить' : 'Включить'}</button>` : ''}</div></td></tr>`))}<p><button class="btn primary" data-act="userAdd">+ Пользователь</button></p><p class="faint">Владелец, партнёр, бухгалтер — полный доступ. Секретарь — акты, счета, договоры, КП, контрагенты и проекты без денег и дашборда. Проджект-менеджер — только просмотр актов/счетов клиентам, счетов к оплате, проектов и договоров; операции, ЗП и остальное скрыты (проверяет сервер).</p>` : '') +
+    (isOwner() && !st.web ? `<h2>Пользователи и роли</h2>${tbl([{ t: 'Имя' }, { t: 'Логин' }, { t: 'Роль' }, { t: 'Статус' }, { t: '' }], users.map(u => `<tr><td><b>${esc(u.name)}</b></td><td class="muted">${esc(u.login)}</td><td>${esc(ROLE[u.role] || u.role)}</td><td>${u.active ? '<span class="chip ok">активен</span>' : '<span class="chip neutral">отключён</span>'}</td><td><div class="actions"><button class="btn sm" data-act="userEdit" data-id="${u.id}">✎</button>${u.id !== state.user.id ? `<button class="btn sm" data-act="userToggle" data-id="${u.id}" data-active="${u.active}">${u.active ? 'Отключить' : 'Включить'}</button>` : ''}</div></td></tr>`))}<p><button class="btn primary" data-act="userAdd">+ Пользователь</button></p><p class="faint">Владелец, партнёр, бухгалтер — полный доступ. Секретарь — всё то же, кроме дашборда; согласовывать оплату не может. Проджект-менеджер — только просмотр актов/счетов клиентам, счетов к оплате, проектов и договоров; операции, ЗП и остальное скрыты (проверяет сервер).</p>` : '') +
     `<h2>Остатки на счетах</h2><div class="card"><p class="muted" style="margin-top:0">Опорный остаток берётся из выписки (при загрузке) или вводится вручную с датой; дальше остаток считается по операциям после этой даты. В поле «Счёт» укажите код из справочника, чтобы связать.</p>${cash.length ? tbl([{ t: 'Счёт' }, { t: 'Компания' }, { t: 'Остаток', cls: 'amt' }, { t: 'На дату' }, { t: '' }], cash.map(c => `<tr><td><b>${esc(c.account || c.id)}</b></td><td>${esc(c.company)}</td><td class="amt num">${money(c.balance)}</td><td>${fdate(c.asOf)}</td><td>${actions('cash', c.id).replace('data-act="edit"', 'data-act="cashEdit"')}</td></tr>`)) : ''}<p><button class="btn" data-act="cashAdd">+ Остаток</button></p>${bal.length ? `<h3 style="margin:14px 0 6px">Расчёт по операциям</h3>${tbl([{ t: 'Счёт' }, { t: 'Компания' }, { t: 'Опорный остаток' }, { t: 'Операций после' }, { t: 'Расчёт сейчас', cls: 'amt' }, { t: 'Последняя операция' }], bal.map(b => `<tr><td><b>${esc(b.id)}</b></td><td class="muted">${esc(b.company)}</td><td>${b.anchor ? `${money(b.anchor.balance)} <span class="faint">на ${fdate(b.anchor.asOf)}</span>` : '<span class="faint">нет — загрузите выписку</span>'}</td><td>${b.anchor ? b.opsAfter : '—'}</td><td class="amt num">${b.balance !== null ? money(b.balance) : '—'}</td><td class="muted">${fdate(b.lastOp)}</td></tr>`))}` : ''}<datalist id="dl-accounts">${state.accounts.map(a => `<option value="${esc(a.id)}">`).join('')}</datalist></div>` +
     `<h2>Справочник счетов</h2>${tbl([{ t: 'Код' }, { t: 'Название' }, { t: 'Компания' }, { t: 'Активен' }, { t: '' }], state.accounts.map(a => `<tr><td><b>${esc(a.id)}</b>${a.iban ? `<div class="faint">${esc(a.iban)}</div>` : ''}</td><td>${esc(a.name || '')}</td><td>${esc(a.company || '')}</td><td>${yn(a.active !== false)}</td><td>${isOwner() ? `<div class="actions"><button class="btn sm" data-act="accEdit" data-id="${esc(a.id)}">✎</button></div>` : ''}</td></tr>`))}${isOwner() ? '<p><button class="btn" data-act="accAdd">+ Счёт</button></p>' : ''}` +
     `<h2>Справочник категорий</h2>${tbl([{ t: 'Категория' }, { t: 'Описание' }, { t: 'Вид' }, { t: '' }], state.categories.map(c => `<tr><td><b>${esc(c.id)}</b></td><td class="muted">${esc(c.name || '')}</td><td>${esc(KIND_LABEL[c.kind] || c.kind || '')}</td><td>${isOwner() ? `<div class="actions"><button class="btn sm" data-act="catEdit" data-id="${esc(c.id)}">✎</button></div>` : ''}</td></tr>`))}${isOwner() ? '<p><button class="btn" data-act="catAdd">+ Категория</button></p><p class="faint">Вид «Перевод» исключается из доходов и расходов. «Доход» — категории поступлений от клиентов.</p>' : ''}` +

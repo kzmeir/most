@@ -8,9 +8,9 @@
   'use strict';
   const COLLECTIONS = ['users', 'docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'counterparties', 'stages', 'ops', 'accounts', 'categories', 'payroll', 'employees', 'vacations', 'obligations', 'cash', 'audit'];
   const PM_READ = ['docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'counterparties', 'stages'];
-  const SECRETARY_WRITE = ['docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'counterparties', 'stages']; // секретарь: документы и справочники, без денег
   const ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm'];
-  const ADMIN = ['owner', 'partner', 'accountant'];
+  const ADMIN = ['owner', 'partner', 'accountant', 'secretary']; // полный доступ; секретарю закрыт только дашборд
+  const canDashboard = r => ADMIN.includes(r) && r !== 'secretary';
   const ROLE_LABEL = { owner: 'Владелец', partner: 'Партнёр', accountant: 'Бухгалтер', secretary: 'Секретарь', pm: 'Проджект-менеджер' };
   const KINDS = { expense: 'Расход', income: 'Доход', transfer: 'Перевод между своими счетами', tax: 'Налоги', payroll: 'Зарплата', owner: 'Вывод учредителям' };
   const DEFAULT_SETTINGS = { companies: ['MOST Project', 'MOST Architects'], vatRate: 0.16, payrollTax: 0.45, usdRate: 525, defaultAccounts: { 'MOST Project': 'PROJECT осн', 'MOST Architects': 'MOST' } };
@@ -20,7 +20,6 @@
     if (collection === 'users') return role === 'owner';
     if (collection === 'settings') return action === 'read' ? ADMIN.includes(role) : role === 'owner';
     if (ADMIN.includes(role)) return true;
-    if (role === 'secretary') return SECRETARY_WRITE.includes(collection);
     return PM_READ.includes(collection) && action === 'read';
   }
   const isAdmin = r => ADMIN.includes(r);
@@ -492,5 +491,5 @@
     return cols;
   }
 
-  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, SECRETARY_WRITE, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc };
+  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc };
 });

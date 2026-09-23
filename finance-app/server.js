@@ -107,7 +107,7 @@ async function api(req, res, url, user) {
   if (seg === 'people' && method === 'GET') return ok(res, db.users.filter(u => u.active !== false).map(u => ({ id: u.id, name: u.name || u.login, role: u.role, roleLabel: D.ROLE_LABEL[u.role] })));
 
   // --- dashboard / backup / seed / 1c ---
-  if (seg === 'dashboard') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.dashboard(db)); }
+  if (seg === 'dashboard') { if (!D.canDashboard(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.dashboard(db)); }
   if (seg === 'backups' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, { dir: store.BACKUP_DIR, list: store.listBackups() }); }
   if (seg === 'backup') {
     if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа');
@@ -312,6 +312,7 @@ function serveStatic(req, res, url) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/' || !path.extname(p)) p = '/index.html';
   if (p === '/statement.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'statement.js'))); }
+  if (p === '/help.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'help.js'))); }
   if (p === '/xlsx.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'xlsx.js'))); }
   if (p === '/domain.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'domain.js'))); }
   const file = path.normalize(path.join(PUBLIC, p));

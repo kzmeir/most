@@ -12,6 +12,7 @@ app = (APP / 'public/app.js').read_text()
 domain = (APP / 'lib/domain.js').read_text()
 statement = (APP / 'lib/statement.js').read_text()
 xlsx = (APP / 'lib/xlsx.js').read_text()
+help_js = (APP / 'lib/help.js').read_text()
 server = (APP / 'web/db-server.js').read_text()
 html = f'''<title>MOST Финансы</title>
 <style>{css}</style>
@@ -22,6 +23,7 @@ html = f'''<title>MOST Финансы</title>
 <script>{domain}</script>
 <script>{statement}</script>
 <script>{xlsx}</script>
+<script>{help_js}</script>
 <script>{server}</script>
 <script>{app}</script>
 '''
