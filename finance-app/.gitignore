@@ -6,3 +6,4 @@ web/dist/
 tests/tmp/
 tests/fixtures/*
 !tests/fixtures/statement.xlsx
+__pycache__/
