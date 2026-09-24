@@ -186,6 +186,107 @@
   const addMonths = (m, n) => { const [y, mo] = String(m).split('-').map(Number); return new Date(Date.UTC(y, mo - 1 + n, 1)).toISOString().slice(0, 7); };
   const monthsDiff = (a, b) => { const [ay, am] = a.split('-').map(Number), [by, bm] = b.split('-').map(Number); return (by - ay) * 12 + (bm - am); };
   const mname = m => { const p = String(m || '').split('-'); return p[1] ? `${MONTHS_RU[Number(p[1]) - 1]} ${p[0]}` : String(m || ''); };
+  // ---- импорт из ClickUp (CSV-выгрузка: Export → CSV) ----
+  // CSV: разделитель «,», «;» или табуляция (определяется по первой строке), кавычки по RFC 4180, BOM и CRLF допускаются
+  function parseCsv(text) {
+    text = String(text || '').replace(/^\uFEFF/, '');
+    const first = text.split(/\r?\n/, 1)[0] || '';
+    const count = ch => { let n = 0, q = false; for (const c of first) { if (c === '"') q = !q; else if (!q && c === ch) n++; } return n; };
+    const delimiter = [',', ';', '\t'].map(d => [d, count(d)]).sort((a, b) => b[1] - a[1])[0][0];
+    const rows = []; let row = [], cell = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+      else if (c === '"') q = true;
+      else if (c === delimiter) { row.push(cell); cell = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); cell = ''; if (row.some(x => x !== '')) rows.push(row); row = []; }
+      else cell += c;
+    }
+    if (cell !== '' || row.length) { row.push(cell); if (row.some(x => x !== '')) rows.push(row); }
+    const header = (rows.shift() || []).map(h => String(h).trim());
+    return { delimiter, header, rows };
+  }
+  // поля выгрузки ClickUp → наши: [ключ, подпись, регулярка для автосопоставления заголовка]; колонки «… Text» (дата словами) пропускаются
+  const CLICKUP_FIELDS = [
+    ['name', 'Название задачи (Task Name)', /^(task ?name|name|назван)/i],
+    ['id', 'ID задачи (Task ID)', /^(task ?id|id)$/i],
+    ['parent', 'Родительская задача (Parent ID / Parent Task)', /parent|родител/i],
+    ['status', 'Статус (Status)', /^status$|^статус/i],
+    ['assignees', 'Исполнители (Assignees)', /assignee|исполнител/i],
+    ['start', 'Дата начала (Start Date)', /^start ?date$|^дата начала|^старт/i],
+    ['due', 'Срок (Due Date)', /^due ?date$|^срок|^дедлайн/i],
+    ['list', 'Список (List Name)', /^list( ?name)?$|^список/i],
+    ['tags', 'Теги (Tags)', /^tags?$|^теги/i],
+    ['priority', 'Приоритет (Priority)', /^priority$|^приоритет/i],
+    ['content', 'Описание (Task Content)', /content|description|описан/i],
+    ['stage', 'Этап ЭП (кастомное поле)', /^(этап|stage|phase)/i],
+    ['client', 'Заказчик (кастомное поле)', /заказчик|client|customer/i],
+    ['address', 'Адрес (кастомное поле)', /адрес|address/i],
+    ['area', 'Площадь, м² (кастомное поле)', /площад|area/i],
+    ['contractNo', 'Договор № (кастомное поле)', /договор|contract/i],
+  ];
+  const clickupAutoMap = header => { const map = {}; const used = new Set(); for (const [k, , re] of CLICKUP_FIELDS) { const i = header.findIndex((h, idx) => !used.has(idx) && re.test(String(h).trim()) && !/ text$/i.test(h)); if (i >= 0) { map[k] = i; used.add(i); } } return map; };
+  const MONTHS_EN = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  // дата из чего угодно: epoch мс/с (ClickUp), ISO, дд.мм.гггг, мм/дд/гггг, «September 24th 2026», «24 сентября 2026»
+  function parseAnyDate(v) {
+    const s = String(v == null ? '' : v).trim(); if (!s) return '';
+    let m;
+    if (/^\d{13}$/.test(s)) return iso(new Date(Number(s)));
+    if (/^\d{10}$/.test(s)) return iso(new Date(Number(s) * 1000));
+    if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return `${m[1]}-${m[2]}-${m[3]}`;
+    if ((m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/))) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) { const a = Number(m[1]), b = Number(m[2]); const [mo, d] = a > 12 ? [b, a] : [a, b]; return `${m[3]}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`; }
+    const lo = s.toLowerCase();
+    let en = lo.match(/([a-z]{3,})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/); if (en) { const mi = MONTHS_EN.indexOf(en[1].slice(0, 3)); if (mi >= 0) return `${en[3]}-${String(mi + 1).padStart(2, '0')}-${en[2].padStart(2, '0')}`; }
+    en = lo.match(/(\d{1,2})\s+([a-z]{3,})\.?\s+(\d{4})/); if (en) { const mi = MONTHS_EN.indexOf(en[2].slice(0, 3)); if (mi >= 0) return `${en[3]}-${String(mi + 1).padStart(2, '0')}-${en[1].padStart(2, '0')}`; }
+    const ru = lo.match(/(\d{1,2})\s+([а-яё]+)\s+(\d{4})/); if (ru) { const mi = MONTHS_RU.findIndex(x => ru[2].slice(0, 3) === x.slice(0, 3) || (x === 'май' && ru[2].startsWith('ма'))); if (mi >= 0) return `${ru[3]}-${String(mi + 1).padStart(2, '0')}-${ru[1].padStart(2, '0')}`; }
+    const t = Date.parse(s); return isNaN(t) ? '' : iso(new Date(t));
+  }
+  const splitList = v => String(v == null ? '' : v).replace(/^\s*\[|\]\s*$/g, '').split(/[,;]/).map(x => x.trim()).filter(Boolean);
+  const CLICKUP_DONE = /complete|closed|done|finish|готов|выполнен|заверш|сдан/i;
+  const clickupStatus = s => { s = String(s || ''); if (CLICKUP_DONE.test(s)) return 'Готово'; if (/hold|pause|пауз|стоп|отлож/i.test(s)) return 'На паузе'; if (/wait|ожид|жд[её]м|client|заказчик/i.test(s)) return 'Ждём заказчика'; if (/госорган|экспертиз/i.test(s)) return 'Ждём госорган'; return 'В работе'; };
+  // нормализация названий для сопоставления пунктов шаблона и людей
+  const normTitle = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/\([^)]*\)/g, ' ').replace(/[^a-zа-я0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const tokensOf = s => normTitle(s).split(' ').filter(x => x.length > 1);
+  // пункт шаблона по названию задачи: точное совпадение → общий префикс (≥ 5 знаков) → все слова задачи есть в пункте (≥ 2 слов)
+  function findItemByTitle(items, title) {
+    const t = normTitle(title); if (!t) return null; const pool = (items || []).filter(i => !i.custom);
+    let hit = pool.find(i => normTitle(i.title) === t); if (hit) return hit;
+    if (t.length >= 5) { hit = pool.find(i => { const n = normTitle(i.title); return n.length >= 5 && (n.startsWith(t) || t.startsWith(n)); }); if (hit) return hit; }
+    const tk = tokensOf(title); if (tk.length >= 2) hit = pool.find(i => { const n = new Set(tokensOf(i.title)); return tk.every(x => n.has(x)); });
+    return hit || null;
+  }
+  // сотрудник по имени из ClickUp: те же слова (порядок любой) → слова одного имени входят в другое (например, «Иванов И.» ↔ «Иван Иванов»)
+  function matchUser(users, name) {
+    const a = tokensOf(name); if (!a.length) return null; const B = u => new Set(tokensOf(u && u.name));
+    let hit = (users || []).find(u => { const b = B(u); return b.size === a.length && a.every(x => b.has(x)); }); if (hit) return hit;
+    hit = (users || []).find(u => { const b = B(u); return b.size > 0 && (a.every(x => b.has(x)) || [...b].every(x => a.includes(x))); });
+    return hit || null;
+  }
+  // строки CSV → проекты ЭП с задачами. map: {поле: индекс колонки}; opts.source: 'parent' (задачи верхнего уровня — проекты, подзадачи — пункты) | 'list' (проект = список)
+  function clickupToProjects(csv, map, opts) {
+    opts = opts || {}; map = map || {}; const col = (r, k) => map[k] == null || map[k] < 0 ? '' : String(r[map[k]] == null ? '' : r[map[k]]).trim();
+    const rows = csv.rows.map((r, i) => ({ i, id: col(r, 'id') || `row${i}`, parent: col(r, 'parent'), name: col(r, 'name'), status: col(r, 'status'), assignees: splitList(col(r, 'assignees')), start: parseAnyDate(col(r, 'start')), due: parseAnyDate(col(r, 'due')), list: col(r, 'list'), tags: splitList(col(r, 'tags')), priority: col(r, 'priority'), content: col(r, 'content'), client: col(r, 'client'), address: col(r, 'address'), area: col(r, 'area'), contractNo: col(r, 'contractNo'), stage: col(r, 'stage') })).filter(r => r.name);
+    const byId = new Map(rows.map(r => [r.id, r]));
+    const rootOf = r => { let x = r, guard = 0; while (x.parent && byId.has(x.parent) && guard++ < 50) x = byId.get(x.parent); return x; };
+    const projects = new Map(); const order = [];
+    const projOf = (key, base) => { if (!projects.has(key)) { projects.set(key, Object.assign({ track: opts.track || 'ep', name: key, cuId: '', status: '', start: '', due: '', assignees: [], client: '', address: '', area: '', contractNo: '', list: '', tags: [], priority: '', note: '', tasks: [] }, base || {})); order.push(key); } return projects.get(key); };
+    const task = r => ({ title: r.name, cuId: r.id, status: r.status, done: CLICKUP_DONE.test(r.status), start: r.start, due: r.due, assignees: r.assignees, tags: r.tags, priority: r.priority, stage: r.stage, note: r.content });
+    if (opts.source === 'list') {
+      for (const r of rows) { const p = projOf(r.list || 'Без списка', { list: r.list }); if (!p.client && r.client) Object.assign(p, { client: r.client, address: r.address, area: r.area, contractNo: r.contractNo }); p.tasks.push(task(r)); }
+    } else {
+      for (const r of rows) if (!r.parent || !byId.has(r.parent)) projOf(r.name, { name: r.name, cuId: r.id, status: r.status, start: r.start, due: r.due, assignees: r.assignees, client: r.client, address: r.address, area: r.area, contractNo: r.contractNo, list: r.list, tags: r.tags, priority: r.priority, note: r.content });
+      for (const r of rows) if (r.parent && byId.has(r.parent)) projOf(rootOf(r).name).tasks.push(task(r));
+    }
+    for (const p of projects.values()) {
+      const allDone = p.tasks.length > 0 && p.tasks.every(t => t.done);
+      p.pmStatus = p.status ? clickupStatus(p.status) : (allDone ? 'Готово' : 'В работе');
+      if (!p.start) p.start = p.tasks.map(t => t.start).filter(Boolean).sort()[0] || '';
+      if (!p.due) p.due = p.tasks.map(t => t.due).filter(Boolean).sort().pop() || '';
+    }
+    return order.map(k => projects.get(k));
+  }
+
   // ---- рабочий календарь РК (для сроков «N рабочих дней» по договорам) ----
   const KZ_FIXED = ['01-01', '01-02', '01-07', '03-08', '03-21', '03-22', '03-23', '05-01', '05-07', '05-09', '07-06', '08-30', '10-25', '12-16'];
   const KZ_KURBAN = { 2022: '07-09', 2023: '06-28', 2024: '06-16', 2025: '06-06', 2026: '05-27', 2027: '05-16', 2028: '05-05' };
@@ -348,5 +449,6 @@
   const retroSnapshot = (h, blockers) => ({ progress: h.progress, zone: h.zone, consumption: h.consumption, curV: h.curV, avgV: h.avgV, addedW: h.addedW, remain: h.remain, forecast: h.forecast, returns: h.returns, blockers: (blockers || []).filter(b => b.status !== 'closed').length });
 
   return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
+    parseCsv, CLICKUP_FIELDS, clickupAutoMap, parseAnyDate, splitList, CLICKUP_DONE, clickupStatus, normTitle, findItemByTitle, matchUser, clickupToProjects,
     W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot };
 });

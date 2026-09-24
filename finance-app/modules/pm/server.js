@@ -58,6 +58,58 @@ function collapseConcept(ctx, p, body, byUserId) {
   ctx.store.save(); ctx.store.audit(byUserId || '', 'collapse', 'pmProjects', p.id, { to: 'ep' }); ctx.emit('pm.project.handover', { from: p, to: p });
   return p;
 }
+// импорт ЭП из ClickUp: задача верхнего уровня (или список) → проект ЭП; подзадача → отметка «сделано» у пункта шаблона с тем же названием или дополнительный пункт этапа.
+// mode: skip — существующий по названию проект не трогаем; merge — дополняем его отметками и пунктами. Люди — по имени с db.users, иначе имя в заметку.
+function importClickup(ctx, list, mode, user) {
+  const { db, store } = ctx; const t = PM.today(); const now = new Date().toISOString();
+  const rep = { created: [], merged: [], skipped: [], items: 0, matched: 0, done: 0, added: 0, people: { mapped: [], unmapped: [] } };
+  const mapped = new Set(), unmapped = new Set(); const leadUsers = db.users.filter(u => ['owner', 'partner', 'pm', 'gip'].includes(u.role));
+  const person = (names, pool) => { for (const n of names || []) { const u = PM.matchUser(pool || db.users, n); if (u) { mapped.add(n); return u; } unmapped.add(n); } return null; };
+  for (const src of list) {
+    const name = String(src.name || '').trim(); if (!name) continue;
+    let p = db.pmProjects.find(x => x.track === 'ep' && PM.normTitle(x.name) === PM.normTitle(name));
+    if (p && mode !== 'merge') { rep.skipped.push(name); continue; }
+    const tasks = Array.isArray(src.tasks) ? src.tasks : [];
+    if (!p) {
+      const pmUser = person(src.assignees, leadUsers);
+      const comment = [src.note, src.list ? `ClickUp: список «${src.list}»` : 'из ClickUp', (src.tags || []).length ? `теги: ${src.tags.join(', ')}` : '', src.priority ? `приоритет ${src.priority}` : '', !pmUser && (src.assignees || []).length ? `исполнитель в ClickUp: ${src.assignees.join(', ')}` : ''].filter(Boolean).join(' · ');
+      p = createProject(ctx, { track: 'ep', name, client: src.client || '', address: src.address || '', area: src.area || '', contractNo: src.contractNo || '', status: PM.STATUS.includes(src.pmStatus) ? src.pmStatus : 'В работе', start: src.start || '', due: src.due || '', fit: !!(src.start && src.due), pmId: pmUser ? pmUser.id : '', comment, dueNote: src.due ? 'срок из ClickUp' : '' }, user.id);
+      p.imported = { at: now, source: 'ClickUp', cuId: src.cuId || '' }; rep.created.push(name); rep.items += db.pmItems.filter(i => i.pid === p.id).length;
+    } else rep.merged.push(name);
+    const items = () => db.pmItems.filter(i => i.pid === p.id);
+    const curStage = () => { const open = items().filter(i => !i.done && !i.na).sort((a, b) => a.stage - b.stage); return open.length ? open[0].stage : 1; };
+    for (const tk of tasks) {
+      const title = String(tk.title || '').trim(); if (!title) continue; const u = person(tk.assignees); const extra = (tk.assignees || []).length && !u ? `ClickUp: ${tk.assignees.join(', ')}` : '';
+      const it = PM.findItemByTitle(items(), title) || items().find(i => i.custom && ((i.cuId && tk.cuId && i.cuId === tk.cuId) || PM.normTitle(i.title) === PM.normTitle(title))); // повторный импорт: свой же добавленный пункт не дублируем
+      if (it) {
+        rep.matched++;
+        if (tk.done && !it.done) { Object.assign(it, { done: true, doneAt: tk.due || t, doneBy: 'clickup', doneNote: 'по ClickUp' }); rep.done++; }
+        if (tk.due && !it.done) it.due = tk.due; if (u && !it.assigneeId) it.assigneeId = u.id;
+        if (extra && !String(it.note || '').includes(extra)) it.note = [it.note, extra].filter(Boolean).join(' · ');
+      } else {
+        const st = PM.stageIndex('ep', tk.stage) || curStage(); const order = Math.max(0, ...items().map(i => i.order || 0)) + 1;
+        addItems(ctx, [{ pid: p.id, stage: st, stageName: PM.stageNames('ep')[st - 1] || `Этап ${st}`, title, role: 'ПМ', section: '', weeks: 1, weeksMax: 0, crit: '', optional: false, done: !!tk.done, doneAt: tk.done ? (tk.due || t) : '', doneBy: tk.done ? 'clickup' : '', doneNote: tk.done ? 'по ClickUp' : '', na: false, due: tk.due || '', assigneeId: u ? u.id : '', contractor: '', note: [tk.note, tk.status ? `статус ClickUp: ${tk.status}` : '', (tk.tags || []).length ? `теги: ${tk.tags.join(', ')}` : '', extra, 'из ClickUp'].filter(Boolean).join(' · '), order, custom: true, source: 'clickup', cuId: tk.cuId || '', createdBy: user.id, createdAt: now }]);
+        rep.added++;
+      }
+    }
+    store.audit(user.id, 'import-clickup', 'pmProjects', p.id, { tasks: tasks.length });
+  }
+  rep.people.mapped = [...mapped]; rep.people.unmapped = [...unmapped]; store.save(); return rep;
+}
+// часы табелей по проекту через модуль hr (без правок hr): разделы и люди за всё время и по месяцам; деньги — только owner/partner/accountant (hr.domain.isMoney) с доступом к бюджету
+function hoursOf(ctx, hr, p, user, canBudget) {
+  const H = hr.domain || {}; const money = !!(H.isMoney && H.isMoney(user) && canBudget);
+  const calc = opts => money ? hr.laborCost(ctx, p.id, opts) : hr.laborHours(ctx, p.id, opts);
+  const all = calc({}) || {}; const months = Object.keys(all.byMonth || {}).sort(); const perMonth = {};
+  for (const ym of months) { // недели месяца — по их четвергу (правило ISO), как считает hr
+    const weeks = []; for (let d = H.addDays(ym + '-01', -7), n = 0; n < 8; d = H.addDays(d, 7), n++) { const w = H.isoWeek(d); if (H.weekMonth(w) === ym && !weeks.includes(w)) weeks.push(w); }
+    weeks.sort(); perMonth[ym] = weeks.length ? calc({ from: weeks[0], to: weeks[weeks.length - 1] }) || {} : {};
+  }
+  const secOrder = s => { const i = PM.SECTIONS.indexOf(s); return i < 0 ? 99 : i; };
+  const sections = Object.keys(all.bySection || {}).sort((a, b) => secOrder(a) - secOrder(b) || a.localeCompare(b, 'ru')).map(sec => Object.assign({ section: sec, hours: all.bySection[sec].hours, byMonth: Object.fromEntries(months.map(m => [m, ((perMonth[m].bySection || {})[sec] || {}).hours || 0])) }, money ? { cost: all.bySection[sec].cost } : {}));
+  const people = (all.byEmployee || []).map(e => Object.assign({ employeeId: e.employeeId, name: e.name || e.employeeId, position: e.position || '', hours: e.hours, byMonth: Object.fromEntries(months.map(m => [m, ((perMonth[m].byEmployee || []).find(x => x.employeeId === e.employeeId) || {}).hours || 0])) }, money ? { cost: e.cost, rate: e.rate } : {}));
+  return { money, total: Object.assign({ hours: all.hours || 0 }, money ? { cost: all.cost || 0 } : {}), weeks: all.weeks || 0, byStatus: all.byStatus || {}, months, byMonth: Object.fromEntries(months.map(m => [m, Object.assign({ hours: all.byMonth[m].hours }, money ? { cost: all.byMonth[m].cost } : {})])), sections, people };
+}
 // финансовый проект, к которому привязан проект управления
 function finProject(db, p) { return p && p.projectId ? db.projects.find(x => x.id === p.projectId) || null : null; }
 // подрядчики по финансовому проекту — подсказки для поля «Исполнитель-подрядчик» (только названия, без сумм)
@@ -80,6 +132,7 @@ function handle(ctx) {
     const items = db.pmItems.filter(i => i.pid === p.id).sort((x, y) => x.stage - y.stage || x.order - y.order);
     const h = PM.health(p, db.pmItems, t);
     const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [] };
+    const hrMod = ctx.modules && ctx.modules.hr; if (hrMod && hrMod.laborHours) out.hours = hoursOf(ctx, hrMod, p, user, out.canBudget); // вкладка «Часы» — только при включённом модуле hr
     if (out.canBudget) out.throughput = PM.throughput(p, h);
     for (const k of ['epId', 'rpId', 'conceptId']) { const q = p[k] && findP(p[k]); if (q) out[k.replace('Id', '')] = { id: q.id, name: q.name, status: q.status, track: q.track }; }
     const fp = finProject(db, p); if (fp) out.finance = { id: fp.id, name: fp.name, client: fp.client || '', status: fp.status || '' };
@@ -210,6 +263,14 @@ function handle(ctx) {
     if (applied.length) store.save();
     return ok({ applied, missed });
   }
+  // импорт ЭП из CSV-выгрузки ClickUp (руководитель): { mode: skip|merge, projects: [...] } — разбор в браузере (domain.clickupToProjects) или { csv, map?, source? } — разбор здесь
+  if (a === 'import-clickup' && method === 'POST') {
+    if (!PM.isLeader(user)) return err(403, 'Импорт доступен только руководителю');
+    let list = Array.isArray(body.projects) ? body.projects : null;
+    if (!list && typeof body.csv === 'string') { const csv = PM.parseCsv(body.csv); list = PM.clickupToProjects(csv, body.map && typeof body.map === 'object' ? body.map : PM.clickupAutoMap(csv.header), { source: body.source === 'list' ? 'list' : 'parent', track: 'ep' }); }
+    if (!list || !list.length) return err(400, 'В выгрузке нет задач');
+    return ok(importClickup(ctx, list, body.mode === 'merge' ? 'merge' : 'skip', user));
+  }
   if (a === 'import' && method === 'POST') {
     if (!PM.isLeader(user)) return err(403, 'Импорт доступен только руководителю');
     const list = Array.isArray(body.projects) ? body.projects : []; if (!list.length) return err(400, 'В файле нет проектов');
@@ -245,4 +306,4 @@ function handle(ctx) {
   return err(404, 'Нет такого действия');
 }
 
-module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers'], handle, createProject, collapseConcept, domain: PM };
+module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers'], handle, createProject, collapseConcept, importClickup, hoursOf, domain: PM };
