@@ -1,7 +1,7 @@
 /* Модуль «Знания» — чистая логика (Node: require, браузер: window.MostKb). Права, разбор тестов и программ, оценка, прогресс. */
 (function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.MostKb = factory(); })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const SECTIONS = ['Регламенты', 'Гайды', 'Стандарты Revit ADSK', 'Нормы', 'Документы для подписи'];
+  const SECTIONS = ['Регламенты', 'Гайды', 'Стандарты заказчиков', 'Стандарты Revit ADSK', 'Нормы', 'Документы для подписи'];
   const LEADERS = ['owner', 'partner'];
   const canOpen = u => !!u;
   const canPublish = u => !!u && ['owner', 'partner', 'secretary'].includes(u.role); // новости, статьи, документы
