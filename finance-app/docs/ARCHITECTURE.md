@@ -1,6 +1,6 @@
 # MOST ERP — модули и правила параллельной работы
 
-Одна программа (`server.js`, Node.js без npm-зависимостей), одна база (`data/db.json`). Поверх ядра подключаются модули из `modules/<id>/`. Финансы пока живут в ядре (`lib/domain.js`, `public/app.js`) и считаются встроенным модулем `fin`.
+Одна программа (`server.js`, Node.js без npm-зависимостей), одна база (`data/db.sqlite`, SQLite; модули работают с коллекциями в памяти через `ctx.db` и `store.save()`). Поверх ядра подключаются модули из `modules/<id>/`. Финансы пока живут в ядре (`lib/domain.js`, `public/app.js`) и считаются встроенным модулем `fin`.
 
 ## Кто что трогает
 
@@ -22,7 +22,7 @@
 ```js
 module.exports = {
   id: 'kb', api: 'kb',                    // /api/kb/...
-  collections: ['kbNews', 'kbArticles'],  // коллекции в db.json; имена с префиксом модуля
+  collections: ['kbNews', 'kbArticles'],  // коллекции в базе; имена с префиксом модуля
   handle(ctx) { ... },                    // все запросы /api/<api>/*; пользователь уже проверен (ctx.user)
   on: { 'pm.project.created': (ctx, data) => {} }, // необязательно: события других модулей
   // любые функции для других модулей: ctx.modules.<id>.<функция>(ctx, ...)
@@ -76,7 +76,7 @@ module.exports = {
 ## Как разрабатывать и проверять
 
 1. Своя ветка `erp/<id>` от `erp/main`, коммиты только в свою папку (+ `CORE-REQUESTS.md`).
-2. Тестовая база: скопируйте `\\MostServer\Documents\MOST-Финансы\data\db.json` в `finance-app/data-dev/<id>/db.json` (папка в .gitignore, реальные данные компании — не коммитить и никуда не отправлять) или начните с пустой.
+2. Тестовая база: скопируйте свежий бэкап `\\MostServer\Documents\MOST-Финансы\data\backups\db-*.sqlite` в `finance-app/data-dev/<id>/db.sqlite` (или, пока рабочая база не перенесена, `data\db.json` в `data-dev/<id>/db.json` — при запуске он сам переедет в SQLite) (папка в .gitignore, реальные данные компании — не коммитить и никуда не отправлять) или начните с пустой.
 3. Запуск без пароля (только с этого компьютера):
    `set DATA_DIR=data-dev\<id>& set DEV_USER=owner& set PORT=<порт>& node server.js`
    Порты: pm 3101, hr 3102, crm 3103, kb 3104, sys 3105. Роль для проверки прав — cookie `devrole=gip` (и `devsection=ОВ` для руководителя раздела) в браузере или `DEV_USER=gip`.
