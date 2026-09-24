@@ -128,6 +128,16 @@ foreach ($dir in 'lib', 'public', 'modules') {
 }
 if ($DryRun) { Log "[DryRun] копирование не выполнялось (только просмотр)" } else { Log "код скопирован: server.js, package.json (если был), lib\, public\, modules\" }
 
+# файл VERSION в корне целевой папки - экран "Сервис" в интерфейсе читает его для owner/partner
+$gitHash = (& git -C $Source rev-parse HEAD 2>&1).Trim()
+$versionContent = "commit=$gitHash`nbranch=$branch`ndeployed=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n"
+if ($DryRun) {
+  Log "[DryRun] VERSION был бы записан: commit=$gitHash branch=$branch"
+} else {
+  Set-Content -Path (Join-Path $Target 'VERSION') -Value $versionContent -Encoding utf8 -NoNewline
+  Log "VERSION записан: commit=$gitHash branch=$branch"
+}
+
 # ---------- 4) перезапуск: только дочерний процесс под serve-local.js ----------
 $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $conn) {
