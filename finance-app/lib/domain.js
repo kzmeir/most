@@ -28,7 +28,7 @@
   }
   const isAdmin = r => ADMIN.includes(r);
   const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const todayStr = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Almaty' }); // дата по Алматы, не по UTC (в 00–05 UTC-дата — вчерашняя)
   const daysBetween = (a, b) => Math.max(0, Math.floor((new Date(b) - new Date(a)) / 864e5));
 
   // ---- справочники ----
