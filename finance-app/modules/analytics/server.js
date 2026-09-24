@@ -53,7 +53,20 @@ function subLinkSuggestions(db) {
   const projects = (db.projects || []).map(p => ({ id: p.id, name: p.name || p.id, status: p.status || '', contractNoVat: p.contractNoVat }));
   const items = [...groups.values()].map(g => { const candidates = g.project ? AN.suggestProjects(g.project, projects, 3) : []; return { project: g.project || '(пусто)', n: g.n, sum: g.sum, paid: g.paid, subcontractIds: g.ids, contractors: [...g.contractors].slice(0, 6), best: candidates[0] || null, candidates }; })
     .sort((a, b) => b.sum - a.sum);
-  return { summary: L.summary, items, levels: { high: items.filter(i => i.best && i.best.level === 'high').length, medium: items.filter(i => i.best && i.best.level === 'medium').length, low: items.filter(i => i.best && i.best.level === 'low').length, none: items.filter(i => !i.best).length } };
+  // двойники: субподряд привязан к архивному проекту (часто без суммы договора), а есть активный проект с договором и похожим названием
+  const active = projects.filter(p => p.status !== 'archive' && num(p.contractNoVat) > 0);
+  const byArch = new Map();
+  for (const sc of db.subcontracts || []) { const p = L.of(sc); if (!p || p.status !== 'archive') continue; const g = byArch.get(p.id) || { p, n: 0, sum: 0, paid: 0, ids: [], texts: new Set() }; g.n++; g.sum += num(sc.sum); g.paid += num(sc.paid); g.ids.push(sc.id); g.texts.add(String(sc.project || '').trim()); byArch.set(p.id, g); }
+  const twins = [];
+  for (const g of byArch.values()) {
+    // сравниваем и название архивного проекта, и тексты субподряда; берём лучшее
+    const seen = new Map(); for (const t of [g.p.name, g.p.id, ...g.texts]) for (const c of AN.suggestProjects(t, active, 3)) { const o = seen.get(c.id); if (!o || c.score > o.score) seen.set(c.id, c); }
+    const cands = [...seen.values()].sort((x, y) => y.score - x.score).filter(c => c.level !== 'low'); if (!cands.length) continue;
+    const best = cands[0];
+    twins.push({ archivedProject: { id: g.p.id, name: g.p.name || g.p.id, contractNoVat: num(g.p.contractNoVat) }, activeCandidate: best, candidates: cands.slice(0, 3), n: g.n, sum: g.sum, paid: g.paid, subcontractIds: g.ids, why: `${best.why || 'похожее название'} (${best.score})`, level: best.level });
+  }
+  twins.sort((x, y) => y.sum - x.sum);
+  return { summary: L.summary, items, twins, twinsSummary: { n: twins.reduce((s, t) => s + t.n, 0), sum: twins.reduce((s, t) => s + t.sum, 0), projects: twins.length }, levels: { high: items.filter(i => i.best && i.best.level === 'high').length, medium: items.filter(i => i.best && i.best.level === 'medium').length, low: items.filter(i => i.best && i.best.level === 'low').length, none: items.filter(i => !i.best).length } };
 }
 // маржа по финансовым проектам: контракт без НДС − субподряд − ФОТ-оценка (часы табелей × ставка, если включён hr).
 // Нет привязанного субподряда — маржа не считается (прочерк), показывается только верхняя оценка «не больше»
