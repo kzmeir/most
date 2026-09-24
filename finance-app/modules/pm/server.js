@@ -5,7 +5,10 @@ const PM = require('./domain');
 
 const FIELDS = ['name', 'no', 'client', 'address', 'area', 'status', 'risk', 'gipId', 'pmId', 'start', 'due', 'forecast', 'comment', 'projectId', 'members', 'miroUrl', 'folder'];
 const ITEM_FIELDS_ANY = ['done', 'na', 'due', 'note', 'assigneeId', 'contractor', 'doneNote'];
-const ITEM_FIELDS_MGR = ['title', 'role', 'weeks', 'crit', 'stage'];
+const ITEM_FIELDS_MGR = ['title', 'role', 'weeks', 'weeksMax', 'crit', 'stage'];
+const RETRO_FIELDS = ['interpret', 'change', 'sprint'];
+// устав проекта: только известные поля, текст
+function cleanCharter(c) { if (!c || typeof c !== 'object') return null; const out = {}; for (const [k] of PM.CHARTER_FIELDS) out[k] = String(c[k] || '').trim().slice(0, 2000); return out; }
 const BLOCKER_FIELDS = ['what', 'holder', 'ownerId', 'expected', 'lastContact', 'status', 'comment', 'since'];
 const TRACKS = Object.keys(PM.TRACKS);
 
@@ -43,7 +46,7 @@ function contractorsOf(db, p) {
 
 function handle(ctx) {
   const { parts, method, body, user, db, store, D, ok, err, pick, num } = ctx;
-  const [, a, b, c] = parts;
+  const [, a, b, c, d] = parts;
   if (!PM.canOpen(user)) return err(403, 'Нет доступа к управлению проектами');
   const t = ctx.today(); const now = () => new Date().toISOString(); const findP = id => db.pmProjects.find(p => p.id === id);
   const projOut = p => { const o = Object.assign({}, p); if (!PM.canBudget(user, p)) delete o.budget; return o; };
@@ -51,7 +54,9 @@ function handle(ctx) {
   const blockerOut = x => { const p = findP(x.pid) || {}; return Object.assign({}, x, { project: p.name || '', track: p.track || '', days: PM.blockerAge(x, t), canEdit: PM.isManager(user, p) || x.createdBy === user.id }); };
   const card = p => {
     const items = db.pmItems.filter(i => i.pid === p.id).sort((x, y) => x.stage - y.stage || x.order - y.order);
-    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p) };
+    const h = PM.health(p, db.pmItems, t);
+    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [] };
+    if (out.canBudget) out.throughput = PM.throughput(p, h);
     for (const k of ['epId', 'rpId', 'conceptId']) { const q = p[k] && findP(p[k]); if (q) out[k.replace('Id', '')] = { id: q.id, name: q.name, status: q.status, track: q.track }; }
     const fp = finProject(db, p); if (fp) out.finance = { id: fp.id, name: fp.name, client: fp.client || '', status: fp.status || '' };
     if (PM.isLeader(user)) out.financeProjects = finProjects();
@@ -75,7 +80,7 @@ function handle(ctx) {
   if (a === 'badges' && method === 'GET') return ok({ pmmy: myItems().filter(it => it.due && it.due < t).length, pmbl: db.pmBlockers.filter(x => x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE((findP(x.pid) || {}).status)).length });
   if (a === 'overview' && method === 'GET') {
     const dash = PM.dashboard(db.pmProjects, db.pmItems, db.pmBlockers, t);
-    dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }));
+    dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }, PM.canBudget(user, r) ? { throughput: PM.throughput(r, r.health) } : {}));
     return ok(Object.assign(dash, { blockersList: db.pmBlockers.map(blockerOut), canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
   }
   if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
@@ -94,6 +99,7 @@ function handle(ctx) {
     if (p && !c && method === 'PUT') {
       if (!PM.isManager(user, p)) return err(403, 'Менять карточку могут руководитель, ГИП и ПМ проекта');
       const patch = pick(body, FIELDS); if ('budget' in body) { if (!PM.canBudget(user, p)) return err(403, 'Нет доступа к бюджету'); patch.budget = cleanBudget(body.budget); }
+      if ('charter' in body) patch.charter = cleanCharter(body.charter);
       if (('gipId' in patch || 'pmId' in patch || 'projectId' in patch) && !PM.isLeader(user)) { delete patch.gipId; delete patch.pmId; delete patch.projectId; }
       if ('status' in patch && !PM.STATUS.includes(patch.status)) delete patch.status; if ('risk' in patch && !PM.RISK.includes(patch.risk)) delete patch.risk;
       if ('name' in patch) { patch.name = String(patch.name).trim(); if (!patch.name) delete patch.name; }
@@ -117,10 +123,20 @@ function handle(ctx) {
       const q = createProject(ctx, { track: next, name: body.name || p.name, no: p.no || '', client: p.client || '', address: p.address || '', area: p.area || '', projectId: p.projectId || '', folder: p.folder || '', members: p.members || {}, pmId: body.pmId || p.pmId || '', gipId: body.gipId || p.gipId || '', start: body.start || t, due: body.due || '', fit: !!body.due, comment: body.comment || '', miroUrl: next === 'ep' ? (p.miroUrl || '') : '' }, user.id);
       q[p.track + 'Id'] = p.id; Object.assign(p, { status: 'Готово', [linkKey]: q.id, handedAt: t }); store.save(); store.audit(user.id, 'handover', 'pmProjects', p.id, { to: q.id, track: next }); ctx.emit('pm.project.handover', { from: p, to: q }); return ok(card(q));
     }
+    // ретроспектива: снимок показателей + выводы и план действий (Метод Пульса)
+    if (p && c === 'retro' && method === 'POST') {
+      if (!PM.isManager(user, p)) return err(403, 'Ретроспективу записывает ГИП/ПМ проекта');
+      const actions = (Array.isArray(body.actions) ? body.actions : []).map(x => ({ step: String((x && x.step) || '').trim().slice(0, 500), who: String((x && x.who) || '').trim().slice(0, 200), when: String((x && x.when) || '').slice(0, 10), howMuch: String((x && x.howMuch) || '').trim().slice(0, 500) })).filter(x => x.step);
+      const r = Object.assign({ id: store.id(), date: t, by: user.id, snapshot: PM.retroSnapshot(PM.health(p, db.pmItems, t), db.pmBlockers.filter(x => x.pid === p.id)), actions }, Object.fromEntries(RETRO_FIELDS.map(k => [k, String(body[k] || '').trim().slice(0, 4000)])));
+      p.retros = [...(p.retros || []), r]; store.save(); store.audit(user.id, 'retro', 'pmProjects', p.id, { retro: r.id }); return ok(card(p));
+    }
+    if (p && c === 'retro' && d && method === 'DELETE') {
+      if (!PM.isManager(user, p)) return err(403, 'Удалять может ГИП/ПМ проекта'); p.retros = (p.retros || []).filter(r => r.id !== d); store.save(); store.audit(user.id, 'retro-delete', 'pmProjects', p.id, { retro: d }); return ok(card(p));
+    }
     if (p && c === 'items' && method === 'POST') {
       if (!PM.isManager(user, p)) return err(403, 'Добавлять пункты может ГИП/ПМ проекта');
       const st = Number(body.stage) || 1; const same = db.pmItems.filter(i => i.pid === p.id && i.stage === st); const role = PM.ITEM_ROLES.includes(body.role) ? body.role : 'ГИП';
-      const it = addItems(ctx, [{ pid: p.id, stage: st, stageName: (same[0] || {}).stageName || String(body.stageName || '').trim() || PM.stageNames(p.track)[st - 1] || `Этап ${st}`, title: String(body.title || '').trim() || 'Пункт', role, section: PM.ROLE_SECTION[role] || '', weeks: num(body.weeks) || 1, crit: body.crit || '', optional: false, done: false, na: false, due: body.due || '', assigneeId: body.assigneeId || '', contractor: body.contractor || '', note: body.note || '', order: Math.max(0, ...db.pmItems.filter(i => i.pid === p.id).map(i => i.order || 0)) + 1, custom: true, createdBy: user.id }])[0];
+      const it = addItems(ctx, [{ pid: p.id, stage: st, stageName: (same[0] || {}).stageName || String(body.stageName || '').trim() || PM.stageNames(p.track)[st - 1] || `Этап ${st}`, title: String(body.title || '').trim() || 'Пункт', role, section: PM.ROLE_SECTION[role] || '', weeks: num(body.weeks) || 1, weeksMax: num(body.weeksMax) || 0, crit: body.crit || '', optional: false, done: false, na: false, due: body.due || '', assigneeId: body.assigneeId || '', contractor: body.contractor || '', note: body.note || '', order: Math.max(0, ...db.pmItems.filter(i => i.pid === p.id).map(i => i.order || 0)) + 1, custom: true, createdBy: user.id, createdAt: now() }])[0];
       store.save(); store.audit(user.id, 'create', 'pmItems', it.id); return ok(Object.assign({}, it, { canEdit: true }));
     }
   }
@@ -130,7 +146,8 @@ function handle(ctx) {
       if (!PM.canEditItem(user, p, it)) return err(403, 'Этот пункт ведёт другой раздел');
       const patch = pick(body, ITEM_FIELDS_ANY);
       if (PM.isManager(user, p)) Object.assign(patch, pick(body, ITEM_FIELDS_MGR));
-      if ('done' in patch) { patch.done = !!patch.done && patch.done !== 'false'; if (patch.done && !it.done) { patch.doneAt = t; patch.doneBy = user.id; } if (!patch.done) { patch.doneAt = ''; patch.doneBy = ''; } }
+      if ('done' in patch) { patch.done = !!patch.done && patch.done !== 'false'; if (patch.done && !it.done) { patch.doneAt = t; patch.doneBy = user.id; } if (!patch.done) { if (it.done) patch.returns = (Number(it.returns) || 0) + 1; patch.doneAt = ''; patch.doneBy = ''; } }
+      if ('weeksMax' in patch) patch.weeksMax = num(patch.weeksMax) || 0;
       if ('na' in patch) patch.na = !!patch.na && patch.na !== 'false';
       if ('role' in patch) { if (!PM.ITEM_ROLES.includes(patch.role)) delete patch.role; else patch.section = PM.ROLE_SECTION[patch.role] || ''; }
       if ('stage' in patch) { patch.stage = Number(patch.stage) || it.stage; const same = db.pmItems.find(i => i.pid === p.id && i.stage === patch.stage && i.id !== it.id); patch.stageName = same ? same.stageName : (PM.stageNames(p.track)[patch.stage - 1] || `Этап ${patch.stage}`); }
