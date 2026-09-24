@@ -27,13 +27,14 @@
 .kb-week{margin-bottom:12px}.kb-week h3{margin:0 0 8px;font-size:15px}.kb-step{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line)}.kb-step input,.kb-opt input{width:auto;flex:none;margin-top:3px}.kb-step .grow{flex:1}.kb-step.done .kb-st{color:var(--ink-soft)}
 .kb-q{margin-bottom:12px}.kb-qt{font-weight:600;margin-bottom:8px;white-space:pre-line}.kb-opt{display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border-radius:6px;cursor:pointer}.kb-opt:hover{background:var(--panel-2)}.kb-opt.right{background:var(--ok-bg)}.kb-opt.wrong{background:var(--crit-bg)}
 .kb-editor textarea[name=text]{width:100%;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;min-height:300px}.kb-hint{font-size:12px;color:var(--ink-soft);margin:4px 0 8px;white-space:pre-line}
+.kb-wait ul{margin:4px 0;padding-left:18px}.kb-wait li{margin:4px 0}.kb-wait>ul{list-style:none;padding-left:0}
 .kb-matrix td,.kb-matrix th{text-align:center}.kb-matrix td:first-child,.kb-matrix th:first-child{text-align:left;white-space:nowrap}
 </style>`);
 
     // ---------- общее ----------
     const wide = w => { const c = $('#modal .modal-card'); if (c) c.style.maxWidth = w; };
     function paintBadges() {
-      for (const [id, n] of [['kbnews', S.unreadNews], ['kbsign', S.toSign], ['kbcourses', S.myEnrolls]]) { const b = $('#badge-' + id); if (b) { b.textContent = n || ''; b.hidden = !n; } }
+      for (const [id, n] of [['kbnews', S.unreadNews], ['kbsign', S.toSign], ['kbcourses', S.myEnrolls], ['kbtests', S.pendingTests]]) { const b = $('#badge-' + id); if (b) { b.textContent = n || ''; b.hidden = !n; } }
     }
     async function loadSummary() { try { S = Object.assign(S, await api('/kb/summary')); } catch { } paintBadges(); return S; }
     // обёртка раздела: сводка (права + счётчики) до отрисовки, бейджи — после
@@ -62,11 +63,22 @@
     const peopleOpts = first => [...(first ? [['', first]] : []), ...ui.state.people.map(p => [p.id, p.name + (p.section ? ' · ' + p.section : '')])];
     const bigText = rows => { const ta = $('#modal-body textarea[name=text]'); if (ta) ta.rows = rows; };
 
+    // «Ждёт вас» — вместо уведомлений (решение директора): новости, документы, обучение, тесты
+    const KIND_ICON = { article: '📄', test: '✔', sign: '✍', task: '☐' };
+    function waitingHtml() {
+      const w = S.waiting || {}; const items = [];
+      for (const d of w.sign || []) items.push(`<li>✍ Ознакомиться: <a href="#/kbarticle?id=${d.id}">${esc(d.title)}</a></li>`);
+      for (const t of w.tests || []) items.push(`<li>✔ Сдать тест: <a href="#/kbtest?id=${t.id}">${esc(t.title)}</a> <span class="faint">· ${esc(t.course)}</span></li>`);
+      for (const c of w.courses || []) items.push(`<li>🎓 <a href="#/kbenroll?id=${c.enrollId}">${esc(c.course)}</a> — ${c.pct}%${c.next.length ? `<ul>${c.next.map(s => `<li>${KIND_ICON[s.kind] || '•'} ${s.refId ? `<a href="#/${s.kind === 'test' ? 'kbtest' : 'kbarticle'}?id=${s.refId}">${esc(s.title)}</a>` : esc(s.title)} <span class="faint">· ${esc(s.week)}</span></li>`).join('')}</ul>` : ''}</li>`);
+      if (!items.length) return '';
+      return `<div class="card kb-wait" style="max-width:860px;margin-bottom:14px"><div class="label"><span>Ждёт вас</span><span>${items.length}</span></div><ul>${items.join('')}</ul></div>`;
+    }
+
     // ---------- новости ----------
     SECTIONS.kbnews = section(async main => {
       const list = await api('/kb/news');
       const btn = S.canPublish ? '<button class="btn primary" data-act="kbNewsAdd">+ Новость</button>' : '';
-      main.innerHTML = head('Новости бюро', S.unreadNews ? `Непрочитанных: ${S.unreadNews}` : 'Всё прочитано', btn) + (list.length ? `<div class="kb-feed">${list.map(n => `<div class="card kb-news${n.read ? '' : ' unread'}">
+      main.innerHTML = head('Новости бюро', S.unreadNews ? `Непрочитанных: ${S.unreadNews}` : 'Всё прочитано', btn) + waitingHtml() + (list.length ? `<div class="kb-feed">${list.map(n => `<div class="card kb-news${n.read ? '' : ' unread'}">
         <div class="kb-meta">${n.pinned ? chip('pin', { pin: ['accent', '📌 закреплено'] }) : ''}<span>${fdate(n.date)}</span><span>${esc(n.author || '')}</span>${S.canPublish ? `<span title="${esc((n.readers || []).map(r => r.name).join(', '))}">прочитали ${n.readersN} из ${n.usersN}</span>` : ''}</div>
         <h3>${esc(n.title)}</h3>${render(n.text)}
         <div class="kb-bar" style="margin:10px 0 0">${n.read ? `<span class="chip ok">✓ прочитано ${dt(n.readAt)}</span>` : `<button class="btn sm primary" data-act="kbNewsRead" data-id="${n.id}">Прочитал</button>`}

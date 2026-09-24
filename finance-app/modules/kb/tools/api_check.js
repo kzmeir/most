@@ -57,6 +57,7 @@ async function call(role, method, path, body, section) {
   const en = await call('lead', 'POST', '/enrolls', { courseId: course.id, userId: 'dev-staff', mentorId: 'dev-partner' }, 'АР'); check(en.status === 200 && en.data.mentor === 'Партнёр (тест)', 'рук. АР назначил обучение с наставником-партнёром'); // у dev-руководителей один id, поэтому наставник — не lead
   const card = await call('staff', 'GET', '/enrolls/' + en.data.id); check(card.data.pct > 0, `прогресс учитывает подпись и тест: ${card.data.pct}% (${card.data.doneN}/${card.data.total})`);
   const task = card.data.weeks[0].steps.find(x => x.kind === 'task'); const st = await call('staff', 'PUT', `/enrolls/${en.data.id}/steps/${task.id}`, { done: true }); check(st.data.doneN === card.data.doneN + 1, 'новичок отметил задание');
+  const w = (await call('staff', 'GET', '/summary')).data; check(w.waiting.courses.length === 1 && w.waiting.courses[0].next.length > 0 && w.waiting.sign.length === 2, `«Ждёт вас»: программа (${w.waiting.courses[0] && w.waiting.courses[0].next.length} след. шага), документов ${w.waiting.sign.length}, тестов ${w.pendingTests}`);
   check((await call('lead', 'GET', '/enrolls', null, 'КЖ')).data.length === 0, 'рук. КЖ не видит новичка АР');
   check((await call('gip', 'GET', '/enrolls/' + en.data.id)).status === 404, 'посторонний ГИП не видит карточку');
   check((await call('gip', 'PUT', `/enrolls/${en.data.id}/steps/${task.id}`, { done: false })).status === 404, 'посторонний не отмечает шаги');

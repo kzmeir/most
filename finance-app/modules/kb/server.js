@@ -29,8 +29,18 @@ function handle(ctx) {
   if (a === 'summary' && method === 'GET') {
     const unreadNews = db.kbNews.filter(n => !readOf('news', n.id)).length;
     const toSign = db.kbArticles.filter(x => isSign(x) && !readOf('sign', x.id)).length;
-    const myEnrolls = db.kbEnroll.filter(e => e.userId === user.id && e.status !== 'done').length;
-    return ok({ unreadNews, toSign, myEnrolls, canPublish: K.canPublish(user), canTeach: K.canTeach(user), isLeader: K.isLeader(user), sections: K.SECTIONS });
+    const active = db.kbEnroll.filter(e => e.userId === user.id && e.status === 'active');
+    // «Ждёт вас» (уведомлений нет — решение директора): мои программы со следующими шагами и несданные тесты из них
+    const courses = [], tests = new Map();
+    for (const e of active) {
+      const co = db.kbCourses.find(z => z.id === e.courseId); if (!co) continue; const pr = K.progress(co, pctx(e));
+      const todo = (co.weeks || []).flatMap(w => w.steps.map(s => Object.assign({ week: w.title }, s, pr.states[s.id]))).filter(s => !s.done);
+      courses.push({ enrollId: e.id, course: co.title, pct: pr.pct, next: todo.slice(0, 3).map(s => ({ title: s.title, week: s.week, kind: s.kind, refId: s.refId || '' })) });
+      for (const s of todo) if (s.kind === 'test' && s.refId && !tests.has(s.refId)) { const x = db.kbTests.find(z => z.id === s.refId); if (x && K.attemptsLeft(x, db.kbAttempts.filter(a => a.testId === x.id && a.userId === user.id).length) > 0) tests.set(x.id, { id: x.id, title: x.title, course: co.title }); }
+    }
+    const latestNews = db.kbNews.filter(n => !readOf('news', n.id)).sort((x, y) => String(y.date).localeCompare(String(x.date))).slice(0, 3).map(n => ({ id: n.id, title: n.title, date: n.date }));
+    const signDocs = db.kbArticles.filter(x => isSign(x) && !readOf('sign', x.id)).map(x => ({ id: x.id, title: x.title }));
+    return ok({ unreadNews, toSign, myEnrolls: active.length, pendingTests: tests.size, waiting: { news: latestNews, sign: signDocs, courses, tests: [...tests.values()] }, canPublish: K.canPublish(user), canTeach: K.canTeach(user), isLeader: K.isLeader(user), sections: K.SECTIONS });
   }
 
   // ---------- новости ----------
