@@ -19,8 +19,10 @@
       const backupBlock = st.lastBackup
         ? kv('Последний бэкап', `${esc(st.lastBackup.name)} · ${fmtSize(st.lastBackup.size)} · ${st.lastBackup.stale ? `<span class="chip crit">${fmtHours(st.lastBackup.ageHours)} назад — давно!</span>` : `<span class="chip ok">${fmtHours(st.lastBackup.ageHours)} назад</span>`}`)
         : kv('Последний бэкап', '<span class="chip crit">ни одного ещё не было</span>');
-      const taskBlock = st.backupTask
+      const taskBlock = st.backupTask && st.backupTask.status === 'ok'
         ? kv('Задача «MOST Финансы - бэкап»', `${fdate(st.backupTask.lastRunTime)} ${new Date(st.backupTask.lastRunTime).toLocaleTimeString('ru-RU')} · ${(() => { const r = TASK_RESULT[st.backupTask.lastTaskResult] || ['neutral', 'код ' + st.backupTask.lastTaskResult]; return `<span class="chip ${r[0]}">${esc(r[1])}</span>`; })()}`)
+        : st.backupTask && st.backupTask.status === 'checking'
+        ? kv('Задача «MOST Финансы - бэкап»', '<span class="muted">проверяется…</span>')
         : kv('Задача «MOST Финансы - бэкап»', '<span class="muted">не найдена или недоступна на этом компьютере</span>');
 
       const deployBlock = st.lastDeploy
