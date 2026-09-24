@@ -127,6 +127,37 @@ chk "повторный импорт пропускает" 2 "$(call OWN POST /p
 chk "импорт replace пересоздаёт" 2 "$(call OWN POST /pm/import "${IMP/\"mode\":\"skip\"/\"mode\":\"replace\"}" | js 'd.replaced.length')"
 chk "импорт accountant 403" 403 "$(code ACC POST /pm/import "$IMP")"
 chk "импорт gip 403" 403 "$(code GIP POST /pm/import "$IMP")"
+
+echo "== импорт из ClickUp =="
+CU=$(node -e "const PM=require('./modules/pm/domain.js');const fs=require('fs');const csv=PM.parseCsv(fs.readFileSync('modules/pm/tools/clickup.example.csv','utf8'));const P=PM.clickupToProjects(csv,PM.clickupAutoMap(csv.header),{source:'parent'});console.log(JSON.stringify({mode:'skip',projects:P}))")
+chk "clickup: разбор примера — 2 проекта, 11 задач, даты из epoch" "2/11/2026-08-03/2026-12-18" "$(echo "$CU" | js 'd.projects.length+"/"+d.projects.reduce((s,p)=>s+p.tasks.length,0)+"/"+d.projects[0].start+"/"+d.projects[0].due')"
+chk "clickup: подзадача 2-го уровня попала в проект через родителя" true "$(echo "$CU" | js 'd.projects[1].tasks.some(t=>/инсоляц/i.test(t.title))')"
+R=$(call OWN POST /pm/import-clickup "$CU")
+chk "clickup: создано 2 ЭП, совпало 10 пунктов, отмечено 5, добавлен 1" "2/10/5/1" "$(echo "$R" | js 'd.created.length+"/"+d.matched+"/"+d.done+"/"+d.added')"
+chk "clickup: люди без совпадений — в отчёт (4 имени)" 4 "$(echo "$R" | js 'd.people.unmapped.length')"
+CUP=$(call OWN GET /pm/overview | js 'JSON.stringify(d.rows.find(r=>r.name==="ЖК Пример Сити")||null)')
+chk "clickup: карточка ЭП — заказчик, договор, площадь, статус, срок" "ТОО «Пример Девелопмент»/ЭП-001-26/25000/В работе/2026-12-18/ep" "$(echo "$CUP" | js '[d.client,d.contractNo,d.area,d.status,d.due,d.track].join("/")')"
+CUID=$(echo "$CUP" | js 'd.id')
+chk "clickup: «Посадка» получила срок, «Форэскиз» отмечен по ClickUp, парковка — доп. пункт этапа 1" "2026-10-02/clickup/1" "$(call OWN GET /pm/projects/$CUID | js '[d.items.find(i=>i.title==="Посадка").due, d.items.find(i=>/^Форэскиз/.test(i.title)).doneBy, d.items.find(i=>/парковки/.test(i.title)).stage].join("/")')"
+chk "clickup: БЦ Демо Плаза — «На паузе», инсоляция отмечена" "На паузе/true" "$(call OWN GET /pm/overview | js '(r=>r.status+"/"+(r.progress.done>=2))(d.rows.find(r=>r.name==="БЦ Демо Плаза"))')"
+chk "clickup: повторный импорт пропускает по названию" 2 "$(call OWN POST /pm/import-clickup "$CU" | js 'd.skipped.length')"
+chk "clickup: режим «дополнить» — совпадения (10 шаблонных + 1 свой) без новых отметок и пунктов" "2/11/0/0" "$(call OWN POST /pm/import-clickup "${CU/\"mode\":\"skip\"/\"mode\":\"merge\"}" | js 'd.merged.length+"/"+d.matched+"/"+d.done+"/"+d.added')"
+CUL=$(node -e "const fs=require('fs');console.log(JSON.stringify({mode:'skip',source:'list',csv:fs.readFileSync('modules/pm/tools/clickup.example.csv','utf8')}))")
+chk "clickup: разбор CSV на сервере, проект = список (13 задач)" "1/Эскизные проекты" "$(call OWN POST /pm/import-clickup "$CUL" | js 'd.created.length+"/"+d.created[0]')"
+chk "clickup: gip 403" 403 "$(code GIP POST /pm/import-clickup "$CU")"
+chk "clickup: пустое тело 400" 400 "$(code OWN POST /pm/import-clickup '{"projects":[]}')"
+chk "clickup: сопоставление людей по имени (порядок слов, инициалы)" "u1/u2/u3/—" "$(node -e "const PM=require('./modules/pm/domain.js');const U=[{id:'u1',name:'Примеров Иван'},{id:'u2',name:'Демо Анна'},{id:'u3',name:'Тестов П.'}];console.log(['Иван Примеров','Анна Демо','Пётр Тестов','Сергей Визуал'].map(n=>(PM.matchUser(U,n)||{}).id||'—').join('/'))")"
+
+echo "== часы из hr =="
+chk "карточка: часы из hr (модуль включён), деньги владельцу, пока 0 ч" "true/0/0" "$(call OWN GET /pm/projects/$RPID | js 'd.hours.money+"/"+d.hours.total.hours+"/"+d.hours.months.length')"
+chk "часы: ГИП без денег" "false/undefined" "$(call GIP GET /pm/projects/$GID | js 'd.hours.money+"/"+typeof d.hours.total.cost')"
+chk "часы: разделы и люди по месяцам (недели → месяц по четвергу)" "2026-09,2026-10|АР:8:8:0|КЖ:4:0:4|12/14000" "$(node -e "
+const S=require('./modules/pm/server.js'),H=require('./modules/hr/domain.js');
+const L=[{week:'2026-W36',section:'АР',employeeId:'e1',hours:8,cost:8000},{week:'2026-W40',section:'КЖ',employeeId:'e2',hours:4,cost:6000}];
+const agg=ls=>{const r={hours:0,cost:0,bySection:{},byEmployee:{},byMonth:{},weeks:new Set(L.map(l=>l.week)).size};for(const l of ls){r.hours+=l.hours;r.cost+=l.cost;(r.bySection[l.section]=r.bySection[l.section]||{hours:0,cost:0}).hours+=l.hours;r.bySection[l.section].cost+=l.cost;(r.byEmployee[l.employeeId]=r.byEmployee[l.employeeId]||{employeeId:l.employeeId,name:l.employeeId,hours:0,cost:0}).hours+=l.hours;r.byEmployee[l.employeeId].cost+=l.cost;const m=H.weekMonth(l.week);(r.byMonth[m]=r.byMonth[m]||{hours:0,cost:0}).hours+=l.hours;r.byMonth[m].cost+=l.cost;}r.byEmployee=Object.values(r.byEmployee);return r;};
+const hr={domain:H,laborCost:(ctx,pid,o={})=>agg(L.filter(l=>(!o.from||l.week>=o.from)&&(!o.to||l.week<=o.to))),laborHours:(ctx,pid,o={})=>agg(L.filter(l=>(!o.from||l.week>=o.from)&&(!o.to||l.week<=o.to)))};
+const h=S.hoursOf({},hr,{id:'p'},{role:'owner'},true);
+console.log(h.months.join(',')+'|'+h.sections.map(s=>s.section+':'+s.hours+':'+h.months.map(m=>s.byMonth[m]).join(':')).join('|')+'|'+h.total.hours+'/'+h.total.cost)" 2>/dev/null)"
 chk "сводка: воронки РП и ЭП по 9 этапов, АН в строках нет" true "$(call OWN GET /pm/overview | js 'd.byTrack.rp.n>=3 && d.byTrack.rp.funnel.length===9 && d.byTrack.ep.funnel.length===9 && !d.rows.some(r=>r.track==="an")')"
 
 echo "== Метод Пульса: устав, две оценки, буфер, ретро =="

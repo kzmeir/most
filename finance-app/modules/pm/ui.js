@@ -35,6 +35,14 @@
     ['Сводка', `
 <p>Картина по всем проектам на сегодня: сколько в работе, где срок по договору прошёл, что «горит» (до срока ≤ 14 дней), сколько просроченных пунктов и блокеров. Ниже — воронка по этапам для каждой стадии, загрузка ГИП/ПМ и Гант по месяцам (полоса от старта до прогноза; красная — срок прошёл, жёлтая — ждём заказчика или госорган, зелёная — готово). Строка Ганта открывает карточку.</p>
 <p><b>Руководителю:</b> «Импорт реестра» загружает JSON, который готовит <code>modules/pm/tools/import_pm.py</code> из реестра MOST_Планирование_проектов.xlsx и таблицы бюджетов. Проекты с тем же названием пропускаются или пересоздаются («заменить»).</p>`, 'pm'],
+    ['Импорт из ClickUp', `
+<p>Сводка → «Импорт из ClickUp» (руководитель). Выгрузка из ClickUp: список или папка → … → Export → CSV. Колонки сопоставляются автоматически (Task Name, Status, Assignees, Start Date, Due Date, Parent ID, List Name, Tags, Priority, Task Content; кастомные поля «Заказчик», «Адрес», «Площадь», «Договор №», «Этап»), их можно поправить в форме — ниже показан предпросмотр найденных проектов.</p>
+<ul>
+<li><b>Проекты</b> — задачи верхнего уровня (подзадачи любого уровня — их пункты) или списки ClickUp. Каждый проект создаётся как ЭП с шаблоном из 48 пунктов; статус, старт и срок, заказчик, площадь, договор — из выгрузки.</li>
+<li><b>Подзадача с тем же названием, что пункт шаблона</b> («Посадка», «Фасады», «Рендеры»…) — становится отметкой «сделано» (если в ClickUp статус complete/closed), сроком и исполнителем этого пункта. Остальные подзадачи добавляются пунктами текущего этапа с пометкой «из ClickUp».</li>
+<li><b>Люди</b> сопоставляются по имени с пользователями системы (порядок слов не важен, «Иванов И.» ↔ «Иван Иванов»); не найденные имена пишутся в заметку пункта и в комментарий проекта.</li>
+<li>Проект с таким же названием уже есть — «пропустить» или «дополнить» (отметки и новые пункты, без изменения карточки). Пример файла: <code>modules/pm/tools/clickup.example.csv</code>.</li>
+</ul>`, 'pm'],
     ['Эскизные проекты', `
 <ol>
 <li>Фильтры: статус (по умолчанию активные), «мои» — где вы ГИП или ПМ, поиск по объекту, заказчику и номеру (Enter).</li>
@@ -60,6 +68,8 @@
 <li>«Разложить сроки»: этапы идут последовательно, пункты этапа — параллельно, длительность этапа — самый долгий пункт (недели из регламента); «под дату по договору» сжимает или растягивает план до срока. Сделанные пункты не сдвигаются.</li>
 <li><b>Устав</b> — цель проекта и проверочная фраза; <b>Ретро</b> — записи ретроспектив с автоматическим снимком показателей (зона буфера, скорость, добавленный объём, возвраты пунктов) и планом действий. Карточка «Буфер расписания» показывает расход буфера и прогноз по скорости; у пункта видны две оценки и число возвратов (снятых отметок «сделано»).</li>
 </ul>`, 'pmp'],
+    ['Часы по проекту (модуль «Персонал»)', `
+<p>Вкладка «Часы» в карточке появляется, когда включён модуль «Персонал»: часы из сданных и принятых табелей по этому проекту — по разделам и по людям, за всё время и по месяцам (месяц недели — по её четвергу). Себестоимость и ставки видят только владелец, партнёр и бухгалтер с доступом к бюджету проекта; ГИП и ПМ видят часы без денег. Черновики табелей не учитываются.</p>`, 'pmp'],
   ],
   onNav() { if (this._badges) this._badges(); },
   init(ui) {
@@ -176,7 +186,7 @@
     ui.SECTIONS.pmp = async main => {
       const id = params().get('id'); if (!id) { location.hash = '#/pmrp'; return; }
       const c = await api('/pm/projects/' + encodeURIComponent(id)); const p = c.project, s = c.summary, h = c.health; ctxData = { leader: c.leader, financeProjects: c.financeProjects || [] };
-      const tabs = [['stages', 'Этапы'], ['charter', `Устав${c.charterOk ? '' : ' ⚠'}`], ['blockers', `Блокеры${c.blockers.filter(b => b.status !== 'closed').length ? ' ' + c.blockers.filter(b => b.status !== 'closed').length : ''}`], ...(c.canBudget ? [['budget', 'Бюджет']] : []), ['retro', `Ретро${(c.retros || []).length ? ' ' + c.retros.length : ''}`], ...(window.MostBoard && window.MostBoard.embed && ['ep', 'rp', 'concept'].includes(p.track) ? [['board', 'Доска']] : []), ...(p.track === 'ep' || p.track === 'concept' || p.miroUrl ? [['miro', 'Миро']] : []), ['info', 'О проекте']];
+      const tabs = [['stages', 'Этапы'], ['charter', `Устав${c.charterOk ? '' : ' ⚠'}`], ['blockers', `Блокеры${c.blockers.filter(b => b.status !== 'closed').length ? ' ' + c.blockers.filter(b => b.status !== 'closed').length : ''}`], ...(c.canBudget ? [['budget', 'Бюджет']] : []), ...(c.hours ? [['hours', `Часы${c.hours.total.hours ? ' ' + Math.round(c.hours.total.hours) : ''}`]] : []), ['retro', `Ретро${(c.retros || []).length ? ' ' + c.retros.length : ''}`], ...(window.MostBoard && window.MostBoard.embed && ['ep', 'rp', 'concept'].includes(p.track) ? [['board', 'Доска']] : []), ...(p.track === 'ep' || p.track === 'concept' || p.miroUrl ? [['miro', 'Миро']] : []), ['info', 'О проекте']];
       const tab = tabs.some(t => t[0] === params().get('tab')) ? params().get('tab') : 'stages';
       const link = t => `#/pmp?id=${encodeURIComponent(p.id)}&tab=${t}`;
       const next = PM.NEXT_TRACK[p.track];
@@ -191,7 +201,7 @@
           <div class="card ${s.overdueN ? 'crit' : ''}"><div class="label">Просрочено пунктов</div><div class="val">${s.overdueN}</div><div class="foot">блокеров ${s.blockersN}${s.blockerMaxDays ? ` · висит до ${s.blockerMaxDays} дн.` : ''}</div></div>
         </div>` +
         `<div class="tabs pm-tabs">${tabs.map(t => `<a href="${link(t[0])}" class="${t[0] === tab ? 'active' : ''}">${esc(t[1])}</a>`).join('')}</div>` +
-        (tab === 'stages' ? stagesHtml(c) : tab === 'charter' ? charterHtml(c) : tab === 'retro' ? retroHtml(c) : tab === 'blockers' ? blockersHtml(c) : tab === 'budget' ? budgetHtml(c) : tab === 'board' ? '<div id="pm-board"></div>' : tab === 'miro' ? miroHtml(c) : infoHtml(c));
+        (tab === 'stages' ? stagesHtml(c) : tab === 'charter' ? charterHtml(c) : tab === 'retro' ? retroHtml(c) : tab === 'blockers' ? blockersHtml(c) : tab === 'budget' ? budgetHtml(c) : tab === 'hours' ? hoursHtml(c) : tab === 'board' ? '<div id="pm-board"></div>' : tab === 'miro' ? miroHtml(c) : infoHtml(c));
       // доска проекта (модуль board): встраивается после отрисовки, сам показывает доски проекта, «+ Доска» по правам и «На весь экран»
       if (tab === 'board' && window.MostBoard && window.MostBoard.embed) window.MostBoard.embed(document.getElementById('pm-board'), { pmProjectId: p.id, height: '72vh' });
       // действия карточки
@@ -265,6 +275,19 @@
       return `<div class="card"><div class="pm-kv">${row('Заказчик', esc(p.client || ''))}${row('Адрес / участок', esc(p.address || ''))}${row('Площадь', p.area ? esc(String(p.area)) + ' м²' : '')}${row('№ проекта', esc(p.no || ''))}
         <b>Папка на сервере</b><div>${p.folder ? `<span class="pm-path">${esc(p.folder)}</span> <a class="btn sm" href="file:///${esc(p.folder.replace(/\\/g, '/'))}">Открыть папку</a> <button class="btn sm" data-act="pmCopy" data-text="${esc(p.folder)}">Скопировать путь</button><div class="faint">Браузер может не открывать file:// — тогда вставьте скопированный путь в адресную строку Проводника.</div>` : `<span class="faint">не указана.</span> Стандарт: <span class="pm-path">S:\\${esc(c.folderHint)}</span> <button class="btn sm" data-act="pmCopy" data-text="S:\\${esc(c.folderHint)}">Скопировать имя</button><div class="faint">Папку создаёт сисадмин; внутри — разделы ${PM.FOLDER_SECTIONS.join(', ')}. Путь впишите в «✎ Проект».</div>`}</div>
         ${row('Ведёт', [p.gipId ? `ГИП ${esc(pname(p.gipId))}` : '', p.pmId ? `ПМ ${esc(pname(p.pmId))}` : ''].filter(Boolean).join(' · '))}${row('Финансовый проект', c.finance ? `${esc(c.finance.name)} <span class="faint">(${esc(c.finance.id)}${c.finance.status === 'archive' ? ', архив' : ''})</span>` : (c.leader ? '<span class="faint">не привязан — выберите в «✎ Проект», чтобы видеть факт по деньгам</span>' : ''))}${row('Связанные стадии', rel)}${row('Договор', PM.contractLabel(p) ? `${esc(PM.contractLabel(p))}${p.contractStartRule ? `<div class="faint">отсчёт: ${esc(p.contractStartRule)}</div>` : ''}` : '')}${row('Сроки', `${p.start ? 'старт ' + fdate(p.start) : ''}${p.due ? ' · по договору ' + fdate(p.due) : ''}${p.forecast ? ' · прогноз ' + fdate(p.forecast) : ''}${p.dueNote ? `<div class="faint">${esc(p.dueNote)}</div>` : ''}`)}${row('Комментарий', esc(p.comment || '').replace(/\n/g, '<br>'))}${row('Создан', `${fdate(String(p.createdAt || '').slice(0, 10))}${p.createdBy ? ' · ' + esc(pname(p.createdBy)) : ''}${p.imported ? ` · импорт из реестра ${fdate(String(p.imported.at).slice(0, 10))}` : ''}`)}</div></div>`;
+    }
+    // часы табелей по проекту (модуль «Персонал»): разделы и люди за всё время и по месяцам; деньги — если сервер их отдал
+    function hoursHtml(c) {
+      const h = c.hours; if (!h) return ''; const fh = v => v ? String(Math.round(v * 10) / 10).replace('.', ',') : ''; const fm = v => v ? money(v) : '';
+      const note = `<div class="faint" style="margin-bottom:8px">Часы из табелей модуля «Персонал» — сданные и принятые (черновики не считаются); месяц недели — по её четвергу. ${h.total.hours ? `${fh(h.total.hours)} ч за ${h.weeks} нед.${h.money ? ` · себестоимость ${fm(h.total.cost)} ₸` : ''}` : ''}</div>`;
+      if (!h.total.hours) return note + empty('По этому проекту часов в табелях пока нет');
+      const mcol = h.months.map(m => ({ t: PM.mname(m).slice(0, 3) + ' ’' + m.slice(2, 4), cls: 'amt' })); const M = h.months;
+      const secHead = [{ t: 'Раздел' }, ...mcol, { t: 'Всего, ч', cls: 'amt' }, ...(h.money ? [{ t: 'Себестоимость, ₸', cls: 'amt' }] : [])];
+      const secRows = h.sections.map(x => `<tr><td><b>${esc(x.section)}</b></td>${M.map(m => `<td class="amt num">${fh(x.byMonth[m])}</td>`).join('')}<td class="amt num"><b>${fh(x.hours)}</b></td>${h.money ? `<td class="amt num">${fm(x.cost)}</td>` : ''}</tr>`)
+        .concat([`<tr><td><b>Итого</b></td>${M.map(m => `<td class="amt num"><b>${fh(h.byMonth[m].hours)}</b></td>`).join('')}<td class="amt num"><b>${fh(h.total.hours)}</b></td>${h.money ? `<td class="amt num"><b>${fm(h.total.cost)}</b></td>` : ''}</tr>`]);
+      const pplHead = [{ t: 'Сотрудник' }, ...mcol, { t: 'Всего, ч', cls: 'amt' }, ...(h.money ? [{ t: 'Ставка, ₸/ч', cls: 'amt' }, { t: 'Себестоимость, ₸', cls: 'amt' }] : [])];
+      const pplRows = h.people.map(e => `<tr><td><b>${esc(e.name)}</b>${e.position ? `<div class="faint">${esc(e.position)}</div>` : ''}</td>${M.map(m => `<td class="amt num">${fh(e.byMonth[m])}</td>`).join('')}<td class="amt num"><b>${fh(e.hours)}</b></td>${h.money ? `<td class="amt num">${fm(e.rate)}</td><td class="amt num">${fm(e.cost)}</td>` : ''}</tr>`);
+      return note + `<h2 style="margin-top:0">По разделам</h2>${tbl(secHead, secRows)}<h2>По людям</h2>${tbl(pplHead, pplRows)}`;
     }
     function miroHtml(c) {
       const p = c.project; const embed = PM.miroEmbed(p.miroUrl);
@@ -356,7 +379,7 @@
       const grows = active.filter(r => r.start).sort((a, b) => String(a.start).localeCompare(String(b.start)));
       const months = PM.ganttMonths(grows, t, 8, 16); const cur = t.slice(0, 7); const loadM = PM.ganttLoad(grows, months);
       const gantt = `<h2>Гант по месяцам</h2><div class="faint" style="margin:-6px 0 8px">Полоса — от даты старта до прогноза / даты по договору. Красная — срок прошёл, жёлтая — ждём заказчика или госорган, зелёная — готово. Текущий месяц подсвечен.</div>` + (grows.length ? `<div class="tbl cal-wrap"><table class="cal"><thead><tr><th>Объект</th><th class="pm-hidem">Ведёт</th><th class="pm-hidem">Старт</th><th class="pm-hidem">Срок</th>${months.map(m => `<th class="cal-h"${m === cur ? ' style="background:var(--accent-soft)"' : ''} title="${esc(PM.mname(m))}">${m.slice(5)}.${m.slice(2, 4)}</th>`).join('')}</tr></thead><tbody>${grows.map(r => { const end = r.forecast || r.due; const cls = r.status === 'Готово' ? 'vac-t' : r.late ? 'vac-v' : /Ждём/.test(r.status) ? 'vac-s' : 'vac-u'; return `<tr class="pm-row" data-id="${esc(r.id)}"><td class="nowrap"><b>${esc(r.name)}</b> <span class="faint">${esc(PM.TRACK_SHORT[r.track])}</span></td><td class="pm-hidem nowrap">${esc(pname(r.leadId) || '—')}</td><td class="pm-hidem nowrap">${fdate(r.start)}</td><td class="pm-hidem nowrap ${r.late ? 'crit-text' : ''}">${end ? fdate(end) : '—'}</td>${months.map(m => `<td class="cal-cell${PM.inMonth(r, m) ? ' ' + cls : ''}${m === cur ? ' wknd' : ''}" title="${esc(r.name)} · ${esc(PM.mname(m))}"></td>`).join('')}</tr>`; }).join('')}<tr><td colspan="4"><b>Активных объектов</b></td>${loadM.map((n, i) => `<td class="cal-cell right num" style="font-size:11px;padding:2px 3px;${months[i] === cur ? 'background:var(--accent-soft)' : ''}"><b>${n || ''}</b></td>`).join('')}</tr></tbody></table></div>` : empty('Задайте дату старта и дату по договору в карточках — появится Гант'));
-      main.innerHTML = head('Сводка по проектам', `Сегодня ${fdate(t)} · шаблоны: ЭП ${d.templates.ep}, РП ${d.templates.rp} пунктов`, (d.canCreate ? '<button class="btn primary" data-act="pmNew" data-track="rp">+ Проект</button> ' : '') + (d.leader ? '<button class="btn" data-act="pmImport">⇪ Импорт реестра</button>' : '')) + kpi + statusRow + portfolio + funnels + `<div class="grid g2"><div>${load}</div><div></div></div>` + gantt;
+      main.innerHTML = head('Сводка по проектам', `Сегодня ${fdate(t)} · шаблоны: ЭП ${d.templates.ep}, РП ${d.templates.rp} пунктов`, (d.canCreate ? '<button class="btn primary" data-act="pmNew" data-track="rp">+ Проект</button> ' : '') + (d.leader ? '<button class="btn" data-act="pmImport">⇪ Импорт реестра</button> <button class="btn" data-act="pmClickup">⇪ Импорт из ClickUp</button>' : '')) + kpi + statusRow + portfolio + funnels + `<div class="grid g2"><div>${load}</div><div></div></div>` + gantt;
       main.querySelectorAll('tr.pm-row').forEach(tr => tr.onclick = () => { location.hash = cardLink(tr.dataset.id); });
       ui.ACT.pmImport = () => modal('Импорт реестра проектов', `<p class="faint" style="margin:0 0 10px">JSON готовит скрипт <code>modules/pm/tools/import_pm.py</code> из реестра MOST_Планирование_проектов.xlsx и таблицы бюджетов. Проекты с таким же названием и стадией пропускаются (или пересоздаются в режиме «заменить»).</p><form><div class="field"><label>Файл JSON</label><input type="file" id="pm-imp-file" accept=".json,application/json" required></div><div class="field"><label>Если проект уже есть</label><select name="mode"><option value="skip">Пропустить</option><option value="replace">Заменить (удалить и создать заново)</option></select></div><div class="error"></div><button class="btn primary block" type="submit">Импортировать</button></form>`, async v => {
         const f = $('#pm-imp-file').files[0]; if (!f) throw new Error('Выберите файл'); let data; try { data = JSON.parse(await f.text()); } catch { throw new Error('Файл не читается как JSON'); }
@@ -364,6 +387,32 @@
         const r = await api('/pm/import', { method: 'POST', body: data });
         toast(`Создано ${r.created.length}, заменено ${r.replaced.length}, пропущено ${r.skipped.length}; пунктов ${r.items} (отмечено ${r.done}), задач Trello ${r.tasks}, блокеров ${r.blockers}, бюджетов ${r.budgets}${r.unlinked.length ? '; без привязки к финансам: ' + r.unlinked.join(', ') : ''}`, 12000); rerender();
       });
+      // импорт ЭП из CSV-выгрузки ClickUp: файл → автосопоставление колонок → предпросмотр → POST /pm/import-clickup
+      ui.ACT.pmClickup = () => {
+        let csv = null, map = {};
+        modal('Импорт из ClickUp', `<p class="faint" style="margin:0 0 10px">Выгрузка ClickUp: список или папка → … → <b>Export → CSV</b> (UTF-8; разделитель запятая или «;»). Задачи верхнего уровня становятся проектами ЭП, подзадачи — отметками «сделано» у пунктов шаблона с тем же названием или дополнительными пунктами текущего этапа. Люди сопоставляются по имени с пользователями системы, иначе имя пишется в заметку.</p><form><div class="field"><label>Файл CSV</label><input type="file" id="cu-file" accept=".csv,text/csv" required></div><div id="cu-body"></div><div class="error"></div><button class="btn primary block" type="submit" id="cu-go" disabled>Импортировать</button></form>`, async v => {
+          if (!csv) throw new Error('Выберите файл CSV');
+          const projects = PM.clickupToProjects(csv, map, { source: v.source, track: 'ep' }); if (!projects.length) throw new Error('В файле не нашлось задач — проверьте колонку «Название задачи»');
+          const r = await api('/pm/import-clickup', { method: 'POST', body: { mode: v.mode, projects } });
+          toast(`ClickUp: создано ${r.created.length}, дополнено ${r.merged.length}, пропущено ${r.skipped.length}; пунктов шаблона совпало ${r.matched} (отмечено «сделано» ${r.done}), добавлено пунктов ${r.added}; люди: сопоставлено ${r.people.mapped.length}${r.people.unmapped.length ? ', не найдены: ' + r.people.unmapped.join(', ') : ''}`, 15000); rerender();
+        });
+        $('#modal .modal-card').style.maxWidth = '980px';
+        const render = () => {
+          const body = $('#cu-body'); if (!csv) { body.innerHTML = ''; return; }
+          const source = (body.querySelector('[name=source]') || {}).value || 'parent', mode = (body.querySelector('[name=mode]') || {}).value || 'skip';
+          const opts = k => ['<option value="">—</option>', ...csv.header.map((hd, i) => `<option value="${i}"${map[k] === i ? ' selected' : ''}>${esc(hd)}</option>`)].join('');
+          const P = PM.clickupToProjects(csv, map, { source });
+          const prev = P.slice(0, 6).map(x => `<tr><td><b>${esc(x.name)}</b><div class="faint">${esc(x.client || '')}</div></td><td>${chip(x.pmStatus, STATUS_CHIP)}</td><td class="nowrap">${x.start ? fdate(x.start) : '—'} → ${x.due ? fdate(x.due) : '—'}</td><td>${esc(x.assignees.join(', ') || '—')}</td><td class="amt num">${x.tasks.length}</td><td class="faint">${esc(x.tasks.slice(0, 4).map(tk => tk.title + (tk.done ? ' ✓' : '')).join('; '))}${x.tasks.length > 4 ? '…' : ''}</td></tr>`);
+          body.innerHTML = `<details style="margin-bottom:8px"><summary class="faint">Сопоставление колонок (определено автоматически — раскройте, чтобы поправить)</summary><div class="grid g2" style="gap:6px 12px;margin-top:6px">${PM.CLICKUP_FIELDS.map(([k, label]) => `<div class="field"><label>${esc(label)}</label><select data-map="${k}">${opts(k)}</select></div>`).join('')}</div></details>
+            <div class="form-row"><div class="field"><label>Проекты — это</label><select name="source"><option value="parent"${source === 'parent' ? ' selected' : ''}>задачи верхнего уровня (подзадачи — пункты)</option><option value="list"${source === 'list' ? ' selected' : ''}>списки ClickUp (все задачи списка — пункты)</option></select></div><div class="field"><label>Если проект с таким названием уже есть</label><select name="mode"><option value="skip"${mode === 'skip' ? ' selected' : ''}>пропустить</option><option value="merge"${mode === 'merge' ? ' selected' : ''}>дополнить: отметки «сделано» и новые пункты</option></select></div></div>
+            <div class="faint" style="margin:6px 0">Файл: ${csv.rows.length} строк, ${csv.header.length} колонок, разделитель «${csv.delimiter === '\t' ? 'таб' : csv.delimiter}». Найдено проектов: <b>${P.length}</b>, задач в них: <b>${P.reduce((a, x) => a + x.tasks.length, 0)}</b>.</div>
+            ${P.length ? `<div style="max-height:260px;overflow:auto">${tbl([{ t: 'Проект ЭП' }, { t: 'Статус' }, { t: 'Старт → срок' }, { t: 'Исполнители' }, { t: 'Задач', cls: 'amt' }, { t: 'Подзадачи' }], prev)}</div>` : '<div class="error">Проекты не найдены — проверьте колонки «Название задачи» и «Родительская задача»</div>'}`;
+          body.querySelectorAll('select[data-map]').forEach(el => el.onchange = () => { if (el.value === '') delete map[el.dataset.map]; else map[el.dataset.map] = Number(el.value); render(); });
+          body.querySelectorAll('select[name=source],select[name=mode]').forEach(el => el.onchange = render);
+          $('#cu-go').disabled = !P.length;
+        };
+        $('#cu-file').onchange = async () => { const f = $('#cu-file').files[0]; if (!f) return; csv = PM.parseCsv(await f.text()); map = PM.clickupAutoMap(csv.header); render(); };
+      };
       bind(main);
     };
     badges(false);
