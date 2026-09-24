@@ -10,6 +10,7 @@ const APP_VERSION = '2.0';
 const STALE_BACKUP_HOURS = 36;
 const BACKUP_TASK_NAME = 'MOST Финансы - бэкап';
 const TASK_CACHE_MS = 90 * 1000; // 60-120 с (координатор): execFileSync блокировал весь процесс на GET /api/sys/status
+const TASK_IDLE_STOP_MS = 10 * 60 * 1000; // таймер сам останавливается, если экран не открывали 10 минут
 
 function tunnelUrl(dataDir) {
   try {
@@ -34,8 +35,13 @@ function lastBackupInfo(backupDir, name) {
 // Get-ScheduledTaskInfo - только чтение, задачу не запускает. execFileSync блокировал бы весь процесс (в том
 // числе сайт «Финансы») до 5 с на каждый GET /api/sys/status - вместо этого фоновое обновление раз в
 // TASK_CACHE_MS через асинхронный execFile, запрос всегда читает уже готовый кэш, ничего не ждёт.
+// Ленивый запуск: модуль подключается всегда (даже выключенный в «Модулях»), поэтому таймер стартует не при
+// загрузке файла, а только при первом реальном открытии экрана - и сам останавливается после TASK_IDLE_STOP_MS
+// без запросов, чтобы не дёргать PowerShell круглые сутки на сервере, где экран никто не открывает.
 let taskCache = { status: 'checking' };
 let taskFetching = false;
+let taskTimer = null;
+let taskLastRequestAt = 0;
 function refreshScheduledTaskInfo(name) {
   if (taskFetching) return;
   taskFetching = true;
@@ -51,8 +57,16 @@ function refreshScheduledTaskInfo(name) {
     } catch { taskCache = { status: 'unavailable' }; }
   });
 }
-refreshScheduledTaskInfo(BACKUP_TASK_NAME); // первое обновление сразу при старте сервера, фоном
-setInterval(() => refreshScheduledTaskInfo(BACKUP_TASK_NAME), TASK_CACHE_MS).unref();
+function ensureTaskPolling(name) {
+  taskLastRequestAt = Date.now();
+  if (taskTimer) return; // уже крутится - следующий тик подхватит сам
+  refreshScheduledTaskInfo(name); // первый запрос (в том числе первый после простоя) - сразу освежаем
+  taskTimer = setInterval(() => {
+    if (Date.now() - taskLastRequestAt > TASK_IDLE_STOP_MS) { clearInterval(taskTimer); taskTimer = null; return; }
+    refreshScheduledTaskInfo(name);
+  }, TASK_CACHE_MS);
+  taskTimer.unref();
+}
 
 // PowerShell (Set-Content/Add-Content -Encoding utf8) пишет файлы с BOM - Node его не снимает сам
 const stripBOM = s => s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
@@ -92,6 +106,7 @@ function handle(ctx) {
 
   if (a === 'status' && method === 'GET') {
     if (!['owner', 'partner'].includes(user.role)) return err(403, 'Нет доступа');
+    ensureTaskPolling(BACKUP_TASK_NAME);
     let dbSize = 0; try { dbSize = fs.statSync(st.DB_FILE).size; } catch { }
     const backups = st.listBackups();
     const lastBackup = lastBackupInfo(st.BACKUP_DIR, backups[0] && backups[0].name);
