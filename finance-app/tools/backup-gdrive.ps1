@@ -13,7 +13,7 @@ if (-not (Test-Path (Join-Path $data 'db.sqlite'))) { throw "Нет базы: $d
 New-Item -ItemType Directory -Force $Dest | Out-Null
 
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss' # с секундами: минутного разрешения не хватает при двух запусках подряд (тест, ручной повтор)
-$tmp = Join-Path $env:TEMP "most-backup-$stamp"      # содержимое зеркалится в zip как есть — только db.sqlite и files/
+$tmp = Join-Path $env:TEMP "most-backup-$stamp"      # содержимое зеркалится в zip как есть — db.sqlite + все папки файлов
 $work = Join-Path $env:TEMP "most-backup-$stamp-js"  # вспомогательный .js сюда, чтобы не попал в zip
 New-Item -ItemType Directory -Force $tmp | Out-Null
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -34,8 +34,10 @@ copy.close();
   # --no-warnings: экспериментальное предупреждение node:sqlite на stderr иначе PowerShell 5.1 считает ошибкой (NativeCommandError)
   node --no-warnings $jsFile (Join-Path $data 'db.sqlite') (Join-Path $tmp 'db.sqlite')
   if ($LASTEXITCODE -ne 0) { throw 'Не удалось скопировать db.sqlite' }
-  $files = Join-Path $data 'files'
-  if (Test-Path $files) { Copy-Item $files (Join-Path $tmp 'files') -Recurse }
+  # файлы: общие вложения (data\files) + файлы модулей (data\<id>-files, например board-files, office-files) -
+  # маска на будущее, чтобы новый модуль с папкой файлов не пришлось отдельно вписывать сюда
+  $fileDirs = Get-ChildItem $data -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'files' -or $_.Name -like '*-files' }
+  foreach ($fd in $fileDirs) { Copy-Item $fd.FullName (Join-Path $tmp $fd.Name) -Recurse }
   $zip = Join-Path $Dest "MOST-Финансы_$stamp.zip"
   Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $zip -Force
   Get-ChildItem $Dest -Filter 'MOST-Финансы_*.zip' | Sort-Object Name -Descending | Select-Object -Skip $Keep | Remove-Item -Force

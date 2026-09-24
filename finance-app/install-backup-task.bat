@@ -6,7 +6,7 @@ set "TASK=MOST Финансы - бэкап"
 set "TIME=03:00"
 echo  Регистрирую задачу Windows: ежедневно в %TIME% сохранять копию базы в Google Drive.
 echo  tools\backup-gdrive.ps1 - G:\Мой диск\Финансы\MOST-Финансы бэкап
-schtasks /Create /F /SC DAILY /ST %TIME% /RL LIMITED /TN "%TASK%" /TR "powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%~dp0tools\backup-gdrive.ps1\""
+schtasks /Create /F /SC DAILY /ST %TIME% /RL LIMITED /TN "%TASK%" /TR "powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%~dp0tools\backup-gdrive.ps1\" -Dest \"G:\Мой диск\Финансы\MOST-Финансы бэкап\""
 if errorlevel 1 goto :failed
 
 echo.
