@@ -60,6 +60,7 @@ module.exports = {
   nav: [{ id: 'kbnews', label: 'Новости', icon: '📰', can: u => true }], // id разделов уникальны, начинаются с id модуля
   routes: ['kbarticle'],        // скрытые разделы (карточки): #/kbarticle?id=…
   canOpen: u => true,           // кому показывать модуль в переключателе
+  help: [['Новости', '<p>…</p>', 'kbnews']], // инструкция модуля: [заголовок, html, id раздела меню]; показывается в «Инструкции» и по кнопке «?» в шапке раздела
   init(ui) { ui.SECTIONS.kbnews = async main => { main.innerHTML = ui.head('Новости') + ...; ui.bind(main); }; },
 });
 ```
