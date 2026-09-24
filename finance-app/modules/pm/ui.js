@@ -78,8 +78,9 @@
     if (!document.getElementById('pm-style')) document.head.insertAdjacentHTML('beforeend', `<style id="pm-style">
 .pm-kpi .card .val{font-size:20px}.pm-kpi .card .foot{margin-top:6px}
 .pm-sub{display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center;font-size:13px}
-.pm-tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap;-webkit-overflow-scrolling:touch}.pm-tabs a{flex:none}
+.pm-tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap;-webkit-overflow-scrolling:touch;width:0;min-width:100%}.pm-tabs a{flex:none} /* width:0 + min-width:100% — полоса вкладок не раздувает страницу на телефоне */
 .pm-row{cursor:pointer}.pm-row td .faint{margin-top:2px}
+.pm-scroll{width:0;min-width:100%;overflow-x:auto}
 .pm-stage{padding:0;margin-bottom:10px}.pm-stage>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 14px;flex-wrap:wrap}.pm-stage>summary::-webkit-details-marker{display:none}.pm-stage>summary::before{content:'▸';color:var(--ink-faint);font-size:12px}.pm-stage[open]>summary::before{content:'▾'}.pm-stage>summary .grow{flex:1;font-weight:700;min-width:160px}
 .pm-stage .tbl{border:0;border-radius:0 0 var(--r) var(--r);box-shadow:none;border-top:1px solid var(--line)}.pm-stage table{min-width:640px}.pm-stage.cur>summary{box-shadow:inset 3px 0 0 var(--accent)}.pm-stage.fin>summary .grow{color:var(--ink-soft)}
 .pm-item td{vertical-align:top}.pm-item.done td .t{text-decoration:line-through;color:var(--ink-faint)}.pm-item.na td{opacity:.55}.pm-item.over td.due{color:var(--crit);font-weight:600}
@@ -92,6 +93,9 @@
 .pm-hidem{display:table-cell}@media(max-width:820px){.pm-hidem{display:none}}
 .pm-fever{width:100%;height:auto;display:block;margin:6px 0}.pm-fever text{font-family:inherit}
 .pm-phrase{font-size:15px;line-height:1.5;margin:6px 0 0}
+.pm-hist-row{display:grid;grid-template-columns:120px 1fr auto;gap:6px 12px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}.pm-hist-row:last-child{border-bottom:0}@media(max-width:600px){.pm-hist-row{grid-template-columns:1fr}}
+.pm-chk input{width:20px;height:20px}
+@media(max-width:600px){.pm-stage table,.pm-my table{min-width:0;width:100%;table-layout:fixed}.pm-stage .tbl,.pm-my .tbl{max-width:100%;overflow-x:hidden}.pm-item td{white-space:normal;word-break:break-word}.pm-stage th:nth-child(1),.pm-my th:nth-child(1){width:46px}.pm-stage th:nth-child(4),.pm-my th:nth-child(4){width:82px}.pm-stage th:nth-child(5),.pm-my th:nth-child(5){width:72px}.pm-stage th:nth-child(6),.pm-my th:nth-child(6){width:50px}.pm-item .actions{flex-direction:column;gap:6px}.pm-stage th:nth-child(3),.pm-item td:nth-child(3),.pm-my th:nth-child(3){display:none}.pm-stage th,.pm-my th{white-space:normal;font-size:10.5px;padding-left:4px;padding-right:4px}.pm-chk{width:46px}.pm-chk input{width:30px;height:30px;margin:0}.pm-item td{padding:10px 6px}.pm-item td.due,.pm-item td:nth-child(4){font-size:12px}.pm-item .actions .btn.sm,.pm-stage>summary .btn.sm{min-width:40px;min-height:40px}.pm-stage>summary{padding:12px 10px}.pm-kpi .card .val{font-size:18px}.pm-my .card h3{padding:12px 10px}}
 </style>`);
 
     // ---- общие помощники ----
@@ -166,15 +170,17 @@
       if (mine) rows = rows.filter(r => r.gipId === me().id || r.pmId === me().id);
       if (ql) rows = rows.filter(r => `${r.name} ${r.client || ''} ${r.no || ''} ${r.address || ''}`.toLowerCase().includes(ql));
       rows.sort((a, b) => (b.late - a.late) || (b.hot - a.hot) || String(a.forecast || a.due || '9').localeCompare(String(b.forecast || b.due || '9')) || a.name.localeCompare(b.name, 'ru'));
+      expState = { rows, blockers: d.blockersList.filter(b => rows.some(r => r.id === b.pid)) };
       const act = all.filter(r => PM.ACTIVE(r.status));
       const sub = `${act.length} в работе · <span class="${act.filter(r => r.late).length ? 'crit-text' : ''}">просрочено ${act.filter(r => r.late).length}</span> · <span class="${act.filter(r => r.hot).length ? 'warn-text' : ''}">горит (≤ 14 дн.) ${act.filter(r => r.hot).length}</span> · просроченных пунктов ${act.reduce((s, r) => s + r.overdueN, 0)}`;
       const tabs = cfg.tracks.length > 1 ? `<div class="tabs pm-tabs">${cfg.tracks.map(t => `<a href="#/${id}?${qsOf({ track: t, status: fs, mine: mine ? '1' : '', q })}" class="${t === track ? 'active' : ''}">${esc(PM.TRACKS[t])} <span class="faint">${d.rows.filter(r => r.track === t && PM.ACTIVE(r.status)).length}</span></a>`).join('')}</div>` : '';
       const leadLabel = PM.LEAD_FIELD[track] === 'pmId' ? 'ПМ' : 'ГИП';
-      main.innerHTML = head(cfg.title, sub, d.canCreate ? `<button class="btn primary" data-act="pmNew" data-track="${track}">+ Проект</button>` : '') + tabs +
+      main.innerHTML = head(cfg.title, sub, (d.canCreate ? `<button class="btn primary" data-act="pmNew" data-track="${track}">+ Проект</button> ` : '') + '<button class="btn" data-act="pmExport" title="Показанные строки — в Excel">⇩ Excel</button>') + tabs +
         `<div class="filters">${sel('pm-f-status', [['active', 'Активные'], ...PM.STATUS.map(s => [s, s]), ['all', 'Все']], fs)}<label class="fl"><input type="checkbox" id="pm-f-mine"${mine ? ' checked' : ''}> мои</label><input id="pm-f-q" placeholder="Поиск: объект, заказчик, №" value="${esc(q)}"></div>` +
         (rows.length ? tbl([{ t: 'Объект' }, { t: leadLabel }, { t: 'Этап' }, { t: 'Статус' }, { t: 'Буфер' }, { t: 'Старт' }, { t: 'Срок' }, { t: 'Просрочено', cls: 'right' }, { t: 'Блокеры', cls: 'right' }, { t: 'Риск' }],
           rows.map(r => `<tr class="pm-row" data-id="${esc(r.id)}"><td><b>${esc(r.name)}</b>${r.no ? ` <span class="faint">№${esc(r.no)}</span>` : ''}<div class="faint">${esc(r.client || '')}</div></td><td class="nowrap">${esc(pname(r.leadId) || '—')}</td><td style="min-width:150px"><div class="faint">${esc(r.progress.stageName)}</div>${bar(r.progress.pct)}<span class="faint">${r.progress.done}/${r.progress.total} · ${r.progress.pct}%</span></td><td>${chip(r.status, STATUS_CHIP)}${r.hot ? ' <span class="chip warn">горит</span>' : ''}</td><td class="nowrap">${PM.ACTIVE(r.status) ? zoneChip(r.health) : '<span class="faint">—</span>'}</td><td class="nowrap">${r.start ? fdate(r.start) : '—'}</td><td class="nowrap">${r.due ? (r.late ? `<span class="crit-text">${fdate(r.due)}</span>` : fdate(r.due)) : '—'}${r.forecast && r.forecast !== r.due ? `<div class="faint">прогноз ${fdate(r.forecast)}</div>` : ''}</td><td class="right">${r.overdueN ? `<span class="chip crit">${r.overdueN}</span>` : '<span class="faint">0</span>'}</td><td class="right">${r.blockersN ? `<span class="chip ${r.blockerMaxDays > 14 ? 'crit' : 'warn'}" title="самый старый — ${r.blockerMaxDays} дн.">${r.blockersN} · ${r.blockerMaxDays} дн.</span>` : '<span class="faint">—</span>'}</td><td>${r.risk && r.risk !== 'Низкий' ? chip(r.risk, RISK_CHIP) : '<span class="faint">низкий</span>'}</td></tr>`))
           : empty(all.length ? 'Под фильтр ничего не попало' : `Проектов «${PM.TRACKS[track]}» пока нет${d.canCreate ? ' — нажмите «+ Проект»' : ''}`));
+      main.querySelectorAll('.tbl').forEach(el => el.classList.add('pm-scroll')); // таблица прокручивается внутри себя и не раздувает страницу на телефоне
       const apply = () => { location.hash = `#/${id}?${qsOf({ track: cfg.tracks.length > 1 ? track : '', status: $('#pm-f-status').value, mine: $('#pm-f-mine').checked ? '1' : '', q: $('#pm-f-q').value.trim() })}`; };
       $('#pm-f-status').onchange = apply; $('#pm-f-mine').onchange = apply; $('#pm-f-q').onkeydown = e => { if (e.key === 'Enter') apply(); };
       main.querySelectorAll('tr.pm-row').forEach(tr => tr.onclick = () => { location.hash = cardLink(tr.dataset.id); });
@@ -230,6 +236,7 @@
       ];
       const itemBody = v => { v.na = v.na === 'true'; if ('weeks' in v) v.weeks = Number(String(v.weeks).replace(',', '.')) || 1; if ('weeksMax' in v) v.weeksMax = Number(String(v.weeksMax).replace(',', '.')) || 0; if ('stage' in v) v.stage = Number(v.stage); return v; };
       ui.ACT.pmItemAdd = ({ stage }) => modal('Новый пункт', dl + formHtml([{ name: 'title', label: 'Пункт', required: true }, { name: 'stage', label: 'Этап', type: 'select', options: stageOpts, half: true }, { name: 'role', label: 'Роль (кто ведёт)', type: 'select', options: PM.ITEM_ROLES, half: true }, { name: 'weeks', label: 'Недель', type: 'number', step: '0.1', half: true }, { name: 'due', label: 'Срок', type: 'date', half: true }, { name: 'crit', label: 'Критерий приёмки' }, { name: 'assigneeId', label: 'Исполнитель', type: 'select', options: userOpts(), half: true }, { name: 'contractor', label: 'Подрядчик', list: 'pm-dl-contr', half: true }, { name: 'note', label: 'Заметка' }], { stage: Number(stage) || 1, role: 'ГИП', weeks: 1 }, 'Добавить'), async v => { await api(`/pm/projects/${p.id}/items`, { method: 'POST', body: itemBody(v) }); toast('Пункт добавлен'); rerender(); });
+      ui.ACT.pmItemHist = ({ id: iid }) => { const it = c.items.find(x => x.id === iid); if (it) histModal(it); };
       ui.ACT.pmItemEdit = ({ id: iid }) => { const it = c.items.find(x => x.id === iid); if (!it) return; modal(canEditAny ? 'Пункт' : 'Пункт: срок, исполнитель, заметка', dl + `<p class="faint" style="margin:0 0 8px"><b>${esc(it.stageName)}</b>${canEditAny ? '' : ` · ${esc(it.title)}${it.crit ? ` · критерий: ${esc(it.crit)}` : ''}`}</p>` + formHtml(itemFields(it, canEditAny), Object.assign({}, it, { na: it.na ? 'true' : 'false' })), async v => { await api('/pm/items/' + iid, { method: 'PUT', body: itemBody(v) }); toast('Сохранено'); rerender(); }); };
       ui.ACT.pmItemDel = async ({ id: iid }) => { if (!confirm('Удалить пункт?')) return; await api('/pm/items/' + iid, { method: 'DELETE' }); toast('Удалено'); rerender(); };
       bindChecks(main);
@@ -244,13 +251,38 @@
     function bindChecks(main) {
       main.querySelectorAll('input[data-pmdone]').forEach(cb => cb.onchange = async () => { const on = cb.checked; try { await api('/pm/items/' + cb.dataset.pmdone, { method: 'PUT', body: { done: on } }); toast(on ? 'Отмечено: сделано' : 'Отметка снята'); await rerender(); badges(true); } catch (e) { toast(e.message, 4000); cb.checked = !on; } });
     }
+    // история пункта: последние 20 изменений (сервер хранит в самом пункте)
+    const HIST_LABEL = (e, name) => { const d = v => v ? fdate(String(v).slice(0, 10)) : '—'; const yes = v => v === true || v === 'true';
+      switch (e.field) {
+        case 'created': return 'пункт добавлен';
+        case 'done': return yes(e.to) ? '✓ отмечено «сделано»' : 'снята отметка «сделано»';
+        case 'na': return yes(e.to) ? 'отмечено «не требуется»' : 'снято «не требуется»';
+        case 'due': return `срок: ${d(e.from)} → ${d(e.to)}`;
+        case 'assigneeId': return `исполнитель: ${e.from ? name(e.from) : '—'} → ${e.to ? name(e.to) : '—'}`;
+        case 'contractor': return `подрядчик: ${e.from || '—'} → ${e.to || '—'}`;
+        case 'title': return `название: «${e.from}» → «${e.to}»`;
+        case 'weeks': return `оценка: ${e.from || '—'} → ${e.to} нед.`;
+        case 'weeksMax': return `пессимистичная оценка: ${e.from || '—'} → ${e.to || '—'} нед.`;
+        case 'stage': return `этап: ${e.from} → ${e.to}`;
+        case 'role': return `роль: ${e.from || '—'} → ${e.to}`;
+        default: return `${e.field}: ${e.from} → ${e.to}`;
+      } };
+    const fdt = iso => { const x = new Date(iso); return isNaN(x) ? String(iso || '') : x.toLocaleString('ru-RU', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
+    const histModal = it => modal('История пункта', `<p class="faint" style="margin:0 0 8px">${esc(it.title)}${it.stageName ? ` · ${esc(it.stageName)}` : ''}</p>` + ((it.history || []).length ? `<div class="pm-hist">${it.history.slice().reverse().map(e => `<div class="pm-hist-row"><span class="faint nowrap">${esc(fdt(e.at))}</span><span>${esc(HIST_LABEL(e, pname))}${e.note ? ` <span class="faint">(${esc(e.note)})</span>` : ''}</span><span class="faint">${esc(pname(e.by) || e.by || '')}</span></div>`).join('')}</div>` : empty('Изменений пока нет')));
+    // выгрузка реестра в Excel (.xlsx собирается в браузере, domain.xlsx): показанные строки реестра или вся сводка
+    let expState = { rows: [], blockers: [] };
+    ui.ACT.pmExport = () => {
+      const sheets = PM.registryExport(expState.rows, expState.blockers, id => pname(id)); const bytes = PM.xlsx(sheets);
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `MOST_Планирование_проектов_${today()}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+      toast(`Excel: ${expState.rows.length} проектов, ${sheets[1].rows.length - 1} открытых блокеров`);
+    };
     const itemRow = (it, o) => { const over = !it.done && !it.na && it.due && it.due < today(); return `<tr class="pm-item${it.done ? ' done' : ''}${it.na ? ' na' : ''}${over ? ' over' : ''}">
       <td class="pm-chk"><input type="checkbox" data-pmdone="${esc(it.id)}"${it.done ? ' checked' : ''}${it.canEdit && !it.na ? '' : ' disabled'} title="${it.canEdit ? 'Отметить «сделано»' : 'Этот пункт ведёт другой раздел'}"></td>
       <td>${o && o.project ? `<div class="faint"><a href="${cardLink(it.pid)}">${esc(it.project)}</a> · ${esc(it.stageName)}</div>` : ''}<div class="pm-t">${esc(it.title)}${it.optional ? ' <span class="chip neutral" title="по необходимости">опц.</span>' : ''}${it.na ? ' <span class="chip neutral">не требуется</span>' : ''}${it.custom ? ' <span class="chip neutral" title="добавлен вручную">доп.</span>' : ''}</div>${it.crit ? `<div class="pm-crit">критерий: ${esc(it.crit)}</div>` : ''}${it.note ? `<div class="pm-note">${esc(it.note)}</div>` : ''}${it.done ? `<div class="pm-crit">сделано${it.doneAt ? ' ' + fdate(it.doneAt) : ''}${it.doneBy ? ' · ' + esc(pname(it.doneBy)) : ''}${it.doneNote ? ' · ' + esc(it.doneNote) : ''}</div>` : ''}</td>
       <td class="nowrap">${esc(it.role)}${it.section && it.section !== it.role ? `<div class="faint">${esc(it.section)}</div>` : ''}</td>
       <td>${it.assigneeId ? esc(pname(it.assigneeId)) : '<span class="faint">—</span>'}${it.contractor ? `<div class="faint" title="исполнитель-подрядчик">🛠 ${esc(it.contractor)}</div>` : ''}</td>
       <td class="nowrap due">${dueHtml(it.due, it.done)}${!it.done && it.weeks ? `<div class="faint" title="оптимистичная – пессимистичная оценка">${PM.W(it)}–${PM.WMAX(it)} нед.</div>` : ''}${it.returns ? `<div class="faint crit-text" title="снимали отметку «сделано»">возвратов ${it.returns}</div>` : ''}</td>
-      <td>${it.canEdit ? `<div class="actions"><button class="btn sm" data-act="pmItemEdit" data-id="${esc(it.id)}" title="Изменить">✎</button>${o && o.manager ? `<button class="btn sm danger" data-act="pmItemDel" data-id="${esc(it.id)}" title="Удалить">✕</button>` : ''}</div>` : ''}</td></tr>`; };
+      <td><div class="actions">${(it.history || []).length ? `<button class="btn sm" data-act="pmItemHist" data-id="${esc(it.id)}" title="История: кто и когда менял">🕓</button>` : ''}${it.canEdit ? `<button class="btn sm" data-act="pmItemEdit" data-id="${esc(it.id)}" title="Изменить">✎</button>${o && o.manager ? `<button class="btn sm danger" data-act="pmItemDel" data-id="${esc(it.id)}" title="Удалить">✕</button>` : ''}` : ''}</div></td></tr>`; };
     const ITEM_COLS = [{ t: '' }, { t: 'Пункт' }, { t: 'Роль' }, { t: 'Исполнитель' }, { t: 'Срок' }, { t: '' }];
     function stagesHtml(c) {
       const by = new Map(); for (const it of c.items) { if (!by.has(it.stage)) by.set(it.stage, { n: it.stage, name: it.stageName, items: [] }); by.get(it.stage).items.push(it); }
@@ -336,6 +368,7 @@
       if (!shown.length) { main.innerHTML += empty(onlyOver ? 'Просроченных нет' : 'Открытых задач нет'); return; }
       const byP = new Map(); for (const it of shown) { if (!byP.has(it.pid)) byP.set(it.pid, { pid: it.pid, name: it.project, track: it.track, items: [] }); byP.get(it.pid).items.push(it); }
       main.innerHTML += `<div class="pm-my">${[...byP.values()].map(g => `<div class="card"><h3><a href="${cardLink(g.pid)}">${esc(g.name)}</a> ${chip(g.track, TRACK_CHIP)} <span class="faint">${g.items.length}</span></h3>${tbl(ITEM_COLS, g.items.map(it => itemRow(Object.assign({}, it, { project: '' }), { manager: false })))}</div>`).join('')}</div>`;
+      ui.ACT.pmItemHist = ({ id: iid }) => { const it = list.find(x => x.id === iid); if (it) histModal(it); };
       ui.ACT.pmItemEdit = ({ id: iid }) => { const it = list.find(x => x.id === iid); if (!it) return; modal('Пункт: срок, исполнитель, заметка', `<p class="faint" style="margin:0 0 8px"><b>${esc(it.project)}</b> · ${esc(it.stageName)}<br>${esc(it.title)}${it.crit ? `<br>критерий: ${esc(it.crit)}` : ''}</p>` + formHtml([{ name: 'due', label: 'Срок', type: 'date', half: true }, { name: 'assigneeId', label: 'Исполнитель', type: 'select', options: userOpts(), half: true }, { name: 'contractor', label: 'Исполнитель-подрядчик' }, { name: 'doneNote', label: 'Чем подтверждено' }, { name: 'note', label: 'Заметка', type: 'textarea' }], it), async v => { await api('/pm/items/' + iid, { method: 'PUT', body: v }); toast('Сохранено'); rerender(); }); };
       bindChecks(main); bind(main);
     };
@@ -361,6 +394,7 @@
     // ---- сводка ----
     ui.SECTIONS.pm = async main => {
       const d = await api('/pm/overview'); ctxData = { leader: d.leader, financeProjects: d.financeProjects }; badges(true);
+      expState = { rows: d.rows, blockers: d.blockersList };
       const active = d.rows.filter(r => PM.ACTIVE(r.status)); const t = today();
       const kpi = `<div class="grid g4 pm-kpi" style="margin-bottom:14px">
         <div class="card"><div class="label">Активных проектов</div><div class="val">${d.active}</div><div class="foot">${PM.VISIBLE_TRACKS.map(k => [k, d.byTrack[k].n + (k === 'ep' ? d.byTrack.concept.n : 0)]).filter(x => x[1]).map(([k, n]) => `${PM.TRACK_SHORT[k]} ${n}`).join(' · ') || 'нет'}</div></div>
@@ -379,7 +413,8 @@
       const grows = active.filter(r => r.start).sort((a, b) => String(a.start).localeCompare(String(b.start)));
       const months = PM.ganttMonths(grows, t, 8, 16); const cur = t.slice(0, 7); const loadM = PM.ganttLoad(grows, months);
       const gantt = `<h2>Гант по месяцам</h2><div class="faint" style="margin:-6px 0 8px">Полоса — от даты старта до прогноза / даты по договору. Красная — срок прошёл, жёлтая — ждём заказчика или госорган, зелёная — готово. Текущий месяц подсвечен.</div>` + (grows.length ? `<div class="tbl cal-wrap"><table class="cal"><thead><tr><th>Объект</th><th class="pm-hidem">Ведёт</th><th class="pm-hidem">Старт</th><th class="pm-hidem">Срок</th>${months.map(m => `<th class="cal-h"${m === cur ? ' style="background:var(--accent-soft)"' : ''} title="${esc(PM.mname(m))}">${m.slice(5)}.${m.slice(2, 4)}</th>`).join('')}</tr></thead><tbody>${grows.map(r => { const end = r.forecast || r.due; const cls = r.status === 'Готово' ? 'vac-t' : r.late ? 'vac-v' : /Ждём/.test(r.status) ? 'vac-s' : 'vac-u'; return `<tr class="pm-row" data-id="${esc(r.id)}"><td class="nowrap"><b>${esc(r.name)}</b> <span class="faint">${esc(PM.TRACK_SHORT[r.track])}</span></td><td class="pm-hidem nowrap">${esc(pname(r.leadId) || '—')}</td><td class="pm-hidem nowrap">${fdate(r.start)}</td><td class="pm-hidem nowrap ${r.late ? 'crit-text' : ''}">${end ? fdate(end) : '—'}</td>${months.map(m => `<td class="cal-cell${PM.inMonth(r, m) ? ' ' + cls : ''}${m === cur ? ' wknd' : ''}" title="${esc(r.name)} · ${esc(PM.mname(m))}"></td>`).join('')}</tr>`; }).join('')}<tr><td colspan="4"><b>Активных объектов</b></td>${loadM.map((n, i) => `<td class="cal-cell right num" style="font-size:11px;padding:2px 3px;${months[i] === cur ? 'background:var(--accent-soft)' : ''}"><b>${n || ''}</b></td>`).join('')}</tr></tbody></table></div>` : empty('Задайте дату старта и дату по договору в карточках — появится Гант'));
-      main.innerHTML = head('Сводка по проектам', `Сегодня ${fdate(t)} · шаблоны: ЭП ${d.templates.ep}, РП ${d.templates.rp} пунктов`, (d.canCreate ? '<button class="btn primary" data-act="pmNew" data-track="rp">+ Проект</button> ' : '') + (d.leader ? '<button class="btn" data-act="pmImport">⇪ Импорт реестра</button> <button class="btn" data-act="pmClickup">⇪ Импорт из ClickUp</button>' : '')) + kpi + statusRow + portfolio + funnels + `<div class="grid g2"><div>${load}</div><div></div></div>` + gantt;
+      main.innerHTML = head('Сводка по проектам', `Сегодня ${fdate(t)} · шаблоны: ЭП ${d.templates.ep}, РП ${d.templates.rp} пунктов`, (d.canCreate ? '<button class="btn primary" data-act="pmNew" data-track="rp">+ Проект</button> ' : '') + '<button class="btn" data-act="pmExport" title="Реестр проектов и блокеры — в Excel">⇩ Excel</button> ' + (d.leader ? '<button class="btn" data-act="pmImport">⇪ Импорт реестра</button> <button class="btn" data-act="pmClickup">⇪ Импорт из ClickUp</button>' : '')) + kpi + statusRow + portfolio + funnels + `<div class="grid g2"><div>${load}</div><div></div></div>` + gantt;
+      main.querySelectorAll('.tbl, .cal-wrap').forEach(el => el.classList.add('pm-scroll'));
       main.querySelectorAll('tr.pm-row').forEach(tr => tr.onclick = () => { location.hash = cardLink(tr.dataset.id); });
       ui.ACT.pmImport = () => modal('Импорт реестра проектов', `<p class="faint" style="margin:0 0 10px">JSON готовит скрипт <code>modules/pm/tools/import_pm.py</code> из реестра MOST_Планирование_проектов.xlsx и таблицы бюджетов. Проекты с таким же названием и стадией пропускаются (или пересоздаются в режиме «заменить»).</p><form><div class="field"><label>Файл JSON</label><input type="file" id="pm-imp-file" accept=".json,application/json" required></div><div class="field"><label>Если проект уже есть</label><select name="mode"><option value="skip">Пропустить</option><option value="replace">Заменить (удалить и создать заново)</option></select></div><div class="error"></div><button class="btn primary block" type="submit">Импортировать</button></form>`, async v => {
         const f = $('#pm-imp-file').files[0]; if (!f) throw new Error('Выберите файл'); let data; try { data = JSON.parse(await f.text()); } catch { throw new Error('Файл не читается как JSON'); }

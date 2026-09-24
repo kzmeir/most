@@ -26,6 +26,13 @@ function cleanContract(patch, body, p) {
   }
   return patch;
 }
+// история пункта: последние 20 изменений — кто, когда, что (галочки, срок, исполнитель, подрядчик, название, оценка, этап, роль)
+const HIST_FIELDS = ['done', 'na', 'due', 'assigneeId', 'contractor', 'title', 'weeks', 'weeksMax', 'stage', 'role'];
+function logHistory(it, patch, userId, note) {
+  const h = Array.isArray(it.history) ? it.history.slice() : []; const at = new Date().toISOString();
+  for (const k of HIST_FIELDS) if (k in patch && String(patch[k] == null ? '' : patch[k]) !== String(it[k] == null ? '' : it[k])) h.push(Object.assign({ at, by: userId || '', field: k, from: it[k] == null ? '' : it[k], to: patch[k] == null ? '' : patch[k] }, note ? { note } : {}));
+  it.history = h.slice(-20);
+}
 function applyPlan(ctx, p, start, fit) { const its = ctx.db.pmItems.filter(i => i.pid === p.id); const r = PM.plan(its, start, fit ? p.due : ''); for (const it of its) if (!it.done && r.due[it.id]) it.due = r.due[it.id]; return r; }
 // бюджет: только известные поля, разделы — название/сумма/исполнитель
 function cleanBudget(b) {
@@ -83,8 +90,8 @@ function importClickup(ctx, list, mode, user) {
       const it = PM.findItemByTitle(items(), title) || items().find(i => i.custom && ((i.cuId && tk.cuId && i.cuId === tk.cuId) || PM.normTitle(i.title) === PM.normTitle(title))); // повторный импорт: свой же добавленный пункт не дублируем
       if (it) {
         rep.matched++;
-        if (tk.done && !it.done) { Object.assign(it, { done: true, doneAt: tk.due || t, doneBy: 'clickup', doneNote: 'по ClickUp' }); rep.done++; }
-        if (tk.due && !it.done) it.due = tk.due; if (u && !it.assigneeId) it.assigneeId = u.id;
+        if (tk.done && !it.done) { logHistory(it, { done: true }, user.id, 'по ClickUp'); Object.assign(it, { done: true, doneAt: tk.due || t, doneBy: 'clickup', doneNote: 'по ClickUp' }); rep.done++; }
+        if (tk.due && !it.done && it.due !== tk.due) { logHistory(it, { due: tk.due }, user.id, 'по ClickUp'); it.due = tk.due; } if (u && !it.assigneeId) { logHistory(it, { assigneeId: u.id }, user.id, 'по ClickUp'); it.assigneeId = u.id; }
         if (extra && !String(it.note || '').includes(extra)) it.note = [it.note, extra].filter(Boolean).join(' · ');
       } else {
         const st = PM.stageIndex('ep', tk.stage) || curStage(); const order = Math.max(0, ...items().map(i => i.order || 0)) + 1;
@@ -215,7 +222,7 @@ function handle(ctx) {
     if (p && c === 'items' && method === 'POST') {
       if (!PM.isManager(user, p)) return err(403, 'Добавлять пункты может ГИП/ПМ проекта');
       const st = Number(body.stage) || 1; const same = db.pmItems.filter(i => i.pid === p.id && i.stage === st); const role = PM.ITEM_ROLES.includes(body.role) ? body.role : 'ГИП';
-      const it = addItems(ctx, [{ pid: p.id, stage: st, stageName: (same[0] || {}).stageName || String(body.stageName || '').trim() || PM.stageNames(p.track)[st - 1] || `Этап ${st}`, title: String(body.title || '').trim() || 'Пункт', role, section: PM.ROLE_SECTION[role] || '', weeks: num(body.weeks) || 1, weeksMax: num(body.weeksMax) || 0, crit: body.crit || '', optional: false, done: false, na: false, due: body.due || '', assigneeId: body.assigneeId || '', contractor: body.contractor || '', note: body.note || '', order: Math.max(0, ...db.pmItems.filter(i => i.pid === p.id).map(i => i.order || 0)) + 1, custom: true, createdBy: user.id, createdAt: now() }])[0];
+      const it = addItems(ctx, [{ pid: p.id, stage: st, stageName: (same[0] || {}).stageName || String(body.stageName || '').trim() || PM.stageNames(p.track)[st - 1] || `Этап ${st}`, title: String(body.title || '').trim() || 'Пункт', role, section: PM.ROLE_SECTION[role] || '', weeks: num(body.weeks) || 1, weeksMax: num(body.weeksMax) || 0, crit: body.crit || '', optional: false, done: false, na: false, due: body.due || '', assigneeId: body.assigneeId || '', contractor: body.contractor || '', note: body.note || '', order: Math.max(0, ...db.pmItems.filter(i => i.pid === p.id).map(i => i.order || 0)) + 1, custom: true, createdBy: user.id, createdAt: now(), history: [{ at: now(), by: user.id, field: 'created', from: '', to: '' }] }])[0];
       store.save(); store.audit(user.id, 'create', 'pmItems', it.id); return ok(Object.assign({}, it, { canEdit: true }));
     }
   }
@@ -232,6 +239,7 @@ function handle(ctx) {
       if ('stage' in patch) { patch.stage = Number(patch.stage) || it.stage; const same = db.pmItems.find(i => i.pid === p.id && i.stage === patch.stage && i.id !== it.id); patch.stageName = same ? same.stageName : (PM.stageNames(p.track)[patch.stage - 1] || `Этап ${patch.stage}`); }
       if ('weeks' in patch) patch.weeks = num(patch.weeks) || it.weeks;
       if ('contractor' in patch) patch.contractor = String(patch.contractor || '').trim();
+      logHistory(it, patch, user.id);
       Object.assign(it, patch, { updatedAt: now(), updatedBy: user.id }); store.save(); store.audit(user.id, 'update', 'pmItems', it.id, patch.done !== undefined ? { done: patch.done } : null);
       if (patch.done === true) ctx.emit('pm.item.done', { item: it, project: p });
       return ok(Object.assign({}, it, { canEdit: true }));
@@ -288,7 +296,7 @@ function handle(ctx) {
       if (f.gipId && !db.users.some(u => u.id === f.gipId)) f.gipId = ''; if (f.pmId && !db.users.some(u => u.id === f.pmId)) f.pmId = '';
       const p = createProject(ctx, f, user.id); if (f.budget) rep.budgets++;
       const stage = Number(src.stage) || PM.stageIndex(track, src.stageName) || 1;
-      for (const it of db.pmItems.filter(i => i.pid === p.id)) { rep.items++; if (it.stage < stage) { Object.assign(it, { done: true, doneAt: '', doneBy: 'import', doneNote: 'по реестру: этап пройден' }); rep.done++; } }
+      for (const it of db.pmItems.filter(i => i.pid === p.id)) { rep.items++; if (it.stage < stage) { logHistory(it, { done: true }, user.id, 'по реестру: этап пройден'); Object.assign(it, { done: true, doneAt: '', doneBy: 'import', doneNote: 'по реестру: этап пройден' }); rep.done++; } }
       let order = Math.max(0, ...db.pmItems.filter(i => i.pid === p.id).map(i => i.order || 0));
       for (const tk of Array.isArray(src.tasks) ? src.tasks : []) {
         const title = String(tk.title || '').trim(); if (!title) continue; const st = PM.stageIndex(track, tk.stage) || stage; const role = PM.ITEM_ROLES.includes(tk.role) ? tk.role : 'ГИП'; const done = !!tk.done || /готово/i.test(String(tk.status || ''));
@@ -306,4 +314,4 @@ function handle(ctx) {
   return err(404, 'Нет такого действия');
 }
 
-module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers'], handle, createProject, collapseConcept, importClickup, hoursOf, domain: PM };
+module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers'], handle, createProject, collapseConcept, importClickup, hoursOf, logHistory, domain: PM };

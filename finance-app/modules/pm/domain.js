@@ -186,6 +186,55 @@
   const addMonths = (m, n) => { const [y, mo] = String(m).split('-').map(Number); return new Date(Date.UTC(y, mo - 1 + n, 1)).toISOString().slice(0, 7); };
   const monthsDiff = (a, b) => { const [ay, am] = a.split('-').map(Number), [by, bm] = b.split('-').map(Number); return (by - ay) * 12 + (bm - am); };
   const mname = m => { const p = String(m || '').split('-'); return p[1] ? `${MONTHS_RU[Number(p[1]) - 1]} ${p[0]}` : String(m || ''); };
+  // ---- запись .xlsx без библиотек: zip без сжатия (store) + минимальный OOXML; строки — inline, числа — числом; шапка жирная и закреплена ----
+  const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const utf8 = s => new TextEncoder().encode(String(s));
+  function zipStore(files) { // files: [{ name, data: Uint8Array }] → Uint8Array (zip, method 0 = store, имена в UTF-8)
+    const parts = [], cd = []; let off = 0; const u16 = v => [v & 255, (v >>> 8) & 255], u32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+    const dosDate = ((2026 - 1980) << 9) | (1 << 5) | 1; // фиксированная дата в заголовках zip — от неё ничего не зависит
+    for (const f of files) {
+      const name = utf8(f.name), data = f.data, crc = crc32(data);
+      const local = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(dosDate), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0), ...name]);
+      parts.push(local, data);
+      cd.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(dosDate), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off), ...name]));
+      off += local.length + data.length;
+    }
+    const cdLen = cd.reduce((a, x) => a + x.length, 0);
+    const end = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(cdLen), ...u32(off), ...u16(0)]);
+    const all = [...parts, ...cd, end]; const out = new Uint8Array(all.reduce((a, x) => a + x.length, 0)); let q = 0; for (const x of all) { out.set(x, q); q += x.length; }
+    return out;
+  }
+  const xmlEsc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  const colName = n => { let out = ''; n++; while (n > 0) { const r = (n - 1) % 26; out = String.fromCharCode(65 + r) + out; n = Math.floor((n - 1) / 26); } return out; };
+  // sheets: [{ name, rows: [[…]], widths?: […] }]; первая строка — шапка. Число → число, остальное → текст
+  function xlsx(sheets) {
+    const sheetXml = sh => {
+      const rows = sh.rows.map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => { if (v == null || v === '') return ''; const ref = `${colName(ci)}${ri + 1}`; const st = ri === 0 ? ' s="1"' : ''; return typeof v === 'number' && isFinite(v) ? `<c r="${ref}"${st}><v>${v}</v></c>` : `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`; }).join('')}</row>`).join('');
+      const cols = sh.widths ? `<cols>${sh.widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>${cols}<sheetData>${rows}</sheetData></worksheet>`;
+    };
+    const sname = (nm, i) => xmlEsc(String(nm || `Лист${i + 1}`).replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 31));
+    const files = [
+      { name: '[Content_Types].xml', data: utf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`) },
+      { name: '_rels/.rels', data: utf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`) },
+      { name: 'xl/workbook.xml', data: utf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((sh, i) => `<sheet name="${sname(sh.name, i)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`) },
+      { name: 'xl/_rels/workbook.xml.rels', data: utf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`) },
+      { name: 'xl/styles.xml', data: utf8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`) },
+    ].concat(sheets.map((sh, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: utf8(sheetXml(sh)) })));
+    return zipStore(files);
+  }
+  // выгрузка реестра проектов (состав как в «MOST_Планирование_проектов» + зона Пульса и блокеры): листы «Реестр» и «Блокеры». nameOf — id → имя
+  function registryExport(rows, blockers, nameOf) {
+    nameOf = nameOf || (x => x || ''); const d8 = d => d ? String(d).slice(0, 10).split('-').reverse().join('.') : '';
+    const head = ['№', 'Объект', 'Стадия', 'Заказчик', 'ГИП / ПМ', 'Статус', 'Текущий этап', '% выполнения', 'Пунктов сделано', 'Пунктов всего', 'Просрочено пунктов', 'Дата старта', 'Срок по договору', 'Прогноз', 'Договор №', 'Дата договора', 'Зона Пульса', 'Расход буфера, %', 'Блокеров открытых', 'Самый старый блокер, дн.', 'Риск', 'Комментарий'];
+    const body = rows.slice().sort((a, b) => TRACK_ORDER.indexOf(a.track) - TRACK_ORDER.indexOf(b.track) || String(a.name).localeCompare(String(b.name), 'ru')).map(r => { const h = r.health || {}, pr = r.progress || {}; return [r.no || '', r.name || '', TRACK_SHORT[r.track] || r.track || '', r.client || '', nameOf(r.leadId || r.gipId || r.pmId) || '', r.status || '', pr.stageName || '', Number(pr.pct) || 0, Number(pr.done) || 0, Number(pr.total) || 0, Number(r.overdueN) || 0, d8(r.start), d8(r.due), d8(r.forecast), r.contractNo || '', d8(r.contractDate), h.zone ? ZONE_NAME_RU[h.zone] || h.zone : '', h.consumption == null ? '' : Math.round(h.consumption * 100), Number(r.blockersN) || 0, Number(r.blockerMaxDays) || 0, r.risk || '', r.comment || '']; });
+    const byId = new Map(rows.map(r => [r.id, r]));
+    const bh = ['Объект', 'Стадия', 'Что ждём', 'Держатель', 'Ответственный у нас', 'С даты', 'Дней', 'Ожидаем к', 'Последний контакт', 'Статус', 'Комментарий'];
+    const bl = (blockers || []).filter(b => b.status !== 'closed').sort((a, b) => (b.days || 0) - (a.days || 0)).map(b => { const pr = byId.get(b.pid) || {}; return [b.project || pr.name || '', TRACK_SHORT[b.track || pr.track] || '', b.what || '', b.holder || '', nameOf(b.ownerId) || b.ownerName || '', d8(b.since), Number(b.days) || 0, d8(b.expected), d8(b.lastContact), 'открыт', b.comment || '']; });
+    return [{ name: 'Реестр', rows: [head, ...body], widths: [6, 30, 8, 22, 18, 14, 28, 9, 9, 9, 9, 11, 12, 11, 14, 11, 12, 9, 9, 9, 10, 40] }, { name: 'Блокеры', rows: [bh, ...bl], widths: [30, 8, 40, 14, 18, 11, 7, 11, 12, 9, 30] }];
+  }
+
   // ---- импорт из ClickUp (CSV-выгрузка: Export → CSV) ----
   // CSV: разделитель «,», «;» или табуляция (определяется по первой строке), кавычки по RFC 4180, BOM и CRLF допускаются
   function parseCsv(text) {
@@ -398,6 +447,7 @@
     return { opt: Math.round(opt), pess: Math.round(pess), buffer: Math.round(Math.max(opt * 0.5, pess - opt)) };
   }
   const ZONES = { blue: 'профицит', green: 'по плану', yellow: 'готовить план изменений', red: 'применять план изменений', black: 'пересогласовать срок или объём' };
+  const ZONE_NAME_RU = { blue: 'синяя', green: 'зелёная', yellow: 'жёлтая', red: 'красная', black: 'чёрная' };
   const ZONE_RANK = { blue: 0, green: 1, yellow: 2, red: 3, black: 4 };
   // диагональный буфер: x — доля выполненного объёма, y — доля съеденного буфера
   function zone(x, y) {
@@ -449,6 +499,6 @@
   const retroSnapshot = (h, blockers) => ({ progress: h.progress, zone: h.zone, consumption: h.consumption, curV: h.curV, avgV: h.avgV, addedW: h.addedW, remain: h.remain, forecast: h.forecast, returns: h.returns, blockers: (blockers || []).filter(b => b.status !== 'closed').length });
 
   return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
-    parseCsv, CLICKUP_FIELDS, clickupAutoMap, parseAnyDate, splitList, CLICKUP_DONE, clickupStatus, normTitle, findItemByTitle, matchUser, clickupToProjects,
+    parseCsv, CLICKUP_FIELDS, clickupAutoMap, parseAnyDate, splitList, CLICKUP_DONE, clickupStatus, normTitle, findItemByTitle, matchUser, clickupToProjects, crc32, zipStore, xlsx, registryExport, ZONE_NAME_RU,
     W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot };
 });
