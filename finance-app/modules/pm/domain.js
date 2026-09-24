@@ -218,7 +218,7 @@
     const bl = blockers.filter(b => b.pid === p.id && b.status !== 'closed');
     const next = open.filter(i => i.due).sort((a, b) => a.due.localeCompare(b.due))[0] || null;
     const deadline = p.forecast || p.due || '';
-    return Object.assign({}, p, { progress: pr, overdueN: overdue.length, blockersN: bl.length, blockerMaxDays: bl.reduce((m, b) => Math.max(m, blockerAge(b, t)), 0), next, leadId: p[LEAD_FIELD[p.track]] || p.gipId || p.pmId || '', late: !!(p.due && p.due < t && ACTIVE(p.status)), hot: !!(deadline && deadline >= t && days(t, deadline) <= 14 && ACTIVE(p.status)) });
+    return Object.assign({}, p, { progress: pr, overdueN: overdue.length, blockersN: bl.length, blockerMaxDays: bl.reduce((m, b) => Math.max(m, blockerAge(b, t)), 0), next, leadId: p[LEAD_FIELD[p.track]] || p.gipId || p.pmId || '', late: !!(p.due && p.due < t && ACTIVE(p.status)), hot: !!(deadline && deadline >= t && days(t, deadline) <= 14 && ACTIVE(p.status)), health: health(p, mine, t) });
   }
   function dashboard(projects, items, blockers, t) {
     t = t || today(); const rows = projects.map(p => summary(p, items, blockers, t)); const active = rows.filter(r => ACTIVE(r.status));
@@ -254,5 +254,68 @@
     return { contract, contractVat: num(b.contractVat), area: num(b.area), months: num(b.months), marginTarget, sections: secs.map(s => Object.assign(s, { pct: cost ? s.sum / cost : 0 })), cost, target, over: target - cost, gross, grossPct: contract ? gross / contract : null, gip, net: gross - gip, netPct: contract ? (gross - gip) / contract : null, perM2: num(b.area) ? contract / num(b.area) : null, objectType: b.objectType || '', note: b.note || '' };
   }
 
-  return { TRACKS, TRACK_SHORT, TRACK_ORDER, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today };
+  // ---- Метод Пульса (pulsemanagement.org): две оценки, буфер расписания, температурный график, скорости, прогнозы, устав ----
+  // оптимистичная оценка пункта (недель, вероятность 50 %) и пессимистичная (90 %); по умолчанию пессимистичная = ×2 (диапазоны «1–2 недели» регламента)
+  const W = it => Number(it.weeks) || 1;
+  const WMAX = it => Math.max(W(it), Number(it.weeksMax) || W(it) * 2);
+  const stageLen = (items, st, f) => Math.max(0.2, ...items.filter(i => i.stage === st && !i.na).map(f));
+  // цепь: этапы последовательно, длина этапа — самый долгий пункт. Буфер ≥ 50 % оптимистичной длины или разница пессимистичной и оптимистичной
+  function chain(items) {
+    const act = items.filter(i => !i.na); const stages = [...new Set(act.map(i => i.stage))].sort((a, b) => a - b);
+    const opt = stages.reduce((s, st) => s + stageLen(act, st, W), 0) * 7, pess = stages.reduce((s, st) => s + stageLen(act, st, WMAX), 0) * 7;
+    return { opt: Math.round(opt), pess: Math.round(pess), buffer: Math.round(Math.max(opt * 0.5, pess - opt)) };
+  }
+  const ZONES = { blue: 'профицит', green: 'по плану', yellow: 'готовить план изменений', red: 'применять план изменений', black: 'пересогласовать срок или объём' };
+  const ZONE_RANK = { blue: 0, green: 1, yellow: 2, red: 3, black: 4 };
+  // диагональный буфер: x — доля выполненного объёма, y — доля съеденного буфера
+  function zone(x, y) {
+    if (y > 1) return 'black'; if (y < -0.3) return 'blue';
+    const lo = 0.1 + 0.5 * x, hi = 0.4 + 0.6 * x; return y <= lo ? 'green' : y <= hi ? 'yellow' : 'red';
+  }
+  // состояние проекта: объём в неделях оценки, буфер, скорости (недель оценки в календарный день), три прогноза, зона
+  function health(p, items, t) {
+    t = t || today(); const mine = items.filter(i => i.pid === p.id && !i.na);
+    const total = mine.reduce((s, i) => s + W(i), 0), doneW = mine.filter(i => i.done).reduce((s, i) => s + W(i), 0), remain = Math.max(0, total - doneW);
+    const progress = total ? doneW / total : 0;
+    const start = p.start || String(p.createdAt || '').slice(0, 10) || t; const ch = chain(mine);
+    let mode, planDays, bufferDays;
+    if (p.due && p.due > start) { mode = 'contract'; const T = days(start, p.due); bufferDays = Math.max(1, Math.round(T * 0.3)); planDays = T - bufferDays; }
+    else { mode = 'chain'; planDays = Math.max(1, ch.opt); bufferDays = Math.max(1, ch.buffer); }
+    const planEnd = addDays(start, planDays), promised = addDays(start, planDays + bufferDays);
+    const elapsed = Math.max(0, days(start, t)); const timeProgress = elapsed / planDays;
+    const closed = mine.filter(i => i.done && i.doneAt); const since = addDays(t, -28);
+    const avgV = elapsed > 0 ? doneW / elapsed : 0; // средняя: весь выполненный объём (в т. ч. отмеченный по реестру) с начала проекта
+    const curV = closed.filter(i => i.doneAt > since).reduce((s, i) => s + W(i), 0) / 28;
+    const added = mine.filter(i => i.custom && i.createdAt && String(i.createdAt).slice(0, 10) > addDays(start, 1));
+    const addedW = added.reduce((s, i) => s + W(i), 0), addV = elapsed > 0 ? addedW / elapsed : 0;
+    const fc = v => remain <= 0 ? '' : v > 0 ? addDays(t, Math.min(3650, remain / v)) : '';
+    const forecast = { optimistic: fc(avgV), realistic: fc(curV), pessimistic: fc(avgV - addV) };
+    let consumption, basis;
+    if (remain <= 0 && total) { const last = closed.map(i => i.doneAt).sort().pop() || t; consumption = days(planEnd, last) / bufferDays; basis = 'факт завершения'; }
+    else if (forecast.realistic) { consumption = days(planEnd, forecast.realistic) / bufferDays; basis = 'прогноз по текущей скорости'; }
+    else { consumption = (timeProgress - progress) * planDays / bufferDays; basis = 'прошедшее время против выполненного объёма'; }
+    consumption = total ? Math.round(consumption * 100) / 100 : 0;
+    const z = ACTIVE(p.status) || remain > 0 ? zone(progress, consumption) : (consumption > 1 ? 'black' : 'green');
+    const returns = mine.reduce((s, i) => s + (Number(i.returns) || 0), 0);
+    return { mode, start, planDays, bufferDays, planEnd, promised, elapsed, total: Math.round(total * 10) / 10, doneW: Math.round(doneW * 10) / 10, remain: Math.round(remain * 10) / 10, progress: Math.round(progress * 1000) / 1000, timeProgress: Math.round(timeProgress * 1000) / 1000, avgV: Math.round(avgV * 1000) / 1000, curV: Math.round(curV * 1000) / 1000, addV: Math.round(addV * 1000) / 1000, addedW: Math.round(addedW * 10) / 10, forecast, consumption, basis, zone: z, zoneLabel: ZONES[z], chain: ch, returns };
+  }
+  // Проход: контракт без НДС в месяц длительности (по договору или по цепи); руководителю/ГИПу с доступом к бюджету
+  function throughput(p, h) {
+    const contract = Number(p.budget && p.budget.contract) || 0; if (!contract) return null;
+    const dur = p.due && p.start && p.due > p.start ? days(p.start, p.due) : h.planDays + h.bufferDays; const months = Math.max(0.5, dur / 30.4);
+    return { contract, months: Math.round(months * 10) / 10, perMonth: Math.round(contract / months), perDay: Math.round(contract / dur) };
+  }
+  // приоритет портфеля: чёрные и красные с большим прогрессом первыми, затем жёлтые, затем по Проходу
+  function priority(rows) {
+    return rows.slice().sort((a, b) => { const ha = a.health || {}, hb = b.health || {}; return (ZONE_RANK[hb.zone] || 0) - (ZONE_RANK[ha.zone] || 0) || (hb.progress || 0) - (ha.progress || 0) || ((b.throughput || {}).perMonth || 0) - ((a.throughput || {}).perMonth || 0) || String(a.forecast || a.due || '9').localeCompare(String(b.forecast || b.due || '9')); }).map((r, i) => Object.assign(r, { rank: i + 1 }));
+  }
+  // устав проекта (манифест): одна цель, критерии завершения и успеха
+  const CHARTER_FIELDS = [['what', 'Что делаем (результат, без глаголов)'], ['why', 'Зачем (обоснование, ценность для заказчика и бюро)'], ['doneCriterion', 'Критерий завершения (как узнаем, что проект завершён; зависит только от нас)'], ['successCriterion', 'Критерий успеха (как узнаем, что проект успешен; может зависеть от внешних факторов)'], ['requirements', 'Требования к результату (характеристики, а не действия)'], ['environment', 'Факторы среды (что влияет снаружи и внутри команды)'], ['threats', 'Угрозы (что может убить проект)'], ['time', 'Время (сроки по договору, контрольные точки)'], ['budget', 'Бюджет (деньги и материальные ресурсы, которые есть сейчас)'], ['people', 'Люди (кто работает, кто может помочь)']];
+  const charterPhrase = c => c && c.what ? `Мы делаем «${c.what}» для того, чтобы «${c.why || '…'}», до тех пор пока не случится «${c.doneCriterion || '…'}», и узнаем, что проект успешен, когда «${c.successCriterion || '…'}».` : '';
+  const charterComplete = c => !!c && ['what', 'why', 'doneCriterion', 'successCriterion'].every(k => String(c[k] || '').trim());
+  // снимок показателей для ретроспективы
+  const retroSnapshot = (h, blockers) => ({ progress: h.progress, zone: h.zone, consumption: h.consumption, curV: h.curV, avgV: h.avgV, addedW: h.addedW, remain: h.remain, forecast: h.forecast, returns: h.returns, blockers: (blockers || []).filter(b => b.status !== 'closed').length });
+
+  return { TRACKS, TRACK_SHORT, TRACK_ORDER, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today,
+    W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot };
 });
