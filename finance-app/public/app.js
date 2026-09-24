@@ -75,7 +75,7 @@ async function boot() {
 }
 async function loadRefs() {
   try { state.people = await api('/people'); } catch { state.people = []; }
-  try { state.projects = await api('/projects'); } catch { state.projects = []; }
+  try { state.projects = canR('projects') ? await api('/projects') : []; } catch { state.projects = []; }
   try { state.counterparties = canR('counterparties') ? await api('/counterparties') : []; } catch { state.counterparties = []; }
   if (isAdmin()) {
     try { state.settings = await api('/settings'); } catch { }
@@ -117,6 +117,9 @@ const NAV = [
   { id: 'help', label: 'Инструкция', icon: '?', any: true },
 ];
 // модули ERP (modules/<id>/ui.js) регистрируются в window.MOST_MODULES до app.js; «Финансы» — встроенный модуль
+// счётчики в меню: ui.setBadge(id, n) — переживают перерисовку меню
+const BADGES = {};
+function setBadge(id, n) { BADGES[id] = Number(n) || 0; const b = document.getElementById('badge-' + id); if (b) { b.textContent = BADGES[id] || ''; b.hidden = !BADGES[id]; } }
 const MODS = [{ id: 'fin', title: 'Финансы', nav: NAV.filter(n => !n.any), routes: ['project'], canOpen: () => true }];
 const finNavOk = n => n.dash ? window.MostDomain.canDashboard(state.user.role) : n.col ? canR(n.col) : (!n.admin || isAdmin());
 const modNav = m => m.id === 'fin' ? m.nav.filter(finNavOk) : (m.nav || []).filter(n => !n.can || n.can(state.user));
@@ -127,7 +130,8 @@ function drawNav(id) {
   const mods = visibleMods(); const cur = modOf(id) || mods[0] || MODS[0];
   const sw = mods.length > 1 ? `<div class="modsw">${mods.map(m => `<a href="#/${modNav(m)[0].id}" class="${m === cur ? 'active' : ''}">${esc(m.title)}</a>`).join('')}</div>` : '';
   const items = [...modNav(cur), NAV.find(n => n.id === 'help')];
-  $('#nav').innerHTML = sw + items.map(n => `<a href="#/${n.id}" data-id="${n.id}"${n.id === id ? ' class="active"' : ''}><span>${n.icon || '•'}</span>${esc(n.label)}<span class="badge" id="badge-${n.id}" hidden></span></a>`).join('');
+  $('#nav').innerHTML = sw + items.map(n => `<a href="#/${n.id}" data-id="${n.id}"${n.id === id ? ' class="active"' : ''}><span>${n.icon || '•'}</span>${esc(n.label)}<span class="badge" id="badge-${n.id}"${BADGES[n.id] ? '' : ' hidden'}>${BADGES[n.id] || ''}</span></a>`).join('');
+  for (const m of mods) if (m.onNav) { try { m.onNav(UI, id); } catch (e) { console.error('onNav ' + m.id, e); } }
   const bs = $('.side .brand small'); if (bs) bs.textContent = cur.title.toLowerCase();
 }
 function renderApp() {
@@ -142,7 +146,7 @@ function renderApp() {
   refreshBadge();
 }
 function refreshCpList() { const d = $('#dl-cp'); if (d) d.innerHTML = (state.counterparties || []).map(c => `<option value="${esc(c.name)}">${esc(c.short || '')}</option>`).join(''); const dp = $('#dl-projects'); if (dp) dp.innerHTML = (state.projects || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''); }
-async function refreshBadge() { try { const d = await api('/docs'); const n = d.filter(x => x.status !== 'done').length; const b = $('#badge-docs'); if (b) { b.textContent = n; b.hidden = !n; } } catch { } }
+async function refreshBadge() { if (!canR('docs')) return; try { const d = await api('/docs'); setBadge('docs', d.filter(x => x.status !== 'done').length); } catch { } }
 window.addEventListener('hashchange', route);
 async function route() {
   if (!state.user) return;
@@ -972,7 +976,7 @@ function peopleName(id) { const p = state.people.find(x => x.id === id); return 
 ACT.del = async ({ col, id }) => { if (!confirm('Удалить запись?')) return; await api(`/${col}/${id}`, { method: 'DELETE' }); toast('Удалено'); route(); if (col === 'docs') refreshBadge(); };
 
 // ---- API для модулей: modules/<id>/ui.js получают эти помощники в init(ui) ----
-const UI = { state, api, qsOf, toast, modal, closeModal, field, formHtml, numify, boolify, yn, esc, money, money0, fdate, today, ym, cut, mname, head, tbl, empty, chip, sel, bind, params, route, peopleName, isAdmin, isOwner, canR, canW, SECTIONS, ACT, $ };
+const UI = { setBadge, state, api, qsOf, toast, modal, closeModal, field, formHtml, numify, boolify, yn, esc, money, money0, fdate, today, ym, cut, mname, head, tbl, empty, chip, sel, bind, params, route, peopleName, isAdmin, isOwner, canR, canW, SECTIONS, ACT, $ };
 window.MostUI = UI;
 for (const m of window.MOST_MODULES || []) { try { if (m.init) m.init(UI); if (!MODS.some(x => x.id === m.id)) MODS.push(m); } catch (e) { console.error('Модуль ' + m.id + ':', e); } }
 
