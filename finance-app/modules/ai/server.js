@@ -10,7 +10,7 @@ const { spawn, execFileSync } = require('child_process');
 const A = require('./domain');
 const DOCX = require('./docx');
 
-const DEFAULTS = { backend: 'cli', cliPath: '', model: '', apiModel: 'claude-opus-5-5', timeoutSec: 300, maxQueue: 5, mockDelayMs: 200 };
+const DEFAULTS = { backend: 'cli', cliPath: '', model: '', apiModel: 'claude-opus-5', timeoutSec: 300, maxQueue: 5, mockDelayMs: 200 };
 const CONFIG_FIELDS = Object.keys(DEFAULTS);
 const LOG_KEEP = 2000, DRAFTS_KEEP = 60; // на пользователя
 
