@@ -6,6 +6,8 @@
   const canOpen = u => !!u;
   const canPublish = u => !!u && ['owner', 'partner', 'secretary'].includes(u.role); // новости, статьи, документы
   const canTeach = u => !!u && ['owner', 'partner', 'lead'].includes(u.role);        // тесты и программы
+  const canReview = u => !!u && ['owner', 'partner', 'lead'].includes(u.role);       // видят черновики и снимают отметку «черновик»
+  const visible = (u, x) => !x || !x.draft || canReview(u);
   const isLeader = u => !!u && LEADERS.includes(u.role);
   // кто видит/ведёт обучение новичка: сам новичок, наставник, руководители, руководитель раздела новичка
   const canSeeEnroll = (u, e, trainee) => !!u && (e.userId === u.id || e.mentorId === u.id || isLeader(u) || (u.role === 'lead' && !!u.section && !!trainee && trainee.section === u.section));
@@ -125,5 +127,5 @@
     return (from ? '…' : '') + s.slice(from, from + n) + (s.length > from + n ? '…' : '');
   }
 
-  return { SECTIONS, canOpen, canPublish, canTeach, isLeader, canSeeEnroll, canManageEnroll, hash, parseTest, testToText, publicTest, grade, attemptsLeft, parseCourse, courseToText, resolveRef, stepState, progress, search, snippet };
+  return { SECTIONS, canOpen, canPublish, canTeach, canReview, visible, isLeader, canSeeEnroll, canManageEnroll, hash, parseTest, testToText, publicTest, grade, attemptsLeft, parseCourse, courseToText, resolveRef, stepState, progress, search, snippet };
 });

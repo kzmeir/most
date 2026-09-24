@@ -15,7 +15,7 @@ function readContent() {
     const m = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/); const meta = {}; let key = null;
     for (const line of (m ? m[1] : '').split('\n')) { if (/^\s/.test(line) && key) { meta[key] += '\n' + line.trim(); continue; } const i = line.indexOf(':'); key = line.slice(0, i).trim(); meta[key] = line.slice(i + 1).trim(); }
     const list = v => String(v || '').split(',').map(s => s.trim()).filter(Boolean);
-    return { section: meta.section || 'Регламенты', title: meta.title || f, tags: list(meta.tags), links: meta.links || '', source: meta.source || '', skip: list(meta.skip), text: (m ? m[2] : raw).trim() };
+    return { draft: meta.draft === 'true', section: meta.section || 'Регламенты', title: meta.title || f, tags: list(meta.tags), links: meta.links || '', source: meta.source || '', skip: list(meta.skip), text: (m ? m[2] : raw).trim() };
   });
 }
 const baseName = p => String(p || '').split(/[\\/]/).pop();
@@ -39,12 +39,14 @@ function handle(ctx) {
   const markRead = (kind, refId) => { if (readOf(kind, refId)) return false; db.kbReads.push({ id: store.id(), userId: user.id, kind, refId, at: now() }); return true; };
   const save = (action, col, id, extra) => { store.save(); store.audit(user.id, action, col, id, extra); };
   const trainee = e => ({ section: e.section || ((db.users.find(u => u.id === e.userId) || {}).section) || '' });
+  const arts = () => db.kbArticles.filter(x => K.visible(user, x)); // черновики — только руководителям
+  const tsts = () => db.kbTests.filter(x => K.visible(user, x));
   const pctx = e => ({ enroll: e, reads: db.kbReads, attempts: db.kbAttempts, articles: db.kbArticles, tests: db.kbTests, userId: e.userId });
 
   // ---------- сводка для меню ----------
   if (a === 'summary' && method === 'GET') {
     const unreadNews = db.kbNews.filter(n => !readOf('news', n.id)).length;
-    const toSign = db.kbArticles.filter(x => isSign(x) && !readOf('sign', x.id)).length;
+    const toSign = arts().filter(x => isSign(x) && !readOf('sign', x.id)).length;
     const active = db.kbEnroll.filter(e => e.userId === user.id && e.status === 'active');
     // «Ждёт вас» (уведомлений нет — решение директора): мои программы со следующими шагами и несданные тесты из них
     const courses = [], tests = new Map();
@@ -55,8 +57,8 @@ function handle(ctx) {
       for (const s of todo) if (s.kind === 'test' && s.refId && !tests.has(s.refId)) { const x = db.kbTests.find(z => z.id === s.refId); if (x && K.attemptsLeft(x, db.kbAttempts.filter(a => a.testId === x.id && a.userId === user.id).length) > 0) tests.set(x.id, { id: x.id, title: x.title, course: co.title }); }
     }
     const latestNews = db.kbNews.filter(n => !readOf('news', n.id)).sort((x, y) => String(y.date).localeCompare(String(x.date))).slice(0, 3).map(n => ({ id: n.id, title: n.title, date: n.date }));
-    const signDocs = db.kbArticles.filter(x => isSign(x) && !readOf('sign', x.id)).map(x => ({ id: x.id, title: x.title }));
-    return ok({ unreadNews, toSign, myEnrolls: active.length, pendingTests: tests.size, waiting: { news: latestNews, sign: signDocs, courses, tests: [...tests.values()] }, canPublish: K.canPublish(user), canTeach: K.canTeach(user), isLeader: K.isLeader(user), sections: K.SECTIONS });
+    const signDocs = arts().filter(x => isSign(x) && !readOf('sign', x.id)).map(x => ({ id: x.id, title: x.title }));
+    return ok({ unreadNews, toSign, myEnrolls: active.length, pendingTests: tests.size, waiting: { news: latestNews, sign: signDocs, courses, tests: [...tests.values()] }, canPublish: K.canPublish(user), canTeach: K.canTeach(user), canReview: K.canReview(user), drafts: db.kbArticles.filter(x => x.draft).length + db.kbTests.filter(x => x.draft).length, isLeader: K.isLeader(user), sections: K.SECTIONS });
   }
 
   // ---------- новости ----------
@@ -86,20 +88,21 @@ function handle(ctx) {
   }
 
   // ---------- база знаний ----------
-  const artFields = x => ({ section: str(x.section, 100).trim() || 'Регламенты', title: str(x.title, 300).trim(), text: str(x.text), tags: tagsOf(x.tags), links: linksOf(x.links), sign: x.section === SIGN_SECTION || x.sign === true || x.sign === 'true' });
+  const artFields = x => ({ draft: x.draft === true || x.draft === 'true', section: str(x.section, 100).trim() || 'Регламенты', title: str(x.title, 300).trim(), text: str(x.text), tags: tagsOf(x.tags), links: linksOf(x.links), sign: x.section === SIGN_SECTION || x.sign === true || x.sign === 'true' });
   if (a === 'articles') {
     if (!b && method === 'GET') {
-      let list = db.kbArticles; if (ctx.qs.section) list = list.filter(x => x.section === ctx.qs.section);
+      let list = arts(); if (ctx.qs.section) list = list.filter(x => x.section === ctx.qs.section);
       const q = ctx.qs.q || '';
-      const counts = {}; for (const x of db.kbArticles) counts[x.section] = (counts[x.section] || 0) + 1;
-      return ok({ counts, items: K.search(list, q).map(({ a: x, rank }) => ({ id: x.id, section: x.section, title: x.title, tags: x.tags || [], sign: isSign(x), links: (x.links || []).length, updatedAt: x.updatedAt || x.createdAt, rank, snippet: K.snippet(x.text, q), read: !!(readOf('article', x.id) || readOf('sign', x.id)), signed: isSign(x) ? !!readOf('sign', x.id) : undefined })).sort((p, r) => r.rank - p.rank || p.section.localeCompare(r.section) || p.title.localeCompare(r.title, 'ru')) });
+      const counts = {}; for (const x of arts()) counts[x.section] = (counts[x.section] || 0) + 1;
+      return ok({ counts, items: K.search(list, q).map(({ a: x, rank }) => ({ id: x.id, draft: !!x.draft, section: x.section, title: x.title, tags: x.tags || [], sign: isSign(x), links: (x.links || []).length, updatedAt: x.updatedAt || x.createdAt, rank, snippet: K.snippet(x.text, q), read: !!(readOf('article', x.id) || readOf('sign', x.id)), signed: isSign(x) ? !!readOf('sign', x.id) : undefined })).sort((p, r) => r.rank - p.rank || p.section.localeCompare(r.section) || p.title.localeCompare(r.title, 'ru')) });
     }
     if (!b && method === 'POST') {
       if (!K.canPublish(user)) return err(403, 'Статьи пишут руководители и секретарь');
       const f = artFields(body); if (!f.title) return err(400, 'Нужен заголовок');
       const x = Object.assign(f, { id: store.id(), authorId: user.id, createdAt: now() }); db.kbArticles.push(x); save('create', 'kbArticles', x.id); return ok(x);
     }
-    const x = b && db.kbArticles.find(z => z.id === b); if (!x) return err(404, 'Статья не найдена');
+    const x = b && arts().find(z => z.id === b); if (!x) return err(404, 'Статья не найдена');
+    if (c === 'approve' && method === 'POST') { if (!K.canReview(user)) return err(403, 'Снимают отметку руководители'); x.draft = !!body.draft; if (!x.draft) Object.assign(x, { approvedAt: now(), approvedBy: user.id }); save(x.draft ? 'draft' : 'approve', 'kbArticles', x.id); return ok(x); }
     if (!c && method === 'GET') {
       const out = Object.assign({}, x, { sign: isSign(x), author: userName(x.authorId), read: readOf('article', x.id) || null, signed: readOf('sign', x.id) || null, canEdit: K.canPublish(user), tests: db.kbTests.filter(z => z.articleId === x.id).map(z => ({ id: z.id, title: z.title })) });
       if (isSign(x) && (K.canPublish(user) || K.canTeach(user))) out.signers = db.kbReads.filter(r => r.kind === 'sign' && r.refId === x.id).map(r => ({ userId: r.userId, name: userName(r.userId), at: r.at }));
@@ -119,7 +122,7 @@ function handle(ctx) {
     for (const raw of list.slice(0, 2000)) {
       const f = artFields(raw); if (!f.title) continue; const source = str(raw.source, 1000);
       const ex = db.kbArticles.find(z => source && z.source === source) || db.kbArticles.find(z => z.section === f.section && z.title === f.title);
-      if (ex) { Object.assign(ex, f, { source: source || ex.source, updatedAt: now(), updatedBy: user.id }); updated++; }
+      if (ex) { if (ex.approvedAt) f.draft = false; Object.assign(ex, f, { source: source || ex.source, updatedAt: now(), updatedBy: user.id }); updated++; }
       else { db.kbArticles.push(Object.assign(f, { id: store.id(), source, authorId: user.id, createdAt: now(), imported: true })); added++; }
     }
     save('import', 'kbArticles', '', { added, updated }); return ok({ added, updated });
@@ -127,7 +130,7 @@ function handle(ctx) {
 
   // ---------- документы на ознакомление: мои и сводная ----------
   if (a === 'signs' && method === 'GET') {
-    const docs = db.kbArticles.filter(isSign).sort((p, r) => p.title.localeCompare(r.title, 'ru'));
+    const docs = arts().filter(isSign).sort((p, r) => p.title.localeCompare(r.title, 'ru'));
     const out = { mine: docs.map(x => ({ id: x.id, title: x.title, signed: readOf('sign', x.id) || null })) };
     if (K.isLeader(user) || user.role === 'secretary' || user.role === 'lead') {
       const us = people().filter(u => user.role !== 'lead' || u.section === user.section || db.kbEnroll.some(e => e.userId === u.id && trainee(e).section === user.section));
@@ -139,18 +142,19 @@ function handle(ctx) {
   // ---------- тесты ----------
   const myAttempts = (tid, uid = user.id) => db.kbAttempts.filter(x => x.testId === tid && x.userId === uid);
   const leftOut = v => v === Infinity ? null : v;
-  const testFields = x => { const p = K.parseTest(x.text); return { errors: p.errors, f: { title: str(x.title, 300).trim(), description: str(x.description, 5000), passScore: Math.max(0, Math.min(100, x.passScore === '' || x.passScore == null ? 80 : Number(x.passScore) || 0)), maxAttempts: Math.max(0, Math.floor(Number(x.maxAttempts) || 0)), articleId: str(x.articleId, 100), questions: p.questions } }; };
+  const testFields = x => { const p = K.parseTest(x.text); return { errors: p.errors, f: { draft: x.draft === true || x.draft === 'true', title: str(x.title, 300).trim(), description: str(x.description, 5000), passScore: Math.max(0, Math.min(100, x.passScore === '' || x.passScore == null ? 80 : Number(x.passScore) || 0)), maxAttempts: Math.max(0, Math.floor(Number(x.maxAttempts) || 0)), articleId: str(x.articleId, 100), questions: p.questions } }; };
   if (a === 'tests') {
     if (!b && method === 'GET') {
-      return ok(db.kbTests.slice().sort((p, r) => p.title.localeCompare(r.title, 'ru')).map(x => { const at = myAttempts(x.id); const best = at.slice().sort((p, r) => r.score - p.score)[0];
-        return { id: x.id, title: x.title, description: x.description, passScore: x.passScore, maxAttempts: x.maxAttempts, n: (x.questions || []).length, attempts: at.length, left: leftOut(K.attemptsLeft(x, at.length)), best: best ? best.score : null, passed: at.some(z => z.passed), takers: K.canTeach(user) ? new Set(db.kbAttempts.filter(z => z.testId === x.id).map(z => z.userId)).size : undefined }; }));
+      return ok(tsts().sort((p, r) => p.title.localeCompare(r.title, 'ru')).map(x => { const at = myAttempts(x.id); const best = at.slice().sort((p, r) => r.score - p.score)[0];
+        return { id: x.id, draft: !!x.draft, title: x.title, description: x.description, passScore: x.passScore, maxAttempts: x.maxAttempts, n: (x.questions || []).length, attempts: at.length, left: leftOut(K.attemptsLeft(x, at.length)), best: best ? best.score : null, passed: at.some(z => z.passed), takers: K.canTeach(user) ? new Set(db.kbAttempts.filter(z => z.testId === x.id).map(z => z.userId)).size : undefined }; }));
     }
     if (!b && method === 'POST') {
       if (!K.canTeach(user)) return err(403, 'Тесты составляют руководители и руководители разделов');
       const { f, errors } = testFields(body); if (!f.title) return err(400, 'Нужно название'); if (errors.length) return err(400, errors.join('; '));
       const x = Object.assign(f, { id: store.id(), authorId: user.id, createdAt: now() }); db.kbTests.push(x); save('create', 'kbTests', x.id); return ok(x);
     }
-    const x = b && db.kbTests.find(z => z.id === b); if (!x) return err(404, 'Тест не найден');
+    const x = b && tsts().find(z => z.id === b); if (!x) return err(404, 'Тест не найден');
+    if (c === 'approve' && method === 'POST') { if (!K.canReview(user)) return err(403, 'Снимают отметку руководители'); x.draft = !!body.draft; if (!x.draft) Object.assign(x, { approvedAt: now(), approvedBy: user.id }); save(x.draft ? 'draft' : 'approve', 'kbTests', x.id); return ok(x); }
     if (!c && method === 'GET') {
       if (ctx.qs.edit) { if (!K.canTeach(user)) return err(403, 'Нет прав на редактирование'); return ok(Object.assign({}, x, { text: K.testToText(x) })); }
       const n = myAttempts(x.id).length;
@@ -243,7 +247,7 @@ function handle(ctx) {
       for (const s of c.skip) db.kbArticles = db.kbArticles.filter(z => !(z.imported && baseName(z.source) === s));
       const ex = db.kbArticles.find(z => (c.source && baseName(z.source) === c.source) || (z.section === c.section && z.title === c.title));
       const f = artFields(c); f.links = [...f.links, ...(ex ? (ex.links || []).filter(l => !f.links.some(k => k.url === l.url)) : [])];
-      if (ex) { Object.assign(ex, f, { updatedAt: now(), updatedBy: user.id, content: true }); r.updated++; }
+      if (ex) { if (ex.approvedAt) f.draft = false; Object.assign(ex, f, { updatedAt: now(), updatedBy: user.id, content: true }); r.updated++; }
       else { db.kbArticles.push(Object.assign(f, { id: store.id(), source: '', authorId: user.id, createdAt: now(), content: true })); r.articles++; }
     }
     for (const x of SEED.articles) if (!db.kbArticles.some(z => z.title === x.title)) { db.kbArticles.push(Object.assign(artFields(x), { id: store.id(), authorId: user.id, createdAt: now(), seed: true })); r.articles++; }
