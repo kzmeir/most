@@ -81,7 +81,6 @@ module.exports = {
 | `pm.item.done` | pm | `{ item, project }` |
 | `crm.contract.signed` | crm | `{ contract, pmProjectId }` |
 | `kb.test.passed` | kb | `{ userId, testId, score }` |
-| `sys.notify` — не событие, а функция `ctx.modules.sys.notify(ctx, { userIds, text, link })` | sys | — |
 
 Новое событие — допишите строку в таблицу в своей ветке (это единственная правка ядра без запроса).
 
