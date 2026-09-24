@@ -1,0 +1,47 @@
+# Docker для MostServer (Synology, Container Manager) и любого другого сервера с Docker.
+# Без сборки образа: код монтируется в готовый node:24-alpine (сервер без npm-зависимостей).
+# node:24, а не 22 — база на встроенном node:sqlite (data/db.sqlite), в 24-й он без экспериментального флага.
+# Инструкция сисадмину — docs/DEPLOY.md. Два сайта одним процессом (docs/ARCHITECTURE.md, «Два сайта»):
+#   PORT=3000 «Финансы» — только офис, наружу НЕ пробрасывается через туннель.
+#   ERP_PORT=3001 «MOST ERP» — модули; это единственный сайт, на который заводится Cloudflare Tunnel.
+# Порты 5000/5001 заняты DSM — не трогать.
+services:
+  most-finance:
+    image: node:24-alpine
+    container_name: most-finance
+    working_dir: /app
+    command: ["node", "server.js"]
+    volumes:
+      # ВАЖНО: источник тома — локальный диск NAS, не смонтированная сетевая папка (SMB/CIFS)!
+      # SQLite в режиме WAL требует блокировок файловой системы, которых сетевые шары не дают надёжно.
+      - .:/app
+    ports:
+      - "${PORT:-3000}:3000"       # Финансы — открывать только в офисной сети (маршрутизатор/файрвол), не наружу
+      - "${ERP_PORT:-3001}:3001"   # MOST ERP — этот порт (или только его туннель) можно открывать наружу
+    environment:
+      - PORT=3000
+      - ERP_PORT=3001
+      - TZ=Asia/Almaty
+      # - DATA_DIR=/app/data-prod   # раскомментируйте, если база должна лежать отдельно от кода приложения
+      # DEV_USER здесь не задавайте никогда — это отключает пароли и раздельность сайтов (см. docs/DEPLOY.md)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Необязательно: постоянный адрес через Cloudflare Tunnel вместо start-internet.bat.
+  # Публичный хост в туннеле — ТОЛЬКО most-finance:3001 (сайт ERP). Финансы (3000) в туннель не заводить.
+  # 1) Cloudflare Zero Trust → Networks → Tunnels → Create a tunnel → скопируйте токен.
+  # 2) Публичный хост в туннеле: сервис http://most-finance:3001 (имя контейнера + порт ERP в этой docker-сети).
+  # 3) Положите токен в .env рядом с этим файлом: CLOUDFLARE_TUNNEL_TOKEN=...
+  # 4) Раскомментируйте блок ниже и выполните: docker compose up -d
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: most-finance-tunnel
+  #   command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - most-finance
