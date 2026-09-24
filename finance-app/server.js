@@ -144,7 +144,7 @@ async function api(req, res, url, user, site) {
   if (seg === 'people' && method === 'GET') return ok(res, db.users.filter(u => u.active !== false).map(u => ({ id: u.id, name: u.name || u.login, role: u.role, roleLabel: D.ROLE_LABEL[u.role], section: u.section || '' })));
   const mod = MODULES.find(m => m.api === seg && moduleActive(m, site));
   if (mod) {
-    const ctx = { req, res, parts, method, body, user, db, qs, store, auth, D, today, num, pick: pickKeys, userName, modules: MODULE_BY_ID, ok: b => ok(res, b), err: (s, m) => err(res, s, m), send: (s, b, h) => send(res, s, b, h) };
+    const ctx = { req, res, site, parts, method, body, user, db, qs, store, auth, D, today, num, pick: pickKeys, userName, modules: MODULE_BY_ID, ok: b => ok(res, b), err: (s, m) => err(res, s, m), send: (s, b, h) => send(res, s, b, h) };
     ctx.emit = (name, data) => emit(ctx, name, data);
     return mod.handle(ctx);
   }
