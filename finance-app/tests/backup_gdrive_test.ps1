@@ -7,6 +7,8 @@ $Src = Join-Path $Scr 'backup-src'
 $Dest = Join-Path $Scr 'backup-dest'
 Remove-Item $Src, $Dest -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force (Join-Path $Src 'data\files') | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $Src 'data\board-files\b1') | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $Src 'data\office-files\o1') | Out-Null
 New-Item -ItemType Directory -Force $Dest | Out-Null
 
 $pass = 0; $fail = 0
@@ -29,6 +31,8 @@ db.close();
 '@ | Set-Content -Path $initJs -Encoding utf8
 node --no-warnings $initJs (Join-Path $Src 'data\db.sqlite')
 Set-Content (Join-Path $Src 'data\files\sample.pdf') 'dummy' -Encoding utf8
+Set-Content (Join-Path $Src 'data\board-files\b1\photo.jpg') 'dummy' -Encoding utf8
+Set-Content (Join-Path $Src 'data\office-files\o1\letter.pdf') 'dummy' -Encoding utf8
 Remove-Item $initJs -Force
 
 $script = Join-Path $App 'tools\backup-gdrive.ps1'
@@ -44,6 +48,8 @@ if ($zip) {
   Expand-Archive $zip.FullName -DestinationPath $Unzip
   Chk 'db.sqlite в копии' (Test-Path (Join-Path $Unzip 'db.sqlite'))
   Chk 'прикреплённый файл скопирован' (Test-Path (Join-Path $Unzip 'files\sample.pdf'))
+  Chk 'файлы модуля board скопированы' (Test-Path (Join-Path $Unzip 'board-files\b1\photo.jpg'))
+  Chk 'файлы модуля office скопированы' (Test-Path (Join-Path $Unzip 'office-files\o1\letter.pdf'))
 
   $readJs = Join-Path $Scr 'read.js'
   @'

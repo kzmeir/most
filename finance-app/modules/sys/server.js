@@ -11,6 +11,9 @@ const STALE_BACKUP_HOURS = 36;
 const BACKUP_TASK_NAME = 'MOST Финансы - бэкап';
 const TASK_CACHE_MS = 90 * 1000; // 60-120 с (координатор): execFileSync блокировал весь процесс на GET /api/sys/status
 const TASK_IDLE_STOP_MS = 10 * 60 * 1000; // таймер сам останавливается, если экран не открывали 10 минут
+// путь по умолчанию в tools/backup-gdrive.ps1 (-Dest) и install-backup-task.bat - используем, если задача
+// зарегистрирована без явного -Dest в аргументах (так было до этой правки на уже развёрнутых задачах)
+const DEFAULT_GDRIVE_DEST = 'G:\\Мой диск\\Финансы\\MOST-Финансы бэкап';
 
 function tunnelUrl(dataDir) {
   try {
@@ -32,6 +35,23 @@ function lastBackupInfo(backupDir, name) {
   } catch { return null; }
 }
 
+// ночной бэкап в Google Drive (tools/backup-gdrive.ps1 -Dest) - отдельно от локальных снимков в data\backups
+// (те делаются перед восстановлением/выкладкой, а не каждую ночь): экран «Сервис» иначе краснел бы при живом
+// ночном бэкапе, глядя только на локальную папку, где новых файлов может не появляться днями.
+function nightlyBackupInfo(destDir) {
+  try {
+    const files = fs.readdirSync(destDir).filter(f => /^MOST-Финансы_.*\.zip$/.test(f));
+    if (!files.length) return null;
+    let best = null;
+    for (const f of files) {
+      const st = fs.statSync(path.join(destDir, f));
+      if (!best || st.mtimeMs > best.mtimeMs) best = { name: f, size: st.size, mtimeMs: st.mtimeMs };
+    }
+    const ageHours = (Date.now() - best.mtimeMs) / 3600e3;
+    return { dir: destDir, name: best.name, size: best.size, mtime: new Date(best.mtimeMs).toISOString(), ageHours: Math.round(ageHours * 10) / 10, stale: ageHours > STALE_BACKUP_HOURS };
+  } catch { return null; }
+}
+
 // Get-ScheduledTaskInfo - только чтение, задачу не запускает. execFileSync блокировал бы весь процесс (в том
 // числе сайт «Финансы») до 5 с на каждый GET /api/sys/status - вместо этого фоновое обновление раз в
 // TASK_CACHE_MS через асинхронный execFile, запрос всегда читает уже готовый кэш, ничего не ждёт.
@@ -42,18 +62,36 @@ let taskCache = { status: 'checking' };
 let taskFetching = false;
 let taskTimer = null;
 let taskLastRequestAt = 0;
+// путь -Dest из аргументов самой задачи (Get-ScheduledTask, только чтение определения, не запускает) - если
+// задачу когда-то зарегистрировали без явного -Dest, здесь останется null и используется DEFAULT_GDRIVE_DEST
+let taskDestPath = null;
+function parseDest(argLine) {
+  if (!argLine) return null;
+  const m = String(argLine).match(/-Dest\s+"([^"]+)"|-Dest\s+'([^']+)'|-Dest\s+(\S+)/i);
+  return m ? (m[1] || m[2] || m[3]) : null;
+}
 function refreshScheduledTaskInfo(name) {
   if (taskFetching) return;
   taskFetching = true;
-  const ps = `try { $t = Get-ScheduledTaskInfo -TaskName '${name.replace(/'/g, "''")}' -ErrorAction Stop; ` +
-    `[PSCustomObject]@{ lastRunTime = $t.LastRunTime.ToString('o'); lastTaskResult = $t.LastTaskResult } | ConvertTo-Json -Compress } catch { '{}' }`;
+  const ps = `try { ` +
+    `$t = Get-ScheduledTaskInfo -TaskName '${name.replace(/'/g, "''")}' -ErrorAction Stop; ` +
+    `$d = Get-ScheduledTask -TaskName '${name.replace(/'/g, "''")}' -ErrorAction SilentlyContinue; ` +
+    `$args = if ($d) { ($d.Actions | Select-Object -First 1).Arguments } else { $null }; ` +
+    `[PSCustomObject]@{ lastRunTime = $t.LastRunTime.ToString('o'); lastTaskResult = $t.LastTaskResult; arguments = $args } | ConvertTo-Json -Compress ` +
+    `} catch { '{}' }`;
   execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 5000, windowsHide: true }, (error, stdout) => {
     taskFetching = false;
     if (error) { taskCache = { status: 'unavailable' }; return; }
     try {
       const out = String(stdout).trim();
       const obj = out ? JSON.parse(out) : null;
-      taskCache = obj && obj.lastRunTime ? { status: 'ok', lastRunTime: obj.lastRunTime, lastTaskResult: obj.lastTaskResult } : { status: 'unavailable' };
+      if (obj && obj.lastRunTime) {
+        taskCache = { status: 'ok', lastRunTime: obj.lastRunTime, lastTaskResult: obj.lastTaskResult };
+        const dest = parseDest(obj.arguments);
+        if (dest) taskDestPath = dest;
+      } else {
+        taskCache = { status: 'unavailable' };
+      }
     } catch { taskCache = { status: 'unavailable' }; }
   });
 }
@@ -110,6 +148,7 @@ function handle(ctx) {
     let dbSize = 0; try { dbSize = fs.statSync(st.DB_FILE).size; } catch { }
     const backups = st.listBackups();
     const lastBackup = lastBackupInfo(st.BACKUP_DIR, backups[0] && backups[0].name);
+    const nightlyBackup = nightlyBackupInfo(taskDestPath || DEFAULT_GDRIVE_DEST);
 
     const split = !process.env.DEV_USER || !!process.env.DEV_SPLIT; // логика как в server.js: SPLIT
     const enabled = new Set((db.settings.enabledModules || []));
@@ -127,6 +166,7 @@ function handle(ctx) {
       backupsDir: st.BACKUP_DIR,
       backupsCount: backups.length,
       lastBackup,
+      nightlyBackup,
       backupTask: taskCache,
       lastDeploy: deployLogTail(st.DATA_DIR, 20),
       uptimeSeconds: Math.round(process.uptime()),

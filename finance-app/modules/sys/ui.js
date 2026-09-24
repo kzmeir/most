@@ -16,9 +16,13 @@
       const st = await api('/sys/status');
       const kv = (k, v) => `<div class="kv"><span>${esc(k)}</span><b>${v}</b></div>`;
 
+      const ageChip = b => b.stale ? `<span class="chip crit">${fmtHours(b.ageHours)} назад — давно!</span>` : `<span class="chip ok">${fmtHours(b.ageHours)} назад</span>`;
+      const nightlyBlock = st.nightlyBackup
+        ? kv('Ночной бэкап (Google Drive)', `${esc(st.nightlyBackup.name)} · ${fmtSize(st.nightlyBackup.size)} · ${ageChip(st.nightlyBackup)}`)
+        : kv('Ночной бэкап (Google Drive)', '<span class="muted">не найден — папка недоступна на этом компьютере или задача ещё ни разу не отработала</span>');
       const backupBlock = st.lastBackup
-        ? kv('Последний бэкап', `${esc(st.lastBackup.name)} · ${fmtSize(st.lastBackup.size)} · ${st.lastBackup.stale ? `<span class="chip crit">${fmtHours(st.lastBackup.ageHours)} назад — давно!</span>` : `<span class="chip ok">${fmtHours(st.lastBackup.ageHours)} назад</span>`}`)
-        : kv('Последний бэкап', '<span class="chip crit">ни одного ещё не было</span>');
+        ? kv('Локальный снимок (перед восстановлением/выкладкой)', `${esc(st.lastBackup.name)} · ${fmtSize(st.lastBackup.size)} · ${ageChip(st.lastBackup)}`)
+        : kv('Локальный снимок (перед восстановлением/выкладкой)', '<span class="muted">ни одного ещё не было</span>');
       const taskBlock = st.backupTask && st.backupTask.status === 'ok'
         ? kv('Задача «MOST Финансы - бэкап»', `${fdate(st.backupTask.lastRunTime)} ${new Date(st.backupTask.lastRunTime).toLocaleTimeString('ru-RU')} · ${(() => { const r = TASK_RESULT[st.backupTask.lastTaskResult] || ['neutral', 'код ' + st.backupTask.lastTaskResult]; return `<span class="chip ${r[0]}">${esc(r[1])}</span>`; })()}`)
         : st.backupTask && st.backupTask.status === 'checking'
@@ -51,9 +55,10 @@
           ${kv('Доступ из интернета', st.tunnelUrl ? `<a href="${esc(st.tunnelUrl)}" target="_blank" rel="noopener">${esc(st.tunnelUrl)}</a>` : '<span class="muted">туннель не запущен</span>')}
           ${kv('Режим разработки', st.devMode ? '<span class="chip warn">включён — DEV_USER задан!</span>' : '<span class="chip ok">выключен</span>')}
         </div>` +
-        `<h2>Бэкапы (${st.backupsCount})</h2><div class="card">
-          ${backupBlock}
+        `<h2>Бэкапы (локальных снимков: ${st.backupsCount})</h2><div class="card">
+          ${nightlyBlock}
           ${taskBlock}
+          ${backupBlock}
         </div>` +
         deployBlock +
         `<h2>Модули</h2><div class="card">
