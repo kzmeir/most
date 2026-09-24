@@ -263,4 +263,4 @@ function handle(ctx) {
   return err(404, 'Нет такого раздела коммерции');
 }
 
-module.exports = { id: 'crm', api: 'crm', collections: ['crmLeads', 'crmPayments', 'crmTemplates'], handle, expectedPayments, on: { 'pm.item.done': onItemDone }, domain: C };
+module.exports = { id: 'crm', api: 'crm', site: 'fin', collections: ['crmLeads', 'crmPayments', 'crmTemplates'], handle, expectedPayments, on: { 'pm.item.done': onItemDone }, domain: C };

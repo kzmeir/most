@@ -35,7 +35,8 @@ const pickKeys = (o, keys) => Object.fromEntries(keys.filter(k => k in (o || {})
 const MODULE_TITLES = { pm: 'Проекты', kb: 'Знания и обучение', hr: 'Персонал и табель', crm: 'Коммерция', sys: 'Сервис' };
 const moduleOn = m => !!process.env.DEV_USER || ((store.get().settings || {}).enabledModules || []).includes(m.id);
 // сайты: 'fin' — только финансы, 'erp' — только модули, 'all' — всё вместе (режим разработки на одном порту)
-const moduleActive = (m, site) => site !== 'fin' && moduleOn(m);
+// на каком сайте модуль: m.site ('erp' по умолчанию, 'fin' — «Коммерция» у финансов, ['erp','fin'] — на обоих, например ИИ-панель)
+const moduleActive = (m, site) => (site === 'all' || [].concat(m.site || 'erp').includes(site)) && moduleOn(m); // m.site: 'erp' | 'fin' | ['erp','fin'] // 'all' — один порт в режиме разработки
 const ERP_API = ['status', 'login', 'logout', 'me', 'people']; // общее ядро, доступное на сайте ERP
 const moduleScripts = site => MODULES.filter(m => moduleActive(m, site)).flatMap(m => ['domain.js', 'ui.js'].filter(f => fs.existsSync(path.join(m.dir, f))).map(f => `<script src="/m/${m.id}/${f}"></script>`)).join('\n');
 
