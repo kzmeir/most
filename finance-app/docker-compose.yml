@@ -1,0 +1,38 @@
+# Docker для MostServer (Synology, Container Manager) и любого другого сервера с Docker.
+# Без сборки образа: код монтируется в готовый node:22-alpine (сервер без npm-зависимостей).
+# Инструкция сисадмину — docs/DEPLOY.md. Порт по умолчанию 3000 (5000/5001 заняты DSM — не трогать).
+services:
+  most-finance:
+    image: node:22-alpine
+    container_name: most-finance
+    working_dir: /app
+    command: ["node", "server.js"]
+    volumes:
+      - .:/app
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - TZ=Asia/Almaty
+      # - DATA_DIR=/app/data-prod   # раскомментируйте, если база должна лежать отдельно от кода приложения
+      # DEV_USER здесь не задавайте никогда — это отключает пароли (см. docs/DEPLOY.md)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Необязательно: постоянный адрес через Cloudflare Tunnel вместо start-internet.bat.
+  # 1) Cloudflare Zero Trust → Networks → Tunnels → Create a tunnel → скопируйте токен.
+  # 2) Публичный хост в туннеле: most-finance:3000 (имя сервиса выше в этой же docker-сети).
+  # 3) Положите токен в .env рядом с этим файлом: CLOUDFLARE_TUNNEL_TOKEN=...
+  # 4) Раскомментируйте блок ниже и выполните: docker compose up -d
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: most-finance-tunnel
+  #   command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - most-finance

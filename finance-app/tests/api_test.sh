@@ -211,6 +211,65 @@ set -- $CP1
 chk "counterparty merge" 200 "$(code -b $CA $H -X POST $B/counterparties/$1/merge -d "{\"into\":\"$2\"}")"
 chk "merged source gone" 404 "$(code -b $CA $B/counterparties/$1)"
 
+echo "== модуль pm: роли (modules/pm/domain.js PM_ROLES/canCreate/isManager) =="
+curl -s -b $CO $H -X POST $B/users -d '{"login":"gip1","password":"secret123","role":"gip","name":"ГИП"}' >/dev/null
+curl -s -b $CO $H -X POST $B/users -d '{"login":"staff1","password":"secret123","role":"staff","name":"Сотрудник"}' >/dev/null
+CG=$SCR/c_gip.txt; curl -s -c $CG $H -X POST $B/login -d '{"login":"gip1","password":"secret123"}' >/dev/null
+CT=$SCR/c_staff.txt; curl -s -c $CT $H -X POST $B/login -d '{"login":"staff1","password":"secret123"}' >/dev/null
+chk "owner pm overview 200" 200 "$(code -b $CO $B/pm/overview)"
+chk "accountant pm overview 200" 200 "$(code -b $CA $B/pm/overview)"
+chk "secretary pm overview 200" 200 "$(code -b $CS $B/pm/overview)"
+chk "pm-role pm overview 200" 200 "$(code -b $CP $B/pm/overview)"
+chk "gip pm overview 200" 200 "$(code -b $CG $B/pm/overview)"
+chk "staff pm overview 403 (не в PM_ROLES)" 403 "$(code -b $CT $B/pm/overview)"
+EP=$(curl -s -b $CG $H -X POST $B/pm/projects -d '{"track":"ep","name":"Тестовый ЭП"}')
+EPID=$(echo "$EP" | python3 -c 'import sys,json;print(json.load(sys.stdin)["project"]["id"])')
+chk "gip creates ep project" true "$([ -n "$EPID" ] && echo true || echo false)"
+chk "staff cannot create project" 403 "$(code -b $CT $H -X POST $B/pm/projects -d '{"track":"ep","name":"x"}')"
+chk "secretary cannot create project" 403 "$(code -b $CS $H -X POST $B/pm/projects -d '{"track":"ep","name":"x"}')"
+chk "author gip can edit own project" 200 "$(code -b $CG $H -X PUT "$B/pm/projects/$EPID" -d '{"comment":"ok"}')"
+chk "other pm cannot edit gip's project" 403 "$(code -b $CP $H -X PUT "$B/pm/projects/$EPID" -d '{"comment":"x"}')"
+chk "owner (leader) can delete project" 200 "$(code -b $CO $H -X DELETE "$B/pm/projects/$EPID")"
+
+echo "== закрытые коллекции модулей: общий /api/<коллекция> отдаёт 404 =="
+chk "pmProjects closed" 404 "$(code -b $CO $B/pmProjects)"
+chk "pmItems closed" 404 "$(code -b $CO $B/pmItems)"
+chk "pmBlockers closed" 404 "$(code -b $CO $B/pmBlockers)"
+chk "sysOutbox closed" 404 "$(code -b $CO $B/sysOutbox)"
+chk "hrTimesheets closed" 404 "$(code -b $CO $B/hrTimesheets)"
+chk "crmLeads closed" 404 "$(code -b $CO $B/crmLeads)"
+chk "kbNews closed" 404 "$(code -b $CO $B/kbNews)"
+
+echo "== модуль sys: /api/sys/* =="
+chk "sys status owner 200" 200 "$(code -b $CO $B/sys/status)"
+chk "sys status accountant 403" 403 "$(code -b $CA $B/sys/status)"
+chk "sys settings owner 200" 200 "$(code -b $CO $B/sys/settings)"
+chk "sys settings pm-role 403" 403 "$(code -b $CP $B/sys/settings)"
+NTF=$(curl -s -b $CO $H -X POST $B/sys/notify/test -d '{}')
+chk "sys notify test queued" 1 "$(echo "$NTF" | python3 -c 'import sys,json;print(json.load(sys.stdin)["sent"])')"
+chk "sys outbox has item" true "$(curl -s -b $CO $B/sys/outbox | python3 -c 'import sys,json;print(str(len(json.load(sys.stdin))>=1).lower())')"
+
+echo "== DEV_USER: вход без пароля только локально, никогда через туннель =="
+kill $SP 2>/dev/null; wait $SP 2>/dev/null
+rm -rf "$DATA_DIR"
+DEV_USER=pm PORT=$PORT node server.js > $SCR/server-dev.log 2>&1 &
+SP2=$!
+sleep 1.2
+chk "dev user: /me работает локально без cookie" 200 "$(code $B/me)"
+chk "cookie devrole=owner принимается" 200 "$(code -H 'Cookie: devrole=owner' $B/me)"
+OWNROLE=$(curl -s -H 'Cookie: devrole=owner' $B/me | python3 -c 'import sys,json;print(json.load(sys.stdin)["user"]["role"])')
+chk "cookie devrole переопределяет роль DEV_USER" 'owner' "$OWNROLE"
+chk "заголовок CF-Connecting-IP блокирует dev-вход" 401 "$(code -H 'CF-Connecting-IP: 1.2.3.4' $B/me)"
+chk "заголовок X-Forwarded-For блокирует dev-вход" 401 "$(code -H 'X-Forwarded-For: 1.2.3.4' $B/me)"
+kill $SP2 2>/dev/null; wait $SP2 2>/dev/null
+
+rm -rf "$DATA_DIR"
+TRUST_PROXY=1 PORT=$PORT DEV_USER=pm node server.js > $SCR/server-trust.log 2>&1 &
+SP3=$!
+sleep 1.2
+chk "TRUST_PROXY=1 (за туннелем) отключает dev-вход даже с 127.0.0.1" 401 "$(code $B/me)"
+kill $SP3 2>/dev/null; wait $SP3 2>/dev/null
+
 echo
 echo "PASS=$pass FAIL=$fail"
 kill $SP 2>/dev/null
