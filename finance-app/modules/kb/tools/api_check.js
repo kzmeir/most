@@ -20,6 +20,18 @@ async function call(role, method, path, body, section) {
   if (fs.existsSync(IMPORT)) { const imp = JSON.parse(fs.readFileSync(IMPORT, 'utf8')); const r = await call('secretary', 'POST', '/import', imp); check(r.status === 200, 'секретарь импортировал регламенты: ' + JSON.stringify(r.data)); const r2 = await call('secretary', 'POST', '/import', imp); check(r2.data && r2.data.added === 0, 'повторный импорт не дублирует'); }
   check((await call('gip', 'POST', '/import', { articles: [{ title: 'x' }] })).status === 403, 'ГИП не может импортировать');
 
+  console.log('Черновики');
+  const allOwner = (await call('owner', 'GET', '/articles')).data.items, allStaff = (await call('staff', 'GET', '/articles')).data.items;
+  const drafts = allOwner.filter(x => x.draft);
+  check(drafts.length > 0 && allStaff.every(x => !x.draft) && allStaff.length === allOwner.length - drafts.length, `черновиков ${drafts.length}: сотрудник их не видит`);
+  check((await call('staff', 'GET', '/articles/' + drafts[0].id)).status === 404, 'сотрудник не открывает черновик по ссылке');
+  check((await call('lead', 'GET', '/articles/' + drafts[0].id, null, 'АР')).status === 200, 'руководитель раздела видит черновик');
+  check((await call('secretary', 'POST', `/articles/${drafts[0].id}/approve`, { draft: false })).status === 404, 'секретарь не снимает отметку');
+  check((await call('lead', 'POST', `/articles/${drafts[0].id}/approve`, { draft: false }, 'АР')).status === 200 && (await call('staff', 'GET', '/articles/' + drafts[0].id)).status === 200, 'руководитель снял отметку — сотрудник видит');
+  await call('owner', 'POST', '/seed'); check((await call('staff', 'GET', '/articles/' + drafts[0].id)).status === 200, 'повторное наполнение не возвращает проверенное в черновики');
+  const tStaff = (await call('staff', 'GET', '/tests')).data, tOwner = (await call('owner', 'GET', '/tests')).data;
+  check(tOwner.some(x => x.draft) && tStaff.every(x => !x.draft), 'черновой тест сотрудник не видит');
+
   console.log('Новости');
   check((await call('staff', 'POST', '/news', { title: 'Нельзя' })).status === 403, 'сотрудник не публикует новости');
   const n = await call('secretary', 'POST', '/news', { title: 'Субботник', text: 'В пятницу' }); check(n.status === 200, 'секретарь опубликовал новость');

@@ -36,7 +36,8 @@
 <li>Внизу статьи — <b>файлы и ссылки</b>. Щелчок по сетевому пути (<code>\\\\MostServer\\…</code>, <code>Y:\\…</code>) копирует его: вставьте в адресную строку Проводника. Браузер сам сетевые файлы не открывает.</li>
 <li>Если к статье есть тест — кнопка «Проверить себя».</li>
 </ol>
-<p><b>Кто пишет статьи:</b> владелец, партнёр и секретарь («+ Статья», ✎ в статье). «Импорт регламентов» загружает файл, который готовит скрипт <code>modules/kb/tools/import_kb.py</code> из папки «Регламенты» на сервере. «Стартовое наполнение» (владелец и партнёр) загружает статьи бюро, документы для подписи, тесты и программу стажировки; повторное нажатие ничего не дублирует.</p>`, 'kbbase'],
+<p><b>Кто пишет статьи:</b> владелец, партнёр и секретарь («+ Статья», ✎ в статье). «Импорт регламентов» загружает файл, который готовит скрипт <code>modules/kb/tools/import_kb.py</code> из папки «Регламенты» на сервере. «Стартовое наполнение» (владелец и партнёр) загружает статьи бюро, документы для подписи, тесты и программу стажировки; повторное нажатие ничего не дублирует.</p>
+<p><b>Черновики.</b> Новые материалы, которые ещё не проверил ГИП или ГАП, помечены «черновик» — их видят только владелец, партнёр и руководители разделов. Проверили — кнопка «✓ Проверено — опубликовать» в статье (у теста — ✓ в списке), после этого материал видят все.</p>`, 'kbbase'],
     ['Обучение', `
 <p><b>Новичку.</b> Вверху — «Моё обучение»: программа, наставник и процент. Откройте её:</p>
 <ol>
@@ -107,7 +108,7 @@
         const line = raw.replace(/\s+$/, ''); if (!line.trim()) { close(); continue; }
         const h = line.match(/^(#{1,3})\s+(.*)$/); if (h) { close(); const tg = h[1].length === 1 ? 'h3' : 'h4'; out.push(`<${tg}>${inline(h[2])}</${tg}>`); continue; }
         const li = line.match(/^(\s*)[-•*]\s+(.*)$/);
-        if (li) { if (table) { out.push('</table>'); table = false; } const lvl = Math.floor(li[1].replace(/\t/g, '  ').length / 2) + 1; while (list < lvl) { out.push('<ul>'); list++; } while (list > lvl) { out.push('</ul>'); list--; } out.push(`<li>${inline(li[2])}</li>`); continue; }
+        if (li) { if (table) { out.push('</table>'); table = false; } const lvl = Math.floor(li[1].replace(/\t/g, '  ').length / 2) + 1; while (list < lvl) { out.push('<ul>'); list++; } while (list > lvl) { out.push('</ul>'); list--; } out.push(`<li>${inline(li[2].replace(/^\[[ xх]?\]\s*/i, '☐ '))}</li>`); continue; }
         if (/^\|/.test(line)) { closeList(); const first = !table; if (first) { out.push('<table>'); table = true; } const tg = first ? 'th' : 'td'; out.push('<tr>' + line.replace(/^\|\s*/, '').split('|').map(c => `<${tg}>${inline(c.trim())}</${tg}>`).join('') + '</tr>'); continue; } // первая строка таблицы — заголовок
         close(); out.push(`<p>${inline(line)}</p>`);
       }
@@ -148,7 +149,7 @@
     // ---------- база знаний ----------
     const artForm = (a = {}) => `<form class="kb-editor">
       <div class="form-row">${ui.field({ name: 'title', label: 'Заголовок', required: true }, a.title)}${ui.field({ name: 'section', label: 'Раздел', type: 'select', options: [...new Set([...S.sections, ...(a.section ? [a.section] : [])])] }, a.section || 'Регламенты')}</div>
-      ${ui.field({ name: 'tags', label: 'Теги через запятую' }, (a.tags || []).join(', '))}
+      <div class="form-row">${ui.field({ name: 'tags', label: 'Теги через запятую' }, (a.tags || []).join(', '))}${ui.field({ name: 'draft', label: 'Черновик (видят только руководители)', type: 'select', options: [['false', 'Нет — опубликовано'], ['true', 'Да — на проверке']] }, String(!!a.draft))}</div>
       <div class="field"><label>Текст</label><textarea name="text">${esc(a.text || '')}</textarea><div class="kb-hint"># Заголовок · - пункт списка (отступ 2 пробела — вложенный) · | ячейка | ячейка — таблица · **жирный**</div></div>
       <div class="field"><label>Файлы и ссылки — по строке: Название | путь \\\\MostServer\\… , Y:\\… или https://…</label><textarea name="links" rows="3">${esc((a.links || []).map(l => (l.title && l.title !== l.url ? l.title + ' | ' : '') + l.url).join('\n'))}</textarea></div>
       <div class="error"></div><button class="btn primary block" type="submit">Сохранить</button></form>`;
@@ -160,7 +161,7 @@
       const btns = (S.isLeader ? '<button class="btn" data-act="kbSeed" title="Нормы, ADSK, документы для подписи, тест по регламенту РП, программа стажировки">Стартовое наполнение</button> ' : '') + (S.canPublish ? '<button class="btn" data-act="kbImport">Импорт регламентов</button> <button class="btn primary" data-act="kbArtAdd">+ Статья</button>' : '');
       main.innerHTML = head('База знаний', 'Регламенты, гайды, стандарты Revit ADSK, нормы', btns) + tabs +
         `<div class="kb-bar"><input type="search" id="kb-q" placeholder="Поиск по названию, тегам и тексту…" value="${esc(q)}"><button class="btn" id="kb-go">Найти</button></div>` +
-        (r.items.length ? `<div class="kb-list">${r.items.map(a => `<a class="card kb-item" href="#/kbarticle?id=${a.id}"><div class="kb-meta"><span>${esc(a.section)}</span>${a.tags.map(t => `<span class="chip neutral">${esc(t)}</span>`).join('')}${a.sign ? (a.signed ? '<span class="chip ok">ознакомлен</span>' : '<span class="chip warn">нужно ознакомиться</span>') : a.read ? '<span class="chip neutral">прочитано</span>' : ''}${a.links ? `<span>📎 ${a.links}</span>` : ''}</div><b>${esc(a.title)}</b>${a.snippet ? `<div class="kb-snip">${esc(a.snippet)}</div>` : ''}</a>`).join('')}</div>` : empty(q ? 'Ничего не найдено' : 'В разделе пока нет статей'));
+        (r.items.length ? `<div class="kb-list">${r.items.map(a => `<a class="card kb-item" href="#/kbarticle?id=${a.id}"><div class="kb-meta">${a.draft ? '<span class="chip warn" title="Видят только руководители, пока проверяющий не снимет отметку">черновик</span>' : ''}<span>${esc(a.section)}</span>${a.tags.map(t => `<span class="chip neutral">${esc(t)}</span>`).join('')}${a.sign ? (a.signed ? '<span class="chip ok">ознакомлен</span>' : '<span class="chip warn">нужно ознакомиться</span>') : a.read ? '<span class="chip neutral">прочитано</span>' : ''}${a.links ? `<span>📎 ${a.links}</span>` : ''}</div><b>${esc(a.title)}</b>${a.snippet ? `<div class="kb-snip">${esc(a.snippet)}</div>` : ''}</a>`).join('')}</div>` : empty(q ? 'Ничего не найдено' : 'В разделе пока нет статей'));
       const go = () => location.hash = '#/kbbase?' + ui.qsOf({ q: $('#kb-q').value.trim(), section: sec });
       $('#kb-go').onclick = go; $('#kb-q').onkeydown = e => { if (e.key === 'Enter') go(); };
       ACT.kbArtAdd = () => artModal('Новая статья', { section: sec || 'Регламенты' }, async v => { const a = await api('/kb/articles', { method: 'POST', body: v }); toast('Сохранено'); location.hash = '#/kbarticle?id=' + a.id; });
@@ -177,10 +178,11 @@
     SECTIONS.kbarticle = section(async main => {
       const a = await api('/kb/articles/' + params().get('id'));
       if (!a.sign && !a.read) api(`/kb/articles/${a.id}/read`, { method: 'POST' }).catch(() => { }); // открыл — прочитал
-      const btns = a.canEdit ? `<button class="btn" data-act="kbArtEdit">✎ Изменить</button> <button class="btn danger" data-act="kbArtDel">✕</button>` : '';
+      const btns = (a.draft && S.canReview ? '<button class="btn primary" data-act="kbApprove" data-kind="articles" data-id="' + a.id + '">✓ Проверено — опубликовать</button> ' : '') + (a.canEdit ? `<button class="btn" data-act="kbArtEdit">✎ Изменить</button> <button class="btn danger" data-act="kbArtDel">✕</button>` : '');
+      const draftBox = a.draft ? '<div class="notice warn" style="max-width:900px;margin-bottom:12px">Черновик — на проверке у ГИП/ГАП. Сотрудники его не видят, пока руководитель не нажмёт «Проверено — опубликовать».</div>' : '';
       const signBox = a.sign ? `<div class="card" style="margin:12px 0;max-width:900px">${a.signed ? `<span class="chip ok">✓ Ознакомлен ${dt(a.signed.at)}</span>` : '<p style="margin:0 0 8px">Прочитайте документ полностью и подтвердите ознакомление. Отметка сохраняется с датой; подписанный бумажный экземпляр передайте секретарю.</p><button class="btn primary" data-act="kbSign">Ознакомлен</button>'}</div>` : '';
       main.innerHTML = head(a.title, `<a href="#/kbbase?section=${encodeURIComponent(a.section)}">${esc(a.section)}</a>${a.author ? ' · ' + esc(a.author) : ''}${a.updatedAt || a.createdAt ? ' · ' + dt(a.updatedAt || a.createdAt) : ''}`, btns) +
-        `<div class="card" style="max-width:900px">${(a.tags || []).length ? `<div class="kb-meta">${a.tags.map(t => `<a class="chip neutral" href="#/kbbase?q=${encodeURIComponent(t)}">${esc(t)}</a>`).join('')}</div>` : ''}${render(a.text)}
+        draftBox + `<div class="card" style="max-width:900px">${(a.tags || []).length ? `<div class="kb-meta">${a.tags.map(t => `<a class="chip neutral" href="#/kbbase?q=${encodeURIComponent(t)}">${esc(t)}</a>`).join('')}</div>` : ''}${render(a.text)}
         ${(a.links || []).length ? `<h4 style="margin:14px 0 6px">Файлы и ссылки</h4><ul style="margin:0;padding-left:18px">${a.links.map(l => `<li style="margin:4px 0">${linkHtml(l)}</li>`).join('')}</ul>` : ''}
         ${(a.tests || []).length ? `<h4 style="margin:14px 0 6px">Проверить себя</h4>${a.tests.map(t => `<a class="btn sm" href="#/kbtest?id=${t.id}">✔ ${esc(t.title)}</a>`).join(' ')}` : ''}</div>` + signBox +
         (a.signers ? `<h3 style="margin-top:18px">Ознакомлены (${a.signers.length})</h3>` + (a.signers.length ? tbl([{ t: 'Сотрудник' }, { t: 'Дата' }], a.signers.map(s => `<tr><td>${esc(s.name)}</td><td>${dt(s.at)}</td></tr>`)) : empty('Пока никто')) : '');
@@ -189,6 +191,8 @@
       ACT.kbArtDel = async () => { if (!confirm('Удалить статью «' + a.title + '»? Отметки о прочтении тоже удалятся.')) return; await api('/kb/articles/' + a.id, { method: 'DELETE' }); location.hash = '#/kbbase?section=' + encodeURIComponent(a.section); };
       bind(main);
     });
+
+    ACT.kbApprove = async ({ kind, id }) => { if (!confirm('Снять отметку «черновик»? Материал увидят все сотрудники.')) return; await api(`/kb/${kind}/${id}/approve`, { method: 'POST', body: { draft: false } }); toast('Опубликовано'); route(); };
 
     // ---------- ознакомление с документами ----------
     SECTIONS.kbsign = section(async main => {
@@ -204,6 +208,7 @@
       ${ui.field({ name: 'title', label: 'Название', required: true }, x.title)}
       ${ui.field({ name: 'description', label: 'Описание для сдающего', type: 'textarea' }, x.description)}
       <div class="form-row">${ui.field({ name: 'passScore', label: 'Проходной балл, %', type: 'number', min: 0 }, x.passScore ?? 80)}${ui.field({ name: 'maxAttempts', label: 'Попыток (0 — без ограничений)', type: 'number', min: 0 }, x.maxAttempts ?? 3)}</div>
+      ${ui.field({ name: 'draft', label: 'Черновик (видят только руководители)', type: 'select', options: [['false', 'Нет — опубликован'], ['true', 'Да — на проверке']] }, String(!!x.draft))}
       ${ui.field({ name: 'articleId', label: 'Статья для подготовки', type: 'select', options: [['', '—'], ...arts.map(a => [a.id, a.section + ' · ' + a.title])] }, x.articleId)}
       <div class="field"><label>Вопросы</label><div class="kb-hint">? Текст вопроса
 + правильный вариант (несколько «+» — вопрос с несколькими ответами)
@@ -223,7 +228,7 @@
         main.innerHTML = head('Тесты', '', btn) + tabs + (h.length ? tbl([{ t: 'Дата' }, { t: 'Сотрудник' }, { t: 'Тест' }, { t: 'Попытка', cls: 'num' }, { t: 'Балл', cls: 'num' }, { t: '' }], h.map(z => `<tr><td>${dt(z.at)}</td><td>${esc(z.name)}</td><td>${esc(z.test)}</td><td class="num">${z.no || ''}</td><td class="num">${z.score}% <span class="faint">(${z.right}/${z.total})</span></td><td>${z.passed ? '<span class="chip ok">сдан</span>' : '<span class="chip crit">не сдан</span>'} <a class="btn sm" href="#/kbattempt?id=${z.id}">Разбор</a></td></tr>`)) : empty('Попыток пока нет'));
       } else {
         const list = await api('/kb/tests');
-        main.innerHTML = head('Тесты', 'Проверка знаний по регламентам и гайдам', btn) + tabs + (list.length ? tbl([{ t: 'Тест' }, { t: 'Вопросов', cls: 'num' }, { t: 'Проходной', cls: 'num' }, { t: 'Мой лучший', cls: 'num' }, { t: 'Попыток' }, { t: '' }], list.map(x => `<tr><td><b>${esc(x.title)}</b>${x.description ? `<div class="faint">${esc(ui.cut(x.description, 110))}</div>` : ''}${x.takers !== undefined ? `<div class="faint">сдавали: ${x.takers} чел.</div>` : ''}</td><td class="num">${x.n}</td><td class="num">${x.passScore}%</td><td class="num">${x.best === null ? '—' : x.best + '%'} ${x.passed ? '<span class="chip ok">сдан</span>' : ''}</td><td>${x.attempts}${x.left !== null ? ` · осталось ${x.left}` : ''}</td><td><div class="actions">${x.left === 0 ? '<span class="faint">попытки исчерпаны</span>' : `<a class="btn sm primary" href="#/kbtest?id=${x.id}">${x.attempts ? 'Пересдать' : 'Пройти'}</a>`}${S.canTeach ? `<button class="btn sm" data-act="kbTestEdit" data-id="${x.id}">✎</button><button class="btn sm danger" data-act="kbTestDel" data-id="${x.id}">✕</button>` : ''}</div></td></tr>`)) : empty(S.canTeach ? 'Тестов пока нет — создайте первый' : 'Тестов пока нет'));
+        main.innerHTML = head('Тесты', 'Проверка знаний по регламентам и гайдам', btn) + tabs + (list.length ? tbl([{ t: 'Тест' }, { t: 'Вопросов', cls: 'num' }, { t: 'Проходной', cls: 'num' }, { t: 'Мой лучший', cls: 'num' }, { t: 'Попыток' }, { t: '' }], list.map(x => `<tr><td><b>${esc(x.title)}</b>${x.draft ? ' ' + '<span class="chip warn" title="Видят только руководители, пока проверяющий не снимет отметку">черновик</span>' : ''}${x.description ? `<div class="faint">${esc(ui.cut(x.description, 110))}</div>` : ''}${x.takers !== undefined ? `<div class="faint">сдавали: ${x.takers} чел.</div>` : ''}</td><td class="num">${x.n}</td><td class="num">${x.passScore}%</td><td class="num">${x.best === null ? '—' : x.best + '%'} ${x.passed ? '<span class="chip ok">сдан</span>' : ''}</td><td>${x.attempts}${x.left !== null ? ` · осталось ${x.left}` : ''}</td><td><div class="actions">${x.left === 0 ? '<span class="faint">попытки исчерпаны</span>' : `<a class="btn sm primary" href="#/kbtest?id=${x.id}">${x.attempts ? 'Пересдать' : 'Пройти'}</a>`}${x.draft && S.canReview ? `<button class="btn sm primary" data-act="kbApprove" data-kind="tests" data-id="${x.id}" title="Проверено — опубликовать">✓</button>` : ''}${S.canTeach ? `<button class="btn sm" data-act="kbTestEdit" data-id="${x.id}">✎</button><button class="btn sm danger" data-act="kbTestDel" data-id="${x.id}">✕</button>` : ''}</div></td></tr>`)) : empty(S.canTeach ? 'Тестов пока нет — создайте первый' : 'Тестов пока нет'));
       }
       ACT.kbTestAdd = () => testModal(); ACT.kbTestEdit = ({ id }) => testModal(id);
       ACT.kbTestDel = async ({ id }) => { if (!confirm('Удалить тест? История попыток сохранится.')) return; await api('/kb/tests/' + id, { method: 'DELETE' }); route(); };

@@ -90,7 +90,7 @@ def read_md(path):
     links = []
     for l in lines:
         t, _, u = l.partition('|'); links.append({'title': t.strip(), 'url': (u or t).strip()})
-    return {'section': meta.get('section', 'Регламенты'), 'title': meta['title'], 'tags': [x.strip() for x in meta.get('tags', '').split(',') if x.strip()],
+    return {'draft': meta.get('draft', '') == 'true', 'section': meta.get('section', 'Регламенты'), 'title': meta['title'], 'tags': [x.strip() for x in meta.get('tags', '').split(',') if x.strip()],
             'text': body.strip(), 'links': links, 'src': meta.get('source', ''), 'skip': [x.strip() for x in meta.get('skip', '').split(',') if x.strip()]}
 
 
@@ -105,7 +105,7 @@ def apply_content(arts, content_dir):
         for name in m['skip']:
             for a in [x for x in arts if base(x) == name]: extra_links += a['links']; arts.remove(a)
         raw = next((a for a in arts if m['src'] and base(a) == m['src']), None)
-        art = {'section': m['section'], 'title': m['title'], 'text': m['text'], 'tags': m['tags'], 'links': m['links'] + (raw['links'] if raw else []) + extra_links, 'source': raw['source'] if raw else ''}
+        art = {'draft': m['draft'], 'section': m['section'], 'title': m['title'], 'text': m['text'], 'tags': m['tags'], 'links': m['links'] + (raw['links'] if raw else []) + extra_links, 'source': raw['source'] if raw else ''}
         if raw: arts[arts.index(raw)] = art
         else: arts.append(art)
     return arts
