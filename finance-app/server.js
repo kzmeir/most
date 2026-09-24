@@ -30,7 +30,10 @@ store.register([...MODULE_COLS]);
 function emit(ctx, name, data) { for (const m of MODULES) { const h = m.on && m.on[name]; if (h) { try { h(Object.assign({}, ctx, { module: m.id }), data); } catch (e) { console.error(`[${m.id}] ${name}:`, e.message); } } } }
 const pickKeys = (o, keys) => Object.fromEntries(keys.filter(k => k in (o || {})).map(k => [k, o[k]]));
 // скрипты модулей для браузера: /m/<id>/domain.js, /m/<id>/ui.js (подключаются в index.html перед app.js)
-const moduleScripts = () => MODULES.flatMap(m => ['domain.js', 'ui.js'].filter(f => fs.existsSync(path.join(m.dir, f))).map(f => `<script src="/m/${m.id}/${f}"></script>`)).join('\n');
+// какие модули включены на этом сервере: «Настройки → Модули» (settings.enabledModules); в режиме разработки — все
+const MODULE_TITLES = { pm: 'Проекты', kb: 'Знания и обучение', hr: 'Персонал и табель', crm: 'Коммерция', sys: 'Сервис' };
+const moduleOn = m => !!process.env.DEV_USER || ((store.get().settings || {}).enabledModules || []).includes(m.id);
+const moduleScripts = () => MODULES.filter(moduleOn).flatMap(m => ['domain.js', 'ui.js'].filter(f => fs.existsSync(path.join(m.dir, f))).map(f => `<script src="/m/${m.id}/${f}"></script>`)).join('\n');
 
 store.load();
 
@@ -107,7 +110,7 @@ async function api(req, res, url, user) {
   const qs = Object.fromEntries(url.searchParams.entries());
 
   // --- public ---
-  if (seg === 'status' && method === 'GET') return ok(res, { publicUrl: publicUrl(), needsSetup: db.users.length === 0 && !DEV_ROLE, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0' });
+  if (seg === 'status' && method === 'GET') return ok(res, { publicUrl: publicUrl(), needsSetup: db.users.length === 0 && !DEV_ROLE, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0', modules: MODULES.map(m => ({ id: m.id, title: MODULE_TITLES[m.id] || m.id, on: moduleOn(m) })) });
   if (seg === 'setup' && method === 'POST') {
     if (db.users.length) return err(res, 403, 'Уже настроено');
     if (!body.login || !body.password || String(body.password).length < 6) return err(res, 400, 'Логин и пароль (мин. 6 символов)');
@@ -132,7 +135,7 @@ async function api(req, res, url, user) {
   if (!user) return err(res, 401, 'Не авторизован');
   const role = user.role;
   if (seg === 'people' && method === 'GET') return ok(res, db.users.filter(u => u.active !== false).map(u => ({ id: u.id, name: u.name || u.login, role: u.role, roleLabel: D.ROLE_LABEL[u.role], section: u.section || '' })));
-  const mod = MODULES.find(m => m.api === seg);
+  const mod = MODULES.find(m => m.api === seg && moduleOn(m));
   if (mod) {
     const ctx = { req, res, parts, method, body, user, db, qs, store, auth, D, today, num, pick: pickKeys, userName, modules: MODULE_BY_ID, ok: b => ok(res, b), err: (s, m) => err(res, s, m), send: (s, b, h) => send(res, s, b, h) };
     ctx.emit = (name, data) => emit(ctx, name, data);
