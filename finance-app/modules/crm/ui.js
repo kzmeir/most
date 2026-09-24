@@ -31,6 +31,7 @@
 <ul>
 <li>Кнопки статусов переводят лид по воронке; для <b>отказа</b> обязательна причина — из них строится аналитика.</li>
 <li><b>Договор подписан</b> (руководитель): № и дата договора, компания, сумма, связь с договором из реестра «Финансов» (если он уже заведён). Затем — создать новый проект в «Проектах» (стадия берётся из лида, назначьте ПМ/ГИП и даты) или привязать существующий. Автоматически создаётся график платежей по шаблону стадии.</li>
+<li><b>📄 КП (.docx)</b> — коммерческое предложение в Word по шаблону MOST: шапка компании, объект, база расчёта (площади и коэффициенты), стоимость со ставкой ₸/м², НДС — <b>как выбрано явно</b> (ставка с НДС или без), этапы и доли оплаты (ЭП — концепт-проект 20 % / ЭП 80 %, РП — 30/30/30/10), что не входит, состав работ, сроки, условия, подпись директора без печати — место «М.П.». «Пересчитать» показывает итог без сохранения; «Сохранить и скачать» присваивает номер (КП-26-015), пишет дату, площадь, ставку и сумму в лид и сохраняет редакцию — все редакции видны в карточке и скачиваются повторно.</li>
 <li>После подписания в карточке виден график платежей и ссылка на проект. «Коммерция» работает на сайте «Финансы», а карточка проекта открывается в новой вкладке на сайте MOST ERP.</li>
 </ul>`],
     ['График платежей', `
@@ -64,7 +65,7 @@
 .crm-deal{padding:0;margin-bottom:14px}.crm-deal>.h{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}.crm-deal>.h .grow{flex:1;min-width:200px}.crm-deal .tbl{border:0;box-shadow:none;border-radius:0 0 var(--r) var(--r)}
 .crm-sched td input,.crm-sched td select{width:100%;min-width:60px}.crm-sched td{padding:4px}
 .crm-bars .r{display:grid;grid-template-columns:130px 1fr 110px;gap:8px;align-items:center;font-size:13px;margin-bottom:6px}
-.crm-fields{font-size:12px;color:var(--ink-soft);columns:2;margin:6px 0 10px}.crm-fields code{font-size:11.5px}
+.crm-kpv{font-size:12.5px;margin-bottom:4px}.crm-fields{font-size:12px;color:var(--ink-soft);columns:2;margin:6px 0 10px}.crm-fields code{font-size:11.5px}
 </style>`);
 
     // ---- общие помощники ----
@@ -116,6 +117,41 @@
     };
 
     // ---- «Договор подписан» ----
+    // ---- КП в Word по шаблону MOST ----
+    const lines = t => String(t || '').split('\n').map(x => x.trim()).filter(Boolean);
+    const cols = t => lines(t).map(x => x.split('|').map(y => y.trim()));
+    const numv = v => Number(String(v == null ? '' : v).replace(/\s/g, '').replace('%', '').replace(',', '.')) || 0;
+    const kpToForm = p => ({ company: p.company, object: p.object, client: p.client, address: p.address, subject: p.subject, stage: p.stage, rate: p.rate, vatIncluded: p.vatIncluded ? 'true' : 'false',
+      areas: p.areas.map(a => `${a.name} | ${a.area} | ${a.k}`).join('\n'), stages: p.stages.map(x => [x.name, x.share, x.term].filter((v, i) => i < 2 || v).join(' | ')).join('\n'),
+      terms: p.terms.map(x => `${x.name} | ${x.term}`).join('\n'), termsNote: p.termsNote, scope: p.scope.map(([t, it]) => ['# ' + t, ...it].join('\n')).join('\n'),
+      excluded: p.excluded.map(([a, b]) => `${a} | ${b}`).join('\n'), conditions: p.conditions.join('\n') });
+    const kpFromForm = v => { const scope = []; for (const x of lines(v.scope)) { if (x.startsWith('#')) scope.push([x.replace(/^#+\s*/, ''), []]); else { if (!scope.length) scope.push(['', []]); scope[scope.length - 1][1].push(x.replace(/^[—–-]\s*/, '')); } }
+      return { company: v.company, object: v.object, client: v.client, address: v.address, subject: v.subject, stage: v.stage, rate: numv(v.rate), vatIncluded: v.vatIncluded === 'true' ? true : v.vatIncluded === 'false' ? false : null,
+        areas: cols(v.areas).map(([name, area, k]) => ({ name, area: numv(area), k: numv(k) || 1 })), stages: cols(v.stages).map(([name, share, term]) => ({ name, share: numv(share), term: term || '' })),
+        terms: cols(v.terms).map(([name, term]) => ({ name, term: term || '' })), termsNote: v.termsNote || '', scope, excluded: cols(v.excluded).map(([a, b]) => [a, b || '']), conditions: lines(v.conditions) }; };
+    const kpHref = (l, v) => `/api/crm/leads/${encodeURIComponent(l.id)}/kp/${v}/docx`;
+    const kpVersions = (l, vs) => vs && vs.length ? vs.slice().reverse().map(v => `<div class="crm-kpv"><a href="${kpHref(l, v.v)}" title="Скачать эту редакцию">⬇ ${esc(v.no)} ред. ${v.v}</a> · ${fdate(v.date)} · ${money(v.cost)} ${v.vatIncluded ? 'с НДС' : 'без НДС'} <span class="faint">(с НДС ${money(v.gross)}; ${mln(v.area)} м² × ${mln(v.rate)} ₸)</span></div>`).join('') : '<div class="faint">КП ещё не формировалось</div>';
+    const kpCalcHtml = c => `<div class="card" style="margin:8px 0">${c.problems.length ? `<div class="crit-text" style="margin-bottom:6px">${esc(c.problems.join('; '))}</div>` : ''}<div class="kv"><span>Площадь</span><b>${mln(c.area)} м²</b><span>Стоимость ${esc(c.vatTag)}</span><b>${money(c.cost)}</b><span>Без НДС / НДС</span><b>${money(c.net)} / ${money(c.vat)}</b><span>Итого с НДС</span><b>${money(c.gross)}</b>${c.stages.map(x => `<span>${esc(x.name)} — ${x.share} %</span><b>${money(x.gross)} с НДС</b>`).join('')}</div></div>`;
+    const kpDialog = async l => {
+      const d = await api(`/crm/leads/${encodeURIComponent(l.id)}/kp`); const f = kpToForm(d.params); const hasKp = (d.versions || []).length > 0; // НДС в первый раз выбирается явно, дальше — как в прошлой редакции
+      const ta = (name, label, rows, hint) => `<div class="field"><label>${esc(label)}${hint ? ` <span class="faint">${esc(hint)}</span>` : ''}</label><textarea name="${name}" rows="${rows}">${esc(f[name] || '')}</textarea></div>`;
+      const inp = (name, label) => `<div class="field"><label>${esc(label)}</label><input name="${name}" value="${esc(f[name] == null ? '' : f[name])}"></div>`;
+      modal(`КП в Word · ${l.client || l.object}${d.no ? ' · ' + d.no : ''}`, `<form>
+<div class="form-row"><div class="field"><label>Компания-исполнитель</label>${sel('crm-kp-co', d.companies, f.company)}</div><div class="field"><label>НДС — как указано в ставке <b class="crit-text">*</b></label><select name="vatIncluded" required><option value="">— выберите явно —</option><option value="false"${hasKp && f.vatIncluded === 'false' ? ' selected' : ''}>Ставка без НДС (НДС сверху)</option><option value="true"${hasKp && f.vatIncluded === 'true' ? ' selected' : ''}>Ставка с НДС (НДС внутри)</option></select></div></div>
+<div class="form-row">${inp('object', 'Объект')}${inp('rate', 'Ставка, ₸/м²')}</div><div class="form-row">${inp('client', 'Заказчик')}${inp('address', 'Адрес')}</div><div class="form-row">${inp('subject', 'Предмет (строка под заголовком)')}${inp('stage', 'Стадия')}</div>
+${ta('areas', 'Площади', 3, 'название | м² | коэф.')}${ta('stages', 'Этапы и доли оплаты', 4, 'название | доля % | срок — сумма долей 100 %')}${ta('terms', 'Сроки (если отдельно от оплаты)', 3, 'этап | срок')}${ta('termsNote', 'Примечание к срокам', 2)}
+${ta('scope', 'Состав работ', 8, '# группа, далее пункты — по строке')}${ta('excluded', 'Не входит в стоимость', 4, 'наименование | условие')}${ta('conditions', 'Условия', 3, 'по строке')}
+<div id="crm-kp-calc">${kpCalcHtml(d.calc)}</div><div class="error"></div>
+<div class="actions"><button type="button" class="btn" id="crm-kp-recalc">Пересчитать</button><button type="submit" class="btn primary">Сохранить и скачать КП (.docx)</button></div>
+<div class="label" style="margin-top:12px">Редакции КП</div>${kpVersions(l, d.versions)}<p class="faint" style="margin-top:8px">Печать и подпись не вставляются — в документе место «М.П.». Номер КП присваивается при первом сохранении, каждое изменение — новая редакция.</p></form>`);
+      $('#modal .modal-card').style.maxWidth = '900px';
+      const form = $('#modal-body form'); const read = () => Object.assign(Object.fromEntries(new FormData(form).entries()), { company: $('#crm-kp-co').value });
+      $('#crm-kp-recalc').onclick = async () => { try { const r = await api(`/crm/leads/${encodeURIComponent(l.id)}/kp/calc`, { method: 'POST', body: { params: kpFromForm(read()) } }); $('#crm-kp-calc').innerHTML = kpCalcHtml(r.calc); form.querySelector('.error').textContent = ''; } catch (e) { form.querySelector('.error').textContent = e.message; } };
+      form.onsubmit = async e => { e.preventDefault(); const v = read(); if (!v.vatIncluded) { form.querySelector('.error').textContent = 'Укажите явно: ставка с НДС или без НДС'; return; }
+        try { const r = await api(`/crm/leads/${encodeURIComponent(l.id)}/kp`, { method: 'POST', body: { params: kpFromForm(v) } }); const a = document.createElement('a'); a.href = kpHref(l, r.v); document.body.appendChild(a); a.click(); a.remove(); closeModal(); toast(r.reused ? `Без изменений — скачана редакция ${r.v}` : `${r.no} ред. ${r.v} сохранено`, 4000); rerender(); } catch (er) { form.querySelector('.error').textContent = er.message; } };
+    };
+
+
     const signLead = async l => {
       const m = await meta(true); const lead = ['owner', 'partner', 'pm', 'gip'];
       const f = [
@@ -220,7 +256,7 @@
       const names = l.stageNames || []; DEALS = { [l.id]: { deal: l, names } };
       const kv = (k, v) => v ? `<b>${esc(k)}</b><span>${v}</span>` : '';
       const next = m.statuses.filter(s => s !== l.status && s !== 'Договор');
-      const btns = [l.canEdit ? `<button class="btn" data-act="crmEditLead">✎ Изменить</button>` : '', m.rights.docs ? `<a class="btn" href="#/crmdocs?lead=${encodeURIComponent(l.id)}">📝 Документы</a>` : '', m.rights.sign && l.status !== 'Договор' ? `<button class="btn primary" data-act="crmSign">✓ Договор подписан</button>` : ''].join('');
+      const btns = [l.canEdit ? `<button class="btn" data-act="crmEditLead">✎ Изменить</button>` : '', l.canEdit ? `<button class="btn" data-act="crmKp" title="Коммерческое предложение в Word по шаблону MOST">📄 КП (.docx)</button>` : '', m.rights.docs ? `<a class="btn" href="#/crmdocs?lead=${encodeURIComponent(l.id)}">📝 Документы</a>` : '', m.rights.sign && l.status !== 'Договор' ? `<button class="btn primary" data-act="crmSign">✓ Договор подписан</button>` : ''].join('');
       const stBtns = l.canEdit && (l.status !== 'Договор' || m.rights.leader) ? `<div class="actions" style="margin:0 0 14px;flex-wrap:wrap">${next.map(s => `<button class="btn sm${s === 'Отказ' ? ' danger' : ''}" data-act="crmSt" data-st="${esc(s)}">→ ${esc(s)}</button>`).join('')}</div>` : '';
       main.innerHTML = head(`${l.client || '—'} · ${l.object || ''}`, `Лид № ${l.no} · ${chip(l.status, ST_CHIP)} · ${esc(TRACK(l.track))} · <a href="#/crmleads">← к воронке</a>`, btns) + stBtns +
         `<div class="grid g2"><div class="card"><div class="crm-kv">
@@ -231,9 +267,9 @@ ${kv('Источник', esc(l.source))}${kv('Ответственный', esc(l
 ${kv('Отказ', l.status === 'Отказ' ? esc([l.reason, l.reasonNote].filter(Boolean).join(': ')) : '')}${kv('КП', l.proposal ? `${esc(l.proposal.title)} · ${money(l.proposal.sum)} · ${esc(l.proposal.status)}` : '')}
 ${kv('Договор', l.contractNo || l.contract ? `№ ${esc(l.contractNo || '—')} от ${fdate(l.contractDate)} · ${esc(l.company || '')}${l.contract ? ` <span class="faint">(реестр: ${esc(l.contract.name)})</span>` : ''}` : '')}
 ${kv('Проект', l.pm ? `${pmpLink(l.pm.id, `${esc(TRACK(l.pm.track))} · ${esc(l.pm.name)}`)} · ${esc(l.pm.status)}` : '')}${kv('Заметка', esc(l.note))}
-</div></div><div class="card"><div class="label">История</div><ol class="crm-hist">${(l.history || []).slice().reverse().map(h => `<li>${fdate(h.at)} · <b>${esc(h.status)}</b>${h.note ? ' — ' + esc(h.note) : ''} <span class="faint">${esc(h.byName || '')}</span></li>`).join('') || '<li>—</li>'}</ol></div></div>` +
+</div></div><div class="card"><div class="label">Коммерческое предложение${l.kpNo ? ' · ' + esc(l.kpNo) : ''}</div>${kpVersions(l, l.kpVersions)}<div class="label" style="margin-top:12px">История</div><ol class="crm-hist">${(l.history || []).slice().reverse().map(h => `<li>${fdate(h.at)} · <b>${esc(h.status)}</b>${h.note ? ' — ' + esc(h.note) : ''} <span class="faint">${esc(h.byName || '')}</span></li>`).join('') || '<li>—</li>'}</ol></div></div>` +
         (m.rights.payments && (l.status === 'Договор' || (l.payments || []).length) ? `<h2>График платежей</h2><div class="actions" style="margin-bottom:8px"><button class="btn sm" data-act="crmSched" data-id="${l.id}">Изменить график</button><button class="btn sm" data-act="crmPayAdd" data-id="${l.id}">+ платёж</button><button class="btn sm" data-act="crmLink" data-id="${l.id}">Проект…</button>${m.rights.leader ? '<button class="btn sm danger" data-act="crmDelLead">Удалить лид</button>' : ''}</div>` + payTable(l, names) : (m.rights.leader ? `<div class="actions" style="margin-top:14px"><button class="btn sm danger" data-act="crmDelLead">Удалить лид</button></div>` : ''));
-      ui.ACT.crmEditLead = () => editLead(l); ui.ACT.crmSt = ({ st }) => setStatus(l, st); ui.ACT.crmSign = () => signLead(l);
+      ui.ACT.crmKp = () => kpDialog(l); ui.ACT.crmEditLead = () => editLead(l); ui.ACT.crmSt = ({ st }) => setStatus(l, st); ui.ACT.crmSign = () => signLead(l);
       ui.ACT.crmDelLead = async () => { if (!confirm('Удалить лид вместе с графиком платежей?')) return; await api('/crm/leads/' + l.id, { method: 'DELETE' }); toast('Удалено'); location.hash = '#/crmleads'; };
       bind(main);
     };
