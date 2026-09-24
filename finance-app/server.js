@@ -16,7 +16,7 @@ const SEED_DIR = path.join(__dirname, 'seed');
 const FILES_DIR = path.join(store.DATA_DIR, 'files'); // файлы счетов (PDF/картинки)
 const FILE_TYPES = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
 const FILE_COLS = ['invoices', 'docs', 'contracts', 'subcontracts', 'proposals']; // где можно прикрепить файл
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.woff2': 'font/woff2', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
 const MAX_OPS = 3000;
 
 // ---------- модули ERP: modules/<id>/server.js (API + коллекции), domain.js и ui.js (браузер). Контракт — docs/ARCHITECTURE.md ----------
@@ -360,6 +360,8 @@ function serveStatic(req, res, url, site) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/' || !path.extname(p)) p = '/index.html';
   if (p === '/index.html') { const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8').replace('<script src="/app.js"></script>', `<script>window.MOST_SITE = '${site}';</script>\n` + moduleScripts(site) + '\n<script src="/app.js"></script>'); const page = site === 'erp' ? html.replace('<title>MOST Финансы</title>', '<title>MOST ERP</title>') : html; res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' }); return res.end(page); }
+  // статика модуля: /m/<id>/assets/<файл> из modules/<id>/assets/ (например, локальная копия pdf.js для доски)
+  const ma = p.match(/^\/m\/([a-z][a-z0-9]*)\/assets\/([\w.-]+)$/); if (ma && MODULE_BY_ID[ma[1]] && moduleActive(MODULE_BY_ID[ma[1]], site) && !ma[2].startsWith('.')) { const file = path.join(MODULE_BY_ID[ma[1]].dir, 'assets', ma[2]); if (fs.existsSync(file) && fs.statSync(file).isFile()) { res.writeHead(200, { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' }); return res.end(fs.readFileSync(file)); } return err(res, 404, 'not found'); }
   const mm = p.match(/^\/m\/([a-z][a-z0-9]*)\/(domain|ui)\.js$/); if (mm && MODULE_BY_ID[mm[1]] && moduleActive(MODULE_BY_ID[mm[1]], site)) { const file = path.join(MODULE_BY_ID[mm[1]].dir, mm[2] + '.js'); if (fs.existsSync(file)) { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(file)); } return err(res, 404, 'not found'); }
   if (p === '/statement.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'statement.js'))); }
   if (p === '/help.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'help.js'))); }
