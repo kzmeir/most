@@ -1,23 +1,43 @@
-// Проверка API «Знаний» разными ролями на тестовом сервере (DEV_USER). Запуск:
-//   set DATA_DIR=data-dev\kb& set DEV_USER=owner& set PORT=3104& node server.js
-//   node modules/kb/tools/api_check.js [http://localhost:3104] [путь к kb-import.json]
-// Роли переключаются cookie devrole/devsection. В базе должны быть пользователи dev-staff (АР), u-kj (КЖ) — см. README.
+// Самодостаточная проверка API «Знаний» разными ролями. Запуск из любой папки:
+//   node modules/kb/tools/api_check.js                  — сам поднимает сервер на пустой временной базе (порт 3194), проверяет и удаляет базу
+//   node modules/kb/tools/api_check.js http://host:port — проверить уже запущенный сервер (нужна чистая база с теми же пользователями)
+// Роли переключаются cookie devrole/devsection (режим DEV_USER). Тестовые пользователи создаются в db.json временной базы;
+// их id совпадают с входом DEV_USER (dev-<роль>), поэтому у dev-ролей есть имена и разделы. Рабочую базу не трогает.
 'use strict';
 const fs = require('fs');
-const BASE = process.argv[2] || 'http://localhost:3104';
-const IMPORT = process.argv[3] || 'data-dev/kb/kb-import.json';
+const os = require('os');
+const path = require('path');
+const { spawn } = require('child_process');
+const ROOT = path.resolve(__dirname, '..', '..', '..'); // finance-app
+const PORT = 3194;
+const EXTERNAL = process.argv[2] || '';
+const BASE = EXTERNAL || `http://127.0.0.1:${PORT}`;
+const IMPORT = process.argv[3] || path.join(ROOT, 'data-dev', 'kb', 'kb-import.json'); // выгрузка import_kb.py, если есть
+const USERS = [['dev-owner', 'owner', 'Владелец (тест)', ''], ['dev-partner', 'partner', 'Партнёр (тест)', ''], ['dev-secretary', 'secretary', 'Секретарь (тест)', ''], ['dev-gip', 'gip', 'ГИП (тест)', ''],
+  ['dev-lead', 'lead', 'Руководитель АР (тест)', 'АР'], ['dev-staff', 'staff', 'Новичок АР (тест)', 'АР'], ['u-kj', 'staff', 'Новичок КЖ (тест)', 'КЖ']];
 let fails = 0;
 const check = (cond, msg) => { console.log((cond ? '  ok  ' : '  FAIL') + ' ' + msg); if (!cond) fails++; };
-async function call(role, method, path, body, section) {
-  const r = await fetch(BASE + '/api/kb' + path, { method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: `devrole=${role}` + (section ? `; devsection=${encodeURIComponent(section)}` : '') }, body: body ? JSON.stringify(body) : undefined });
+async function call(role, method, p, body, section) {
+  const r = await fetch(BASE + '/api/kb' + p, { method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch', Cookie: `devrole=${role}` + (section ? `; devsection=${encodeURIComponent(section)}` : '') }, body: body ? JSON.stringify(body) : undefined });
   const data = await r.json().catch(() => null); return { status: r.status, data };
 }
+// временный сервер: пустая база с тестовыми пользователями → node server.js (DEV_USER=owner) → ждём /api/status
+async function startServer() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'most-kb-check-'));
+  fs.writeFileSync(path.join(dir, 'db.json'), JSON.stringify({ users: USERS.map(([id, role, name, section]) => ({ id, login: id, name, role, section, active: true })) }));
+  const env = Object.assign({}, process.env, { DATA_DIR: dir, DEV_USER: 'owner', PORT: String(PORT) }); delete env.DEV_SPLIT; delete env.ERP_PORT; delete env.TRUST_PROXY;
+  const proc = spawn(process.execPath, ['server.js'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
+  for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 250)); try { if ((await fetch(BASE + '/api/status')).ok) return { proc, dir }; } catch { } if (proc.exitCode !== null) break; }
+  proc.kill(); throw new Error(`Сервер не запустился на порту ${PORT}:\n${log}`);
+}
+function stopServer(srv) { if (!srv) return; try { srv.proc.kill(); } catch { } setTimeout(() => { try { fs.rmSync(srv.dir, { recursive: true, force: true }); } catch { } }, 500); }
 
-(async () => {
+async function main() {
   console.log('Стартовое наполнение и импорт');
   check((await call('staff', 'POST', '/seed')).status === 403, 'сотрудник не может загрузить стартовое наполнение');
   const seed = await call('owner', 'POST', '/seed'); check(seed.status === 200, 'владелец загрузил стартовое: ' + JSON.stringify(seed.data));
-  if (fs.existsSync(IMPORT)) { const imp = JSON.parse(fs.readFileSync(IMPORT, 'utf8')); const r = await call('secretary', 'POST', '/import', imp); check(r.status === 200, 'секретарь импортировал регламенты: ' + JSON.stringify(r.data)); const r2 = await call('secretary', 'POST', '/import', imp); check(r2.data && r2.data.added === 0, 'повторный импорт не дублирует'); }
+  { const imp = fs.existsSync(IMPORT) ? JSON.parse(fs.readFileSync(IMPORT, 'utf8')) : { articles: [{ section: 'Регламенты', title: 'Проверочная статья импорта', text: 'Текст', source: 'check.docx', draft: true }] }; const r = await call('secretary', 'POST', '/import', imp); check(r.status === 200, 'секретарь импортировал регламенты: ' + JSON.stringify(r.data)); const r2 = await call('secretary', 'POST', '/import', imp); check(r2.data && r2.data.added === 0, 'повторный импорт не дублирует'); }
   check((await call('gip', 'POST', '/import', { articles: [{ title: 'x' }] })).status === 403, 'ГИП не может импортировать');
 
   console.log('Черновики');
@@ -74,5 +94,13 @@ async function call(role, method, path, body, section) {
   check((await call('gip', 'GET', '/enrolls/' + en.data.id)).status === 404, 'посторонний ГИП не видит карточку');
   check((await call('gip', 'PUT', `/enrolls/${en.data.id}/steps/${task.id}`, { done: false })).status === 404, 'посторонний не отмечает шаги');
 
-  console.log(fails ? `\nОшибок: ${fails}` : '\nВсе проверки пройдены'); process.exit(fails ? 1 : 0);
-})().catch(e => { console.error(e); process.exit(2); });
+}
+
+(async () => {
+  let srv = null;
+  try { if (!EXTERNAL) srv = await startServer(); await main(); }
+  catch (e) { console.error(e); fails = fails || 1; }
+  finally { stopServer(srv); }
+  console.log(fails ? `\nОшибок: ${fails}` : '\nВсе проверки пройдены');
+  setTimeout(() => process.exit(fails ? 1 : 0), 700);
+})();
