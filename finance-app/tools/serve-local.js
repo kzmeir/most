@@ -36,6 +36,11 @@ function write(line) {
 rotate();
 setInterval(rotate, 6 * 3600e3).unref(); // раз в 6 часов — на случай, если процесс живёт сутками без перезапуска
 
+// pid самой обёртки — для tools/deploy-to-server.ps1: так он отличает "родитель — эта обёртка" от
+// случайно совпавшего по имени node.exe (CommandLine чужого процесса не всегда читается кросс-сессийно)
+try { fs.writeFileSync(path.join(LOG_DIR, 'serve-local.pid'), String(process.pid), 'utf8'); } catch { }
+write(`serve-local.js: обёртка запущена, pid=${process.pid}`);
+
 let delay = 2000;
 function start() {
   write('server: запуск');
