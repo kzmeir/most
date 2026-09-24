@@ -75,12 +75,12 @@ async function boot() {
 }
 async function loadRefs() {
   try { state.people = await api('/people'); } catch { state.people = []; }
-  try { state.projects = canR('projects') ? await api('/projects') : []; } catch { state.projects = []; }
-  try { state.counterparties = canR('counterparties') ? await api('/counterparties') : []; } catch { state.counterparties = []; }
+  try { state.projects = SITE !== 'erp' && canR('projects') ? await api('/projects') : []; } catch { state.projects = []; }
+  try { state.counterparties = SITE !== 'erp' && canR('counterparties') ? await api('/counterparties') : []; } catch { state.counterparties = []; }
   if (isAdmin()) {
     try { state.settings = await api('/settings'); } catch { }
-    try { state.accounts = await api('/accounts'); } catch { state.accounts = []; }
-    try { state.categories = await api('/categories'); } catch { state.categories = []; }
+    if (SITE !== 'erp') { try { state.accounts = await api('/accounts'); } catch { state.accounts = []; } }
+    if (SITE !== 'erp') { try { state.categories = await api('/categories'); } catch { state.categories = []; } }
   }
 }
 async function afterLogin() { await loadRefs(); renderApp(); }
@@ -121,19 +121,21 @@ const NAV = [
 const BADGES = {};
 let CUR_MOD = null;
 function setBadge(id, n) { BADGES[id] = Number(n) || 0; const b = document.getElementById('badge-' + id); if (b) { b.textContent = BADGES[id] || ''; b.hidden = !BADGES[id]; } }
-const MODS = [{ id: 'fin', title: 'Финансы', nav: NAV.filter(n => !n.any), routes: ['project'], canOpen: () => true }];
+// сайт: 'fin' — «Финансы», 'erp' — «MOST ERP» (только модули), 'all' — всё (режим разработки)
+const SITE = window.MOST_SITE || 'fin';
+const MODS = SITE === 'erp' ? [] : [{ id: 'fin', title: 'Финансы', nav: NAV.filter(n => !n.any), routes: ['project'], canOpen: () => true }];
 const finNavOk = n => n.dash ? window.MostDomain.canDashboard(state.user.role) : n.col ? canR(n.col) : (!n.admin || isAdmin());
 const modNav = m => m.id === 'fin' ? m.nav.filter(finNavOk) : (m.nav || []).filter(n => !n.can || n.can(state.user));
 const visibleMods = () => MODS.filter(m => { try { return m.canOpen(state.user) && modNav(m).length; } catch { return false; } });
 const modOf = id => visibleMods().find(m => modNav(m).some(n => n.id === id) || (m.routes || []).includes(id));
 const navAll = () => [...visibleMods().flatMap(modNav), NAV.find(n => n.id === 'help')];
 function drawNav(id) {
-  const mods = visibleMods(); const cur = modOf(id) || (mods.includes(CUR_MOD) ? CUR_MOD : null) || mods[0] || MODS[0]; CUR_MOD = cur; // «Инструкция» и общие разделы — в текущем модуле
+  const mods = visibleMods(); const cur = modOf(id) || (mods.includes(CUR_MOD) ? CUR_MOD : null) || mods[0] || null; CUR_MOD = cur; // «Инструкция» и общие разделы — в текущем модуле
   const sw = mods.length > 1 ? `<div class="modsw">${mods.map(m => `<a href="#/${modNav(m)[0].id}" class="${m === cur ? 'active' : ''}">${esc(m.title)}</a>`).join('')}</div>` : '';
-  const items = [...modNav(cur), NAV.find(n => n.id === 'help')];
+  const items = [...(cur ? modNav(cur) : []), NAV.find(n => n.id === 'help')];
   $('#nav').innerHTML = sw + items.map(n => `<a href="#/${n.id}" data-id="${n.id}"${n.id === id ? ' class="active"' : ''}><span>${n.icon || '•'}</span>${esc(n.label)}<span class="badge" id="badge-${n.id}"${BADGES[n.id] ? '' : ' hidden'}>${BADGES[n.id] || ''}</span></a>`).join('');
   for (const m of mods) if (m.onNav) { try { m.onNav(UI, id); } catch (e) { console.error('onNav ' + m.id, e); } }
-  const bs = $('.side .brand small'); if (bs) bs.textContent = cur.title.toLowerCase();
+  const bs = $('.side .brand small'); if (bs) bs.textContent = cur ? cur.title.toLowerCase() : (SITE === 'erp' ? 'erp' : 'финансы');
 }
 function renderApp() {
   const nav = navAll();
@@ -147,7 +149,7 @@ function renderApp() {
   refreshBadge();
 }
 function refreshCpList() { const d = $('#dl-cp'); if (d) d.innerHTML = (state.counterparties || []).map(c => `<option value="${esc(c.name)}">${esc(c.short || '')}</option>`).join(''); const dp = $('#dl-projects'); if (dp) dp.innerHTML = (state.projects || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''); }
-async function refreshBadge() { if (!canR('docs')) return; try { const d = await api('/docs'); setBadge('docs', d.filter(x => x.status !== 'done').length); } catch { } }
+async function refreshBadge() { if (SITE === 'erp' || !canR('docs')) return; try { const d = await api('/docs'); setBadge('docs', d.filter(x => x.status !== 'done').length); } catch { } }
 window.addEventListener('hashchange', route);
 async function route() {
   if (!state.user) return;

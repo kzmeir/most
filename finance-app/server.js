@@ -9,7 +9,8 @@ const store = require('./lib/store');
 const auth = require('./lib/auth');
 const D = require('./lib/domain');
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3000;          // сайт «Финансы» (только офис)
+const ERP_PORT = Number(process.env.ERP_PORT) || PORT + 1; // сайт «MOST ERP» (модули; его можно открыть наружу через туннель)
 const PUBLIC = path.join(__dirname, 'public');
 const SEED_DIR = path.join(__dirname, 'seed');
 const FILES_DIR = path.join(store.DATA_DIR, 'files'); // файлы счетов (PDF/картинки)
@@ -33,7 +34,10 @@ const pickKeys = (o, keys) => Object.fromEntries(keys.filter(k => k in (o || {})
 // какие модули включены на этом сервере: «Настройки → Модули» (settings.enabledModules); в режиме разработки — все
 const MODULE_TITLES = { pm: 'Проекты', kb: 'Знания и обучение', hr: 'Персонал и табель', crm: 'Коммерция', sys: 'Сервис' };
 const moduleOn = m => !!process.env.DEV_USER || ((store.get().settings || {}).enabledModules || []).includes(m.id);
-const moduleScripts = () => MODULES.filter(moduleOn).flatMap(m => ['domain.js', 'ui.js'].filter(f => fs.existsSync(path.join(m.dir, f))).map(f => `<script src="/m/${m.id}/${f}"></script>`)).join('\n');
+// сайты: 'fin' — только финансы, 'erp' — только модули, 'all' — всё вместе (режим разработки на одном порту)
+const moduleActive = (m, site) => site !== 'fin' && moduleOn(m);
+const ERP_API = ['status', 'login', 'logout', 'me', 'people']; // общее ядро, доступное на сайте ERP
+const moduleScripts = site => MODULES.filter(m => moduleActive(m, site)).flatMap(m => ['domain.js', 'ui.js'].filter(f => fs.existsSync(path.join(m.dir, f))).map(f => `<script src="/m/${m.id}/${f}"></script>`)).join('\n');
 
 store.load();
 
@@ -98,7 +102,7 @@ function importSeed() {
 }
 
 // ---------- API ----------
-async function api(req, res, url, user) {
+async function api(req, res, url, user, site) {
   const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(p => { try { return decodeURIComponent(p); } catch { return p; } });
   const method = req.method;
   const mutating = ['POST', 'PUT', 'DELETE'].includes(method);
@@ -108,11 +112,13 @@ async function api(req, res, url, user) {
   const db = store.get();
   const [seg, id2, seg3] = parts;
   const qs = Object.fromEntries(url.searchParams.entries());
+  // сайт ERP физически не отдаёт финансовые разделы, сайт «Финансы» — модули
+  if (site === 'erp' && !ERP_API.includes(seg) && !(seg === 'settings' && method === 'GET') && !MODULES.some(m => m.api === seg && moduleActive(m, site))) return err(res, 404, 'Этот раздел — на сайте «Финансы»');
 
   // --- public ---
-  if (seg === 'status' && method === 'GET') return ok(res, { publicUrl: publicUrl(), needsSetup: db.users.length === 0 && !DEV_ROLE, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0', modules: MODULES.map(m => ({ id: m.id, title: MODULE_TITLES[m.id] || m.id, on: moduleOn(m) })) });
+  if (seg === 'status' && method === 'GET') return ok(res, { publicUrl: publicUrl(), needsSetup: db.users.length === 0 && !DEV_ROLE, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0', site, modules: MODULES.map(m => ({ id: m.id, title: MODULE_TITLES[m.id] || m.id, on: moduleOn(m) })) });
   if (seg === 'setup' && method === 'POST') {
-    if (db.users.length) return err(res, 403, 'Уже настроено');
+    if (db.users.length || site === 'erp') return err(res, 403, 'Уже настроено');
     if (!body.login || !body.password || String(body.password).length < 6) return err(res, 400, 'Логин и пароль (мин. 6 символов)');
     const { salt, hash } = auth.hashPassword(body.password);
     const u = store.insert('users', { login: String(body.login).trim().toLowerCase(), name: body.name || body.login, role: 'owner', salt, passHash: hash, active: true, createdAt: new Date().toISOString() });
@@ -135,7 +141,7 @@ async function api(req, res, url, user) {
   if (!user) return err(res, 401, 'Не авторизован');
   const role = user.role;
   if (seg === 'people' && method === 'GET') return ok(res, db.users.filter(u => u.active !== false).map(u => ({ id: u.id, name: u.name || u.login, role: u.role, roleLabel: D.ROLE_LABEL[u.role], section: u.section || '' })));
-  const mod = MODULES.find(m => m.api === seg && moduleOn(m));
+  const mod = MODULES.find(m => m.api === seg && moduleActive(m, site));
   if (mod) {
     const ctx = { req, res, parts, method, body, user, db, qs, store, auth, D, today, num, pick: pickKeys, userName, modules: MODULE_BY_ID, ok: b => ok(res, b), err: (s, m) => err(res, s, m), send: (s, b, h) => send(res, s, b, h) };
     ctx.emit = (name, data) => emit(ctx, name, data);
@@ -347,11 +353,11 @@ async function api(req, res, url, user) {
 }
 
 // ---------- static ----------
-function serveStatic(req, res, url) {
+function serveStatic(req, res, url, site) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/' || !path.extname(p)) p = '/index.html';
-  if (p === '/index.html') { const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8').replace('<script src="/app.js"></script>', moduleScripts() + '\n<script src="/app.js"></script>'); res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' }); return res.end(html); }
-  const mm = p.match(/^\/m\/([a-z][a-z0-9]*)\/(domain|ui)\.js$/); if (mm && MODULE_BY_ID[mm[1]]) { const file = path.join(MODULE_BY_ID[mm[1]].dir, mm[2] + '.js'); if (fs.existsSync(file)) { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(file)); } return err(res, 404, 'not found'); }
+  if (p === '/index.html') { const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8').replace('<script src="/app.js"></script>', `<script>window.MOST_SITE = '${site}';</script>\n` + moduleScripts(site) + '\n<script src="/app.js"></script>'); const page = site === 'erp' ? html.replace('<title>MOST Финансы</title>', '<title>MOST ERP</title>') : html; res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' }); return res.end(page); }
+  const mm = p.match(/^\/m\/([a-z][a-z0-9]*)\/(domain|ui)\.js$/); if (mm && MODULE_BY_ID[mm[1]] && moduleActive(MODULE_BY_ID[mm[1]], site)) { const file = path.join(MODULE_BY_ID[mm[1]].dir, mm[2] + '.js'); if (fs.existsSync(file)) { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(file)); } return err(res, 404, 'not found'); }
   if (p === '/statement.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'statement.js'))); }
   if (p === '/help.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'help.js'))); }
   if (p === '/xlsx.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'xlsx.js'))); }
@@ -365,17 +371,17 @@ function serveStatic(req, res, url) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+const handler = site => async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
-    if (url.pathname.startsWith('/api')) return await api(req, res, url, devUser(req) || auth.currentUser(req));
-    if (req.method === 'GET') return serveStatic(req, res, url);
+    if (url.pathname.startsWith('/api')) return await api(req, res, url, devUser(req) || auth.currentUser(req), site);
+    if (req.method === 'GET') return serveStatic(req, res, url, site);
     return err(res, 405, 'method');
   } catch (e) {
     console.error(e);
     return err(res, 500, 'Ошибка сервера: ' + e.message);
   }
-});
+};
 
 // ---------- один сервер на папку данных: второй запуск (на другом ПК или повторно) затёр бы изменения первого ----------
 const LOCK = path.join(store.DATA_DIR, 'server.lock');
@@ -398,10 +404,14 @@ function takeLock() {
 takeLock();
 
 if (DEV_ROLE) console.log(`\n  РЕЖИМ РАЗРАБОТКИ: вход без пароля как «${DEV_ROLE}», сервер слушает только 127.0.0.1. Не использовать с рабочей базой.`);
-server.listen(PORT, DEV_ROLE ? '127.0.0.1' : '0.0.0.0', () => {
-  console.log('\n  MOST Финансы запущен.');
-  console.log(`  На этом компьютере:  http://localhost:${PORT}`);
-  for (const ip of lanIPs()) console.log(`  Для команды в сети:  http://${ip}:${PORT}`);
+const HOST = DEV_ROLE ? '127.0.0.1' : '0.0.0.0';
+// в режиме разработки — один порт со всеми разделами; на рабочем сервере — два сайта
+const SPLIT = !DEV_ROLE || !!process.env.DEV_SPLIT; // DEV_SPLIT=1 — два сайта и в режиме разработки
+if (SPLIT) http.createServer(handler('erp')).listen(ERP_PORT, HOST);
+http.createServer(handler(SPLIT ? 'fin' : 'all')).listen(PORT, HOST, () => {
+  console.log('\n  MOST запущен.');
+  console.log(`  Финансы (офис):      http://localhost:${PORT}   ` + lanIPs().map(ip => `http://${ip}:${PORT}`).join('  '));
+  if (SPLIT) console.log(`  MOST ERP (проекты):  http://localhost:${ERP_PORT}   ` + lanIPs().map(ip => `http://${ip}:${ERP_PORT}`).join('  '));
   console.log(`  База данных:         ${store.DB_FILE}`);
   console.log(`  Бэкапы:              ${store.BACKUP_DIR}\n`);
   console.log('  Не закрывайте это окно, пока приложением пользуются.\n');
