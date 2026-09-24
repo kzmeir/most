@@ -3,7 +3,7 @@
 (function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.MostCRM = factory(); })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const num = v => { const n = Number(String(v == null ? '' : v).replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : 0; };
-  const today = () => new Date().toISOString().slice(0, 10);
+  const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Almaty' }); // дата по Алматы
   const addDays = (d, n) => { if (!d) return ''; const t = new Date(d + 'T00:00:00Z'); if (isNaN(t)) return ''; return new Date(t.getTime() + n * 864e5).toISOString().slice(0, 10); };
   const days = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 864e5);
 

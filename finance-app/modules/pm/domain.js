@@ -180,7 +180,7 @@
   // ---- даты ----
   const iso = d => d.toISOString().slice(0, 10);
   const addDays = (a, n) => iso(new Date(new Date(a + 'T00:00:00Z').getTime() + Math.round(n) * 864e5));
-  const today = () => new Date().toISOString().slice(0, 10);
+  const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Almaty' }); // дата по Алматы
   const days = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 864e5);
   const ym = d => String(d || '').slice(0, 7);
   const addMonths = (m, n) => { const [y, mo] = String(m).split('-').map(Number); return new Date(Date.UTC(y, mo - 1 + n, 1)).toISOString().slice(0, 7); };

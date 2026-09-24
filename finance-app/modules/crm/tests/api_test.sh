@@ -76,7 +76,7 @@ for IT in $(call OWN GET /pm/projects/$PID | js 'd.items.filter(i=>i.stage===4).
 P2=$(call OWN GET /crm/payments | js 'JSON.stringify(d.deals.find(x=>x.id==="'$L1ID'").payments[1])')
 chk "платёж 2 готов к акту" true "$(echo "$P2" | js 'd.ready')"
 chk "событие pm.item.done записало readyAt" "$T" "$(echo "$P2" | js 'd.readyAt')"
-chk "ожидаемая дата = сегодня + 10 дн." "$(node -e "console.log(new Date(Date.now()+10*864e5).toISOString().slice(0,10))")" "$(echo "$P2" | js 'd.expected')"
+chk "ожидаемая дата = сегодня + 10 дн." "$(node -e "console.log(new Date(Date.now()+10*864e5).toLocaleDateString('sv-SE',{timeZone:'Asia/Almaty'}))")" "$(echo "$P2" | js 'd.expected')"
 P2ID=$(echo "$P2" | js 'd.id')
 chk "акт выставлен → дата акта" "$T" "$(call OWN PUT /crm/payments/$P2ID '{"status":"Акт выставлен"}' | js 'd.actDate')"
 chk "замена графика при выставленном акте — 409" 409 "$(code OWN POST /crm/leads/$L1ID/schedule '{"template":"rp"}')"
