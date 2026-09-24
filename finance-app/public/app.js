@@ -75,12 +75,12 @@ async function boot() {
 }
 async function loadRefs() {
   try { state.people = await api('/people'); } catch { state.people = []; }
-  try { state.projects = canR('projects') ? await api('/projects') : []; } catch { state.projects = []; }
-  try { state.counterparties = canR('counterparties') ? await api('/counterparties') : []; } catch { state.counterparties = []; }
+  try { state.projects = SITE !== 'erp' && canR('projects') ? await api('/projects') : []; } catch { state.projects = []; }
+  try { state.counterparties = SITE !== 'erp' && canR('counterparties') ? await api('/counterparties') : []; } catch { state.counterparties = []; }
   if (isAdmin()) {
     try { state.settings = await api('/settings'); } catch { }
-    try { state.accounts = await api('/accounts'); } catch { state.accounts = []; }
-    try { state.categories = await api('/categories'); } catch { state.categories = []; }
+    if (SITE !== 'erp') { try { state.accounts = await api('/accounts'); } catch { state.accounts = []; } }
+    if (SITE !== 'erp') { try { state.categories = await api('/categories'); } catch { state.categories = []; } }
   }
 }
 async function afterLogin() { await loadRefs(); renderApp(); }
@@ -119,20 +119,23 @@ const NAV = [
 // модули ERP (modules/<id>/ui.js) регистрируются в window.MOST_MODULES до app.js; «Финансы» — встроенный модуль
 // счётчики в меню: ui.setBadge(id, n) — переживают перерисовку меню
 const BADGES = {};
+let CUR_MOD = null;
 function setBadge(id, n) { BADGES[id] = Number(n) || 0; const b = document.getElementById('badge-' + id); if (b) { b.textContent = BADGES[id] || ''; b.hidden = !BADGES[id]; } }
-const MODS = [{ id: 'fin', title: 'Финансы', nav: NAV.filter(n => !n.any), routes: ['project'], canOpen: () => true }];
+// сайт: 'fin' — «Финансы», 'erp' — «MOST ERP» (только модули), 'all' — всё (режим разработки)
+const SITE = window.MOST_SITE || 'fin';
+const MODS = SITE === 'erp' ? [] : [{ id: 'fin', title: 'Финансы', nav: NAV.filter(n => !n.any), routes: ['project'], canOpen: () => true }];
 const finNavOk = n => n.dash ? window.MostDomain.canDashboard(state.user.role) : n.col ? canR(n.col) : (!n.admin || isAdmin());
 const modNav = m => m.id === 'fin' ? m.nav.filter(finNavOk) : (m.nav || []).filter(n => !n.can || n.can(state.user));
 const visibleMods = () => MODS.filter(m => { try { return m.canOpen(state.user) && modNav(m).length; } catch { return false; } });
 const modOf = id => visibleMods().find(m => modNav(m).some(n => n.id === id) || (m.routes || []).includes(id));
 const navAll = () => [...visibleMods().flatMap(modNav), NAV.find(n => n.id === 'help')];
 function drawNav(id) {
-  const mods = visibleMods(); const cur = modOf(id) || mods[0] || MODS[0];
+  const mods = visibleMods(); const cur = modOf(id) || (mods.includes(CUR_MOD) ? CUR_MOD : null) || mods[0] || null; CUR_MOD = cur; // «Инструкция» и общие разделы — в текущем модуле
   const sw = mods.length > 1 ? `<div class="modsw">${mods.map(m => `<a href="#/${modNav(m)[0].id}" class="${m === cur ? 'active' : ''}">${esc(m.title)}</a>`).join('')}</div>` : '';
-  const items = [...modNav(cur), NAV.find(n => n.id === 'help')];
+  const items = [...(cur ? modNav(cur) : []), NAV.find(n => n.id === 'help')];
   $('#nav').innerHTML = sw + items.map(n => `<a href="#/${n.id}" data-id="${n.id}"${n.id === id ? ' class="active"' : ''}><span>${n.icon || '•'}</span>${esc(n.label)}<span class="badge" id="badge-${n.id}"${BADGES[n.id] ? '' : ' hidden'}>${BADGES[n.id] || ''}</span></a>`).join('');
   for (const m of mods) if (m.onNav) { try { m.onNav(UI, id); } catch (e) { console.error('onNav ' + m.id, e); } }
-  const bs = $('.side .brand small'); if (bs) bs.textContent = cur.title.toLowerCase();
+  const bs = $('.side .brand small'); if (bs) bs.textContent = cur ? cur.title.toLowerCase() : (SITE === 'erp' ? 'erp' : 'финансы');
 }
 function renderApp() {
   const nav = navAll();
@@ -146,7 +149,7 @@ function renderApp() {
   refreshBadge();
 }
 function refreshCpList() { const d = $('#dl-cp'); if (d) d.innerHTML = (state.counterparties || []).map(c => `<option value="${esc(c.name)}">${esc(c.short || '')}</option>`).join(''); const dp = $('#dl-projects'); if (dp) dp.innerHTML = (state.projects || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''); }
-async function refreshBadge() { if (!canR('docs')) return; try { const d = await api('/docs'); setBadge('docs', d.filter(x => x.status !== 'done').length); } catch { } }
+async function refreshBadge() { if (SITE === 'erp' || !canR('docs')) return; try { const d = await api('/docs'); setBadge('docs', d.filter(x => x.status !== 'done').length); } catch { } }
 window.addEventListener('hashchange', route);
 async function route() {
   if (!state.user) return;
@@ -930,6 +933,7 @@ SECTIONS.settings = async main => {
     `<h2>Справочник счетов</h2>${tbl([{ t: 'Код' }, { t: 'Название' }, { t: 'Компания' }, { t: 'Активен' }, { t: '' }], state.accounts.map(a => `<tr><td><b>${esc(a.id)}</b>${a.iban ? `<div class="faint">${esc(a.iban)}</div>` : ''}</td><td>${esc(a.name || '')}</td><td>${esc(a.company || '')}</td><td>${yn(a.active !== false)}</td><td>${isOwner() ? `<div class="actions"><button class="btn sm" data-act="accEdit" data-id="${esc(a.id)}">✎</button></div>` : ''}</td></tr>`))}${isOwner() ? '<p><button class="btn" data-act="accAdd">+ Счёт</button></p>' : ''}` +
     `<h2>Справочник категорий</h2>${tbl([{ t: 'Категория' }, { t: 'Описание' }, { t: 'Вид' }, { t: '' }], state.categories.map(c => `<tr><td><b>${esc(c.id)}</b></td><td class="muted">${esc(c.name || '')}</td><td>${esc(KIND_LABEL[c.kind] || c.kind || '')}</td><td>${isOwner() ? `<div class="actions"><button class="btn sm" data-act="catEdit" data-id="${esc(c.id)}">✎</button></div>` : ''}</td></tr>`))}${isOwner() ? '<p><button class="btn" data-act="catAdd">+ Категория</button></p><p class="faint">Вид «Перевод» исключается из доходов и расходов. «Доход» — категории поступлений от клиентов.</p>' : ''}` +
     (isOwner() ? `<h2>Параметры</h2><div class="card">${formHtml([{ name: 'vatRate', label: 'НДС (0.16 = 16%)', type: 'number', step: '0.01', half: true }, { name: 'payrollTax', label: 'Налоги на ФОТ (0.45 = 45%)', type: 'number', step: '0.01', half: true }, { name: 'usdRate', label: 'Курс $ → ₸', type: 'number', step: '0.01' }], state.settings || {})}</div>` : '') +
+    (isOwner() && (st.modules || []).length ? `<h2>Модули</h2><div class="card"><p class="muted" style="margin-top:0">Выключенные модули никому не видны. «Финансы» работают всегда.</p>${st.modules.map(m => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0"><input type="checkbox" class="mod-on" value="${esc(m.id)}"${m.on ? ' checked' : ''}> ${esc(m.title)}</label>`).join('')}<p><button class="btn primary" data-act="modSave">Сохранить и обновить страницу</button></p></div>` : '') +
     (!st.web ? `<h2>Доступ из интернета</h2><div class="card">${st.publicUrl ? `<p style="margin-top:0">Адрес для сотрудников: <b><a href="${esc(st.publicUrl)}" target="_blank" rel="noopener">${esc(st.publicUrl)}</a></b> <button class="btn sm" data-act="copyUrl" data-url="${esc(st.publicUrl)}">Скопировать</button></p><p class="faint" style="margin-bottom:0">Адрес меняется при каждом запуске start-internet.bat; постоянный адрес — через именованный туннель Cloudflare (см. README). Вместе с адресом сотруднику нужен логин и пароль из раздела «Пользователи».</p>` : '<p class="muted" style="margin:0">Сейчас система доступна только в офисной сети. Чтобы открыть доступ из интернета по логину и паролю, запустите на MostServer <code>start-internet.bat</code> — адрес появится здесь.</p>'}</div>` : '') +
     `<h2>Резервные копии</h2><div class="card"><p class="muted" style="margin-top:0">${st.web ? 'База хранится на claude.ai. Регулярно скачивайте копию JSON и кладите её в папку <code>MOST-Финансы\\backups</code> на MostServer.' : `Автоматически — при первой записи каждого дня. Папка: <code>${esc(backups.dir)}</code>`}</p><p>${st.web ? '' : '<button class="btn primary" data-act="backup">Сделать бэкап сейчас</button> '}<a class="btn" href="/api/backup" download>Скачать всю базу (JSON)</a></p>${isOwner() ? `<div class="form-row"><div class="field"><label>Восстановить из копии (JSON)</label><input type="file" id="restore-file" accept=".json,application/json"></div><div class="field"><label>&nbsp;</label><button class="btn danger" data-act="restore">Восстановить из файла</button></div></div><p class="faint">Заменит операции, счета, договоры и справочники данными из файла. Пользователи и пароли сохраняются. ${st.web ? 'В веб-версии занимает 1–2 минуты, не закрывайте страницу.' : 'Перед восстановлением автоматически делается копия текущей базы.'}</p>` : ''}${backups.list.length ? `<div class="faint">Последние: ${backups.list.slice(0, 5).map(b => esc(b.name)).join(', ')}${backups.list.length > 5 ? ` … всего ${backups.list.length}` : ''}</div>` : ''}</div>` +
     `<h2>Обмен с 1С / Excel</h2><div class="card"><p class="muted" style="margin-top:0">Файлы CSV (UTF-8, разделитель «;»). Живой синхронизации нет.</p><p><a class="btn" href="/api/export/1c/ops.csv?year=${year}" download>Экспорт операций ${year}</a> <a class="btn" href="/api/export/1c/invoices.csv" download>Экспорт счетов к оплате</a> <a class="btn" href="/api/export/1c/docs.csv" download>Экспорт актов/счетов клиентам</a></p><div class="form-row"><div class="field"><label>Импорт в</label><select id="imp-col"><option value="ops">Операции</option><option value="invoices">Счета к оплате</option><option value="docs">Акты/счета клиентам</option></select></div><div class="field"><label>CSV-файл</label><input type="file" id="imp-file" accept=".csv,text/csv"></div></div><button class="btn" data-act="import">Импортировать</button> <span class="faint">Колонки как в экспорте.</span></div>` +
@@ -964,6 +968,7 @@ SECTIONS.settings = async main => {
   ACT.catAdd = () => modal('Категория', formHtml(catFields), async v => { await api('/categories', { method: 'POST', body: v }); toast('Добавлено'); state.categories = await api('/categories'); route(); });
   ACT.catEdit = ({ id }) => { const c = state.categories.find(x => x.id === id); modal('Категория ' + id, formHtml(catFields.slice(1), c), async v => { await api('/categories/' + id, { method: 'PUT', body: v }); toast('Сохранено'); state.categories = await api('/categories'); route(); }); };
   ACT.restore = async () => { const f = $('#restore-file').files[0]; if (!f) return toast('Выберите JSON-файл копии'); let data; try { data = JSON.parse(await f.text()); } catch { return toast('Файл не читается как JSON', 4000); } const cols = window.MostDomain.backupCollections(data); if (!cols) return toast('Это не копия базы «MOST Финансы»', 4000); if (!confirm(`Восстановить из «${f.name}»?\n${cols.map(c => `${c}: ${data[c].length}`).join(', ')}\n\nТекущие данные этих разделов будут заменены.`)) return; toast('Восстанавливаю…', 120000); try { const r = await api('/restore', { method: 'POST', body: { data } }); toast('Восстановлено: ' + Object.entries(r.restored).map(([k, v]) => `${k} ${v}`).join(', '), 8000); await loadRefs(); route(); } catch (er) { toast(er.message, 6000); } };
+  ACT.modSave = async () => { const on = [...main.querySelectorAll('.mod-on')].filter(x => x.checked).map(x => x.value); await api('/settings', { method: 'PUT', body: { enabledModules: on } }); location.reload(); };
   ACT.copyUrl = async ({ url }) => { try { await navigator.clipboard.writeText(url); toast('Адрес скопирован'); } catch { toast(url, 6000); } };
   ACT.backup = async () => { const r = await api('/backup', { method: 'POST' }); toast('Бэкап создан: ' + r.name, 4000); route(); };
   ACT.seed = async () => { if (!confirm('Загрузить стартовые данные в пустую базу?')) return; const r = await api('/seed', { method: 'POST' }); toast('Загружено: ' + Object.entries(r.imported).map(([k, v]) => `${k} ${v}`).join(', '), 6000); await loadRefs(); route(); };

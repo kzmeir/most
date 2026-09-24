@@ -34,11 +34,11 @@
     // ---------- общее ----------
     const wide = w => { const c = $('#modal .modal-card'); if (c) c.style.maxWidth = w; };
     function paintBadges() {
-      for (const [id, n] of [['kbnews', S.unreadNews], ['kbsign', S.toSign], ['kbcourses', S.myEnrolls], ['kbtests', S.pendingTests]]) { const b = $('#badge-' + id); if (b) { b.textContent = n || ''; b.hidden = !n; } }
+      for (const [id, n] of [['kbnews', S.unreadNews], ['kbsign', S.toSign], ['kbcourses', S.myEnrolls], ['kbtests', S.pendingTests]]) ui.setBadge(id, n); // ядро хранит счётчик и восстанавливает после перерисовки меню
     }
     async function loadSummary() { try { S = Object.assign(S, await api('/kb/summary')); } catch { } paintBadges(); return S; }
     // обёртка раздела: сводка (права + счётчики) до отрисовки, бейджи — после
-    const section = fn => async main => { await loadSummary(); await fn(main); paintBadges(); };
+    const section = fn => async main => { await loadSummary(); await fn(main); };
     const pbar = (pct, done) => `<div class="kb-pbar${done ? ' ok' : ''}" title="${pct}%"><i style="width:${pct}%"></i></div>`;
     const dt = iso => iso ? fdate(String(iso).slice(0, 10)) : '';
     const pathSpan = p => `<span class="kb-path" data-act="kbCopy" data-url="${esc(p)}" title="Скопировать путь — вставить в Проводник">${esc(p)}</span>`;
@@ -255,9 +255,8 @@
       bind(main);
     });
 
-    // бейджи в меню: при входе, после каждого перехода (меню перерисовывается) и раз в 5 минут
+    // счётчики в меню: при входе, при каждом открытии раздела модуля и раз в 5 минут
     setTimeout(() => { if (ui.state.user) loadSummary(); }, 1000);
     setInterval(() => { if (ui.state.user) loadSummary(); }, 300000);
-    window.addEventListener('hashchange', () => setTimeout(paintBadges, 80));
   },
 });
