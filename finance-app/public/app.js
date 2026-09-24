@@ -119,6 +119,7 @@ const NAV = [
 // модули ERP (modules/<id>/ui.js) регистрируются в window.MOST_MODULES до app.js; «Финансы» — встроенный модуль
 // счётчики в меню: ui.setBadge(id, n) — переживают перерисовку меню
 const BADGES = {};
+let CUR_MOD = null;
 function setBadge(id, n) { BADGES[id] = Number(n) || 0; const b = document.getElementById('badge-' + id); if (b) { b.textContent = BADGES[id] || ''; b.hidden = !BADGES[id]; } }
 const MODS = [{ id: 'fin', title: 'Финансы', nav: NAV.filter(n => !n.any), routes: ['project'], canOpen: () => true }];
 const finNavOk = n => n.dash ? window.MostDomain.canDashboard(state.user.role) : n.col ? canR(n.col) : (!n.admin || isAdmin());
@@ -127,7 +128,7 @@ const visibleMods = () => MODS.filter(m => { try { return m.canOpen(state.user) 
 const modOf = id => visibleMods().find(m => modNav(m).some(n => n.id === id) || (m.routes || []).includes(id));
 const navAll = () => [...visibleMods().flatMap(modNav), NAV.find(n => n.id === 'help')];
 function drawNav(id) {
-  const mods = visibleMods(); const cur = modOf(id) || mods[0] || MODS[0];
+  const mods = visibleMods(); const cur = modOf(id) || (mods.includes(CUR_MOD) ? CUR_MOD : null) || mods[0] || MODS[0]; CUR_MOD = cur; // «Инструкция» и общие разделы — в текущем модуле
   const sw = mods.length > 1 ? `<div class="modsw">${mods.map(m => `<a href="#/${modNav(m)[0].id}" class="${m === cur ? 'active' : ''}">${esc(m.title)}</a>`).join('')}</div>` : '';
   const items = [...modNav(cur), NAV.find(n => n.id === 'help')];
   $('#nav').innerHTML = sw + items.map(n => `<a href="#/${n.id}" data-id="${n.id}"${n.id === id ? ' class="active"' : ''}><span>${n.icon || '•'}</span>${esc(n.label)}<span class="badge" id="badge-${n.id}"${BADGES[n.id] ? '' : ' hidden'}>${BADGES[n.id] || ''}</span></a>`).join('');
