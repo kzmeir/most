@@ -44,6 +44,10 @@ chk "список owner: только доска проекта (свободн�
 chk "список по проекту" 1 "$(call OWN GET "/board/boards?pid=$P" | js 'd.boards.length')"
 chk "поиск по названию (staff)" "Моя свободная" "$(call STAFF GET '/board/boards?q=%D1%81%D0%B2%D0%BE%D0%B1%D0%BE%D0%B4' | js 'd.boards.map(b=>b.title).join()')"
 
+RP=$(call OWN POST /pm/projects '{"track":"rp","name":"РП для доски","gipId":"dev-gip"}' | js 'd.project.id')
+chk "доска РП из шаблона ЭП: шаблон не применяется (0 объектов)" 0 "$(call GIP POST /board/boards "{\"title\":\"РП доска\",\"pmProjectId\":\"$RP\",\"template\":\"ep\"}" | js 'd.items.length')"
+chk "by-project отдаёт стадию проекта" "rp" "$(call GIP GET /board/by-project/$RP | js 'd.project.track')"
+
 echo "== настройки =="
 chk "ПМ проекта переименовал доску" "ЭП · доска" "$(call PMR PUT /board/boards/$PBID '{"title":"ЭП · доска"}' | js 'd.board.title')"
 chk "lead настройки 403" 403 "$(code LEAD PUT /board/boards/$PBID '{"title":"x"}')"
@@ -65,11 +69,16 @@ chk "последний выигрывает по объекту" "Победи�
 chk "sync с ревизии 2: только s1" "s1" "$(call LEAD GET "/board/boards/$PBID/sync?since=2" | js 'd.items.map(i=>i.id).join()')"
 chk "sync с текущей ревизии: пусто" 0 "$(call LEAD GET "/board/boards/$PBID/sync?since=3" | js 'd.items.length')"
 chk "sync с нуля: все 17 (13 шаблон + 4)" 17 "$(call LEAD GET "/board/boards/$PBID/sync?since=0" | js 'd.items.length')"
-chk "удаление → надгробие с rev 4" "true/4" "$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"delete","id":"t1"}]}' | js 'd.items[0].deleted+"/"+d.rev')"
-chk "sync после удаления отдаёт надгробие" "t1:del" "$(call LEAD GET "/board/boards/$PBID/sync?since=3" | js 'd.items.map(i=>i.id+":"+(i.deleted?"del":"ok")).join()')"
+chk "удаление → надгробие с rev 4 (+ отвязанная стрелка a1)" "true/4/a1" "$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"delete","id":"t1"}]}' | js '(()=>{const t=d.items.find(i=>i.id==="t1");const a=d.items.find(i=>i.id==="a1");return t.deleted+"/"+d.rev+"/"+(a&&a.props.to===""?"a1":"-")})()')"
+chk "sync после удаления отдаёт надгробие и изменённую стрелку" "a1:ok,t1:del" "$(call LEAD GET "/board/boards/$PBID/sync?since=3" | js 'd.items.map(i=>i.id+":"+(i.deleted?"del":"ok")).sort().join()')"
 chk "в карточке доски удалённых нет" 16 "$(call OWN GET /board/boards/$PBID | js 'd.items.length')"
 chk "повторное удаление — без изменений" 0 "$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"delete","id":"t1"}]}' | js 'd.items.length')"
 chk "восстановление удалённого upsert-ом (ver 3)" "3" "$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"upsert","item":{"id":"t1","type":"text","x":1,"y":1,"props":{"text":"вернулся"}}}]}' | js 'd.items[0].deleted===false?d.items[0].ver+"":"x"')"
+R3=$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"upsert","item":{"id":"s9","type":"sticky","x":1000,"y":1000,"w":200,"h":200,"props":{"text":"с9"}}},{"op":"upsert","item":{"id":"a9","type":"arrow","x":0,"y":0,"props":{"from":"s9","to":"t1","x2":0,"y2":0}}}]}')
+R4=$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"delete","id":"s9"}]}')
+chk "удаление объекта отвязывает стрелку: from пуст, конец в точке привязки" "true" "$(echo "$R4" | js '(()=>{const a=d.items.find(i=>i.id==="a9");return !!a && a.props.from==="" && a.props.to==="t1" && a.x>=1000 && a.x<=1200 && a.y>=1000 && a.y<=1200 && a.ver===2})()')"
+chk "надгробие s9 и стрелка в одной ревизии" "true" "$(echo "$R4" | js '(()=>{const s=d.items.find(i=>i.id==="s9");const a=d.items.find(i=>i.id==="a9");return s.deleted===true && a.rev===s.rev})()')"
+chk "стрелка на несуществующий объект теряет привязку" "" "$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"upsert","item":{"id":"a8","type":"arrow","x":1,"y":1,"props":{"from":"нет","to":"t1","x2":9,"y2":9}}}]}' | js 'd.items[0].props.from')"
 chk "lead (просмотр) операции 403" 403 "$(code LEAD POST /board/boards/$PBID/ops '{"ops":[]}')"
 chk "secretary операции на доске проекта 403" 403 "$(code SEC POST /board/boards/$PBID/ops '{"ops":[]}')"
 chk "secretary (участник) правит свободную доску" 200 "$(code SEC POST /board/boards/$FB/ops '{"ops":[{"op":"upsert","item":{"id":"f1","type":"frame","x":0,"y":0,"props":{"title":"Раздел"}}}]}')"
