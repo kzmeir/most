@@ -193,6 +193,8 @@ async function api(req, res, url, user, site) {
     const p = store.find('projects', id2) || db.projects.find(x => x.name === id2); if (!p) return err(res, 404, 'Проект не найден');
     const admin = D.isAdmin(role); return ok(res, D.projectCard(p, admin ? db : Object.assign({}, db, { ops: [] }), admin));
   }
+  // ожидаемые поступления по графикам платежей модуля «Коммерция» — для прогноза денег (сайт «Финансы»)
+  if (seg === 'forecast' && id2 === 'expected' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); const m = MODULE_BY_ID.crm; if (!m || !m.expectedPayments || !moduleOn(m)) return ok(res, []); try { return ok(res, m.expectedPayments({ db, D, today, num, store, user }, qs.from || today(), qs.to || '')); } catch (e) { return ok(res, []); } }
   if (seg === 'balances' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.accountBalances(db.ops, db.cash, db.accounts, qs.asOf)); }
   if (seg === 'obligations' && id2 === 'invoices' && method === 'POST') {
     if (!D.can(role, 'obligations', 'write')) return err(res, 403, 'Только просмотр');

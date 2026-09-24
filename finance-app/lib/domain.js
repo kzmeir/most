@@ -560,7 +560,10 @@
     const put = (date, amount, kind, label, extra) => { if (!amount) return; const late = date < today; const dt = late ? today : date; if (dt > end) return; items.push(Object.assign({ date: dt, planned: date, late, amount, kind, label }, extra || {})); };
     const rec = receivables(db, today); const withActs = new Set();
     for (const d of rec.acts) { if (d.age > maxAge) continue; if (d.contractId) withActs.add(d.contractId); put(addDays(d.from, num(s.paymentTermDays) || 10), num(d.amount), 'in', `${d.client || '—'} · акт ${d.number || ''}`.trim(), { ref: d.id }); }
-    for (const c of (db.contracts || []).filter(c => !c.closed && c.expectedDate && num(c.toPay) > 0 && !withActs.has(c.id))) put(c.expectedDate, num(c.toPay), 'in', `${c.clientShort || c.client || ''} · ${c.name || c.code}`, { ref: c.id });
+    // графики платежей коммерции (modules/crm → expectedPayments): договоры с графиком не берём из contracts.expectedDate, выставленные этапы с актом уже учтены актами
+    const extra = opts.expected || []; const scheduled = new Set(extra.map(x => x.contractId).filter(Boolean));
+    for (const x of extra) { if (x.invoiced && x.contractId && withActs.has(x.contractId)) continue; put(x.date || today, num(x.amount), 'in', `${x.client || ''} · ${x.label || 'по графику'}`.trim(), { ref: x.paymentId || '' }); }
+    for (const c of (db.contracts || []).filter(c => !c.closed && c.expectedDate && num(c.toPay) > 0 && !withActs.has(c.id) && !scheduled.has(c.id))) put(c.expectedDate, num(c.toPay), 'in', `${c.clientShort || c.client || ''} · ${c.name || c.code}`, { ref: c.id });
     for (const i of (db.invoices || []).filter(i => i.status === 'open')) put(i.dueDate || today, -num(i.amount), 'invoice', `${i.contractor} · ${i.purpose || ''}`.slice(0, 90), { ref: i.id, approved: !!i.approved, nodate: !i.dueDate });
     const pay = [...(db.payroll || [])].sort((a, b) => String(b.id).localeCompare(String(a.id)))[0];
     const net = pay ? (num(pay.project) + num(pay.architects)) || (pay.lines || []).reduce((x, l) => x + num(l.amount), 0) : (db.employees || []).filter(e => e.status !== 'resigned').reduce((x, e) => x + num(e.salary), 0);
