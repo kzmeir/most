@@ -60,7 +60,7 @@ module.exports = {
 });
 ```
 
-`ui` — помощники ядра: `api`, `state` (user, people, settings, projects…), `head`, `tbl`, `empty`, `chip`, `sel`, `modal`, `formHtml`, `field`, `numify`, `boolify`, `toast`, `bind` + `ACT`, `params`, `qsOf`, `route`, `esc`, `money`, `fdate`, `today`, `mname`, `cut`, `peopleName`, `isAdmin`, `isOwner`, `canR`, `canW`, `$`. Действия кнопок: `data-act="kbRead"` → `ui.ACT.kbRead = ({ id }) => …` (имена с префиксом модуля).
+`ui` — помощники ядра: `setBadge(navId, n)` (счётчик в меню, переживает перерисовку; модуль может задать `onNav(ui, sectionId)` — вызывается после каждой отрисовки меню), `api`, `state` (user, people, settings, projects…), `head`, `tbl`, `empty`, `chip`, `sel`, `modal`, `formHtml`, `field`, `numify`, `boolify`, `toast`, `bind` + `ACT`, `params`, `qsOf`, `route`, `esc`, `money`, `fdate`, `today`, `mname`, `cut`, `peopleName`, `isAdmin`, `isOwner`, `canR`, `canW`, `$`. Действия кнопок: `data-act="kbRead"` → `ui.ACT.kbRead = ({ id }) => …` (имена с префиксом модуля).
 
 ## Общие данные (только чтение для модулей)
 
