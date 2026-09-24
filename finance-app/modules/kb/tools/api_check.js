@@ -48,7 +48,7 @@ async function main() {
   check((await call('lead', 'GET', '/articles/' + drafts[0].id, null, 'АР')).status === 200, 'руководитель раздела видит черновик');
   check((await call('secretary', 'POST', `/articles/${drafts[0].id}/approve`, { draft: false })).status === 404, 'секретарь не снимает отметку');
   check((await call('lead', 'POST', `/articles/${drafts[0].id}/approve`, { draft: false }, 'АР')).status === 200 && (await call('staff', 'GET', '/articles/' + drafts[0].id)).status === 200, 'руководитель снял отметку — сотрудник видит');
-  await call('owner', 'POST', '/seed'); check((await call('staff', 'GET', '/articles/' + drafts[0].id)).status === 200, 'повторное наполнение не возвращает проверенное в черновики');
+  const reseed = await call('owner', 'POST', '/seed'); check(reseed.data.coursesUpdated === 1, 'повторное наполнение обновляет программу, которую не правили'); check((await call('staff', 'GET', '/articles/' + drafts[0].id)).status === 200, 'повторное наполнение не возвращает проверенное в черновики');
   const tStaff = (await call('staff', 'GET', '/tests')).data, tOwner = (await call('owner', 'GET', '/tests')).data;
   check(tOwner.some(x => x.draft) && tStaff.every(x => !x.draft), 'черновой тест сотрудник не видит');
 
@@ -88,6 +88,8 @@ async function main() {
   check((await call('lead', 'POST', '/enrolls', { courseId: course.id, userId: 'u-kj' }, 'АР')).status === 403, 'рук. АР не назначает новичка КЖ');
   const en = await call('lead', 'POST', '/enrolls', { courseId: course.id, userId: 'dev-staff', mentorId: 'dev-partner' }, 'АР'); check(en.status === 200 && en.data.mentor === 'Партнёр (тест)', 'рук. АР назначил обучение с наставником-партнёром'); // у dev-руководителей один id, поэтому наставник — не lead
   const card = await call('staff', 'GET', '/enrolls/' + en.data.id); check(card.data.pct > 0, `прогресс учитывает подпись и тест: ${card.data.pct}% (${card.data.doneN}/${card.data.total})`);
+  { const steps = card.data.weeks.flatMap(w => w.steps); const drafts = new Set(allOwner.filter(x => x.draft).map(x => x.id)); check(steps.some(s => s.pending) && steps.every(s => !s.refId || !drafts.has(s.refId)), `шаги со статьями-черновиками у новичка без ссылки, «на проверке» (${steps.filter(s => s.pending).length})`); }
+  { await call('owner', 'PUT', '/courses/' + course.id, { description: 'Правка вручную' }); const r = await call('owner', 'POST', '/seed'); check(!r.data.coursesUpdated && (await call('owner', 'GET', '/courses/' + course.id)).data.description === 'Правка вручную', 'ручную правку программы кнопка не перезаписывает'); }
   const task = card.data.weeks[0].steps.find(x => x.kind === 'task'); const st = await call('staff', 'PUT', `/enrolls/${en.data.id}/steps/${task.id}`, { done: true }); check(st.data.doneN === card.data.doneN + 1, 'новичок отметил задание');
   const w = (await call('staff', 'GET', '/summary')).data; check(w.waiting.courses.length === 1 && w.waiting.courses[0].next.length > 0 && w.waiting.sign.length === 2, `«Ждёт вас»: программа (${w.waiting.courses[0] && w.waiting.courses[0].next.length} след. шага), документов ${w.waiting.sign.length}, тестов ${w.pendingTests}`);
   check((await call('lead', 'GET', '/enrolls', null, 'КЖ')).data.length === 0, 'рук. КЖ не видит новичка АР');

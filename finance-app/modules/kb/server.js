@@ -41,6 +41,7 @@ function handle(ctx) {
   const trainee = e => ({ section: e.section || ((db.users.find(u => u.id === e.userId) || {}).section) || '' });
   const arts = () => db.kbArticles.filter(x => K.visible(user, x)); // черновики — только руководителям
   const tsts = () => db.kbTests.filter(x => K.visible(user, x));
+  const refVisible = s => !s.refId || (s.kind === 'test' ? tsts() : arts()).some(z => z.id === s.refId);
   const pctx = e => ({ enroll: e, reads: db.kbReads, attempts: db.kbAttempts, articles: db.kbArticles, tests: db.kbTests, userId: e.userId });
 
   // ---------- сводка для меню ----------
@@ -53,8 +54,8 @@ function handle(ctx) {
     for (const e of active) {
       const co = db.kbCourses.find(z => z.id === e.courseId); if (!co) continue; const pr = K.progress(co, pctx(e));
       const todo = (co.weeks || []).flatMap(w => w.steps.map(s => Object.assign({ week: w.title }, s, pr.states[s.id]))).filter(s => !s.done);
-      courses.push({ enrollId: e.id, course: co.title, pct: pr.pct, next: todo.slice(0, 3).map(s => ({ title: s.title, week: s.week, kind: s.kind, refId: s.refId || '' })) });
-      for (const s of todo) if (s.kind === 'test' && s.refId && !tests.has(s.refId)) { const x = db.kbTests.find(z => z.id === s.refId); if (x && K.attemptsLeft(x, db.kbAttempts.filter(a => a.testId === x.id && a.userId === user.id).length) > 0) tests.set(x.id, { id: x.id, title: x.title, course: co.title }); }
+      courses.push({ enrollId: e.id, course: co.title, pct: pr.pct, next: todo.slice(0, 3).map(s => ({ title: s.title, week: s.week, kind: s.kind, refId: refVisible(s) ? (s.refId || '') : '' })) });
+      for (const s of todo) if (s.kind === 'test' && s.refId && refVisible(s) && !tests.has(s.refId)) { const x = db.kbTests.find(z => z.id === s.refId); if (x && K.attemptsLeft(x, db.kbAttempts.filter(a => a.testId === x.id && a.userId === user.id).length) > 0) tests.set(x.id, { id: x.id, title: x.title, course: co.title }); }
     }
     const latestNews = db.kbNews.filter(n => !readOf('news', n.id)).sort((x, y) => String(y.date).localeCompare(String(x.date))).slice(0, 3).map(n => ({ id: n.id, title: n.title, date: n.date }));
     const signDocs = arts().filter(x => isSign(x) && !readOf('sign', x.id)).map(x => ({ id: x.id, title: x.title }));
@@ -223,7 +224,7 @@ function handle(ctx) {
     if (!c && method === 'GET') {
       const co = db.kbCourses.find(z => z.id === e.courseId) || { weeks: [] }; const pr = K.progress(co, pctx(e));
       const refTitle = s => { const r = K.resolveRef(s.kind === 'test' ? db.kbTests : db.kbArticles, s.ref); return r ? r.title : ''; };
-      return ok(Object.assign(out(e), { weeks: (co.weeks || []).map((w, i) => ({ title: w.title, n: i + 1, steps: w.steps.map(s => Object.assign({}, s, pr.states[s.id], { refTitle: refTitle(s), byName: pr.states[s.id].by ? userName(pr.states[s.id].by) : '' })) })), mine: e.userId === user.id }));
+      return ok(Object.assign(out(e), { weeks: (co.weeks || []).map((w, i) => ({ title: w.title, n: i + 1, steps: w.steps.map(s => { const st = Object.assign({}, s, pr.states[s.id], { refTitle: refTitle(s), byName: pr.states[s.id].by ? userName(pr.states[s.id].by) : '' }); if (!refVisible(st)) Object.assign(st, { refId: '', refTitle: '', pending: true }); return st; }) })), mine: e.userId === user.id }));
     }
     if (c === 'steps' && d && method === 'PUT') {
       if (e.userId !== user.id && !K.canManageEnroll(user, e, trainee(e))) return err(403, 'Отмечать шаги могут новичок, наставник и руководители');
@@ -252,7 +253,9 @@ function handle(ctx) {
     }
     for (const x of SEED.articles) if (!db.kbArticles.some(z => z.title === x.title)) { db.kbArticles.push(Object.assign(artFields(x), { id: store.id(), authorId: user.id, createdAt: now(), seed: true })); r.articles++; }
     for (const x of SEED.tests) if (!db.kbTests.some(z => z.title === x.title)) { const { f } = testFields(x); const art = K.resolveRef(db.kbArticles, x.article || ''); db.kbTests.push(Object.assign(f, { id: store.id(), articleId: art ? art.id : '', authorId: user.id, createdAt: now(), seed: true })); r.tests++; }
-    for (const x of SEED.courses) if (!db.kbCourses.some(z => z.title === x.title)) { const { f } = courseFields(x); db.kbCourses.push(Object.assign(f, { id: store.id(), authorId: user.id, createdAt: now(), seed: true })); r.courses++; }
+    for (const x of SEED.courses) { const ex = db.kbCourses.find(z => z.title === x.title); const { f } = courseFields(x);
+      if (!ex) { db.kbCourses.push(Object.assign(f, { id: store.id(), authorId: user.id, createdAt: now(), seed: true })); r.courses++; }
+      else if (ex.seed && !ex.updatedBy) { Object.assign(ex, f, { seededAt: now() }); r.coursesUpdated = (r.coursesUpdated || 0) + 1; } } // ручную правку не трогаем
     for (const x of SEED.news) if (!db.kbNews.some(z => z.title === x.title)) { db.kbNews.push({ id: store.id(), title: x.title, text: x.text, pinned: !!x.pinned, date: t, authorId: user.id, createdAt: now() }); r.news++; }
     save('seed', 'kbArticles', '', r); return ok(r);
   }
