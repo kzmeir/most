@@ -497,6 +497,26 @@
     return best ? { project: best.p, reason: 'название проекта в названии договора' } : null;
   }
 
+  // субподряд → проект: название объекта в таблице субподрядов часто своё («ТЕРЕКТЫ ЖК ТОМИРИС» ↔ «Теректи РП») — сравниваем слова по первым 5 буквам,
+  // латиницу переводим в кириллицу (Everest ↔ Эверест); нужно совпадение минимум двух слов (или всех, если в названии одно слово)
+  const LAT = { sh: 'ш', ch: 'ч', zh: 'ж', ya: 'я', yu: 'ю', kh: 'х', a: 'а', b: 'б', c: 'к', d: 'д', e: 'е', f: 'ф', g: 'г', h: 'х', i: 'и', j: 'дж', k: 'к', l: 'л', m: 'м', n: 'н', o: 'о', p: 'п', q: 'к', r: 'р', s: 'с', t: 'т', u: 'у', v: 'в', w: 'в', x: 'кс', y: 'й', z: 'з' };
+  const cyr = w => /[a-z]/.test(w) ? w.replace(/sh|ch|zh|ya|yu|kh|[a-z]/g, m => LAT[m]).replace(/^е/, 'э').replace(/ей$/, 'ей') : w;
+  function subProjectGuess(name, projects, contracts) {
+    const STOP = new Set(['проек', 'очере', 'корре', 'рабоч', 'эскиз', 'центр']);
+    const words = t => [...new Set(cpNorm(t).replace(/ё/g, 'е').split(' ').map(cyr).filter(w => w.length >= 4 && !/^\d+$/.test(w)).map(w => w.slice(0, 5)).filter(w => !STOP.has(w)))];
+    const hasContracts = p => (contracts || []).some(c => c.projectId === p.id || c.code === p.id);
+    const src = words(name); if (!src.length) return null; let best = null;
+    for (const p of projects || []) {
+      if (p.status === 'archive' || p.archived) continue;
+      const pw = words(p.name); const hits = pw.filter(w => src.includes(w)); if (!hits.length) continue;
+      const score = hits.length * 10 - Math.abs(pw.length - src.length) + (hasContracts(p) ? 3 : 0);
+      if (!best || score > best.score) best = { project: p, score, hits: hits.length, reason: `совпало: ${hits.join(', ')}` };
+    }
+    if (!best) return null;
+    best.strong = best.hits >= Math.min(2, src.length); // сильная подсказка — отмечается галочкой; слабая — только предлагается
+    return best;
+  }
+
   // ---- налоги с ЗП (РК): оклад «на руки» → начисленная ЗП, удержания и налоги работодателя ----
   function payrollTaxes(net, settings) {
     const t = settingsOf(settings).tax; net = num(net); const cap = (v, k) => Math.min(v, num(t[k]) * num(t.mzp) || v);
@@ -593,5 +613,5 @@
     return cols;
   }
 
-  return { SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, receivables, cashForecast };
+  return { SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, subProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, receivables, cashForecast };
 });
