@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 'use strict';
-/* Запускает сервер MOST Финансы и туннель Cloudflare, перезапускает их при падении,
-   вытаскивает публичный адрес из вывода cloudflared и пишет его в data/tunnel-url.txt
-   (его показывает раздел «Настройки» и экран входа). Запуск: node tools/serve-internet.js
+/* Запускает сервер MOST (два сайта: «Финансы» на PORT — только офис, «MOST ERP» на ERP_PORT — модули)
+   и туннель Cloudflare, перезапускает их при падении, вытаскивает публичный адрес из вывода cloudflared
+   и пишет его в data/tunnel-url.txt (его показывает раздел «Настройки» и экран входа).
+   Туннель ведёт ТОЛЬКО на ERP_PORT — финансовый сайт наружу не открывается (docs/ARCHITECTURE.md, «Два сайта»).
+   Запуск: node tools/serve-internet.js
    Постоянный адрес: положите имя именованного туннеля в файл tunnel.txt рядом с server.js. */
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -10,6 +12,7 @@ const path = require('path');
 const APP = path.join(__dirname, '..');
 const DATA = process.env.DATA_DIR || path.join(APP, 'data');
 const PORT = process.env.PORT || '3000';
+const ERP_PORT = process.env.ERP_PORT || String(Number(PORT) + 1);
 fs.mkdirSync(DATA, { recursive: true });
 const URL_FILE = path.join(DATA, 'tunnel-url.txt');
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -30,17 +33,17 @@ function keepAlive(name, cmd, args, opts, onLine) {
   start();
 }
 
-// 1) сервер
-keepAlive('server', process.execPath, [path.join(APP, 'server.js')], { env: Object.assign({}, process.env, { TRUST_PROXY: '1', PORT, DATA_DIR: DATA }) });
+// 1) сервер — оба сайта одним процессом (server.js сам поднимает PORT и ERP_PORT)
+keepAlive('server', process.execPath, [path.join(APP, 'server.js')], { env: Object.assign({}, process.env, { TRUST_PROXY: '1', PORT, ERP_PORT, DATA_DIR: DATA }) });
 
-// 2) туннель
+// 2) туннель — только на сайт ERP; PORT (финансы) наружу не идёт
 const tunnelName = fs.existsSync(path.join(APP, 'tunnel.txt')) ? fs.readFileSync(path.join(APP, 'tunnel.txt'), 'utf8').trim() : '';
 const exe = process.platform === 'win32' && fs.existsSync(path.join(APP, 'cloudflared.exe')) ? path.join(APP, 'cloudflared.exe') : 'cloudflared';
-const args = tunnelName ? ['tunnel', 'run', tunnelName] : ['tunnel', '--url', `http://localhost:${PORT}`, '--no-autoupdate'];
+const args = tunnelName ? ['tunnel', 'run', tunnelName] : ['tunnel', '--url', `http://localhost:${ERP_PORT}`, '--no-autoupdate'];
 setTimeout(() => keepAlive('tunnel', exe, args, {}, line => {
   const m = line.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
   if (m) { fs.writeFileSync(URL_FILE, m[0] + '\n'); log(`ПУБЛИЧНЫЙ АДРЕС: ${m[0]} — отправьте сотрудникам вместе с логином и паролем`); }
   if (/not found|ENOENT|не является внутренней/i.test(line)) log('cloudflared не установлен: winget install Cloudflare.cloudflared (Windows) или brew install cloudflared (macOS)');
 }), 1500);
-if (tunnelName) { log(`Именованный туннель «${tunnelName}»: адрес задан в Cloudflare (см. README)`); try { fs.writeFileSync(URL_FILE, ''); } catch { } }
+if (tunnelName) { log(`Именованный туннель «${tunnelName}»: адрес задан в Cloudflare (см. README) — маршрут в туннеле должен указывать на http://localhost:${ERP_PORT} (сайт ERP), не на ${PORT}`); try { fs.writeFileSync(URL_FILE, ''); } catch { } }
 process.on('SIGINT', () => process.exit(0));

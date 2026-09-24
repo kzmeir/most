@@ -10,7 +10,7 @@
 
 ## Две редакции одного кода
 
-- **Офисная (основная)**: `server.js` на Node.js без зависимостей, база — `data/db.json` (атомарная запись, автобэкапы в `data/backups/`, файлы в `data/files/`). Вход по логину и паролю (scrypt, cookie-сессии 30 дней, CSRF-заголовок `X-Requested-With: fetch`, лимит попыток входа). Запуск `start.bat` / `start-internet.bat` (сервер + Cloudflare Tunnel через `tools/serve-internet.js`, адрес пишется в `data/tunnel-url.txt`). Стоит на офисном сервере MostServer.
+- **Офисная (основная)**: `server.js` на Node.js без зависимостей, база — SQLite `data/db.sqlite` (встроенный node:sqlite, Node 22.5+/24; в памяти — массивы коллекций, `store.save()` пишет только изменённые документы одной транзакцией; старый `data/db.json` переносится автоматически при первом запуске; автобэкапы `VACUUM INTO` в `data/backups/`, файлы в `data/files/`). Вход по логину и паролю (scrypt, cookie-сессии 30 дней, CSRF-заголовок `X-Requested-With: fetch`, лимит попыток входа). Запуск `start.bat` / `start-internet.bat` (сервер + Cloudflare Tunnel через `tools/serve-internet.js`, адрес пишется в `data/tunnel-url.txt`). Стоит на офисном сервере MostServer.
 - **Веб (резерв)**: та же логика в `web/db-server.js`, сборка `python3 web/build.py` → одна HTML-страница, опубликована как артефакт claude.ai (https://claude.ai/artifact/GkLvE7g6sXqAE5U1RrUpmW, capabilities db/user/downloads/assets). Вход по аккаунту claude.ai; роли в `meta/roles`. Операции лежат месячными документами `opsm/YYYY-MM`. Документ-id для кириллических кодов — FNV-1a хэш `k-xxxxxxxx` (`docIdOf`, та же функция в `tools/import_budget.py`).
 - Общая логика в `lib/domain.js` (UMD: Node `module.exports` / браузер `window.MostDomain`): права `can(role, collection, action)`, фильтры и итоги операций, дашборд, отчёт, остатки по счетам, платёжный календарь, контрагенты (`cpResolver`, `buildCounterparties`), связки (`contractProject`, `contractFacts`, `allocateIncome`), карточка проекта, КП (`kpCalc`), CSV.
 - Парсеры: `lib/statement.js` (выписка Kaspi PDF по координатам через pdf.js, Excel/CSV любого банка `fromRows`, дедупликация), `lib/xlsx.js` (чтение .xlsx без зависимостей), `lib/help.js` (текст инструкции, раздел «Инструкция»).
@@ -38,7 +38,8 @@ zip -r MOST-Финансы.zip finance-app -x "finance-app/data/*" "finance-app/
 
 ## Что осталось (по приоритету)
 
-1. Сделано 23.09: налоги с ЗП (payrollTaxes, ставки settings.tax), календарь (	axCalendar), оценка НДС по кварталам, дебиторка (eceivables), прогноз денег (cashForecast), привязка договоров (contractProjectGuess), lock-файл data/server.lock. Осталось: сверить ставки с бухгалтером, НДС к зачёту по входящим счетам, КПН.
+1. Сделано 23.09: налоги с ЗП (payrollTaxes, ставки settings.tax), календарь (	axCalendar), оценка НДС по кварталам, дебиторка (
+eceivables), прогноз денег (cashForecast), привязка договоров (contractProjectGuess), lock-файл data/server.lock. Осталось: сверить ставки с бухгалтером, НДС к зачёту по входящим счетам, КПН.
 2. Даты приёма сотрудников (отпуска считаются от 01.01.2026), увольнения, премии из блока «Доплаты».
 3. Учёт времени сотрудников по проектам → себестоимость и загрузка; план ресурсов.
 4. Воронка лид → КП → договор; генерация договора/счёта/АВР из шаблонов (КП уже есть).
