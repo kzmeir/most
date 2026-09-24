@@ -102,6 +102,17 @@ chk "ставка ЖК без НДС по договорам" 5300 "$(echo "$F" 
 chk "ставка вилл без НДС (30 000 с НДС 16 %)" 25862 "$(echo "$F" | js 'd.rates.find(r=>r.type==="Виллы / коттеджи").kp.rate')"
 chk "причина отказа Цена" 1 "$(echo "$F" | js 'd.reasons.find(r=>r.reason==="Цена").n')"
 
+echo "== стадии: концепция — первый этап ЭП =="
+chk "стадии лида: ЭП/РП/АН" "ep,rp,an" "$(call OWN GET /crm/meta | js 'Object.keys(d.tracks).join(",")')"
+chk "шаблонов графика без концепции" "rp,ep,an" "$(call OWN GET /crm/meta | js 'Object.keys(d.payTemplates).join(",")')"
+chk "порт ERP для ссылок на проекты" 3199 "$(call OWN GET /crm/meta | js 'd.erpPort')"
+LC=$(call SEC POST /crm/leads '{"client":"ТОО Концепт","object":"Концепция ЖК","track":"concept","sum":9000000,"status":"Торг"}')
+LCID=$(echo "$LC" | js 'd.id'); chk "стадия concept сохраняется как ЭП" ep "$(echo "$LC" | js 'd.track')"
+SC=$(call OWN POST /crm/leads/$LCID/sign "{\"contractNo\":\"7-26-ЭП\",\"contractDate\":\"$T\",\"start\":\"$T\"}")
+chk "подписан: проект ЭП в pm" ep "$(call OWN GET /pm/projects/$(echo "$SC" | js 'd.pmProjectId') | js 'd.project.track')"
+chk "график ЭП привязан по названиям этапов pm" "0/5/7/8" "$(echo "$SC" | js 'd.payments.map(p=>p.stage).join("/")')"
+chk "этап 5 — «Планы»" 1 "$(echo "$SC" | js '+/Планы/.test(d.payments[1].stageInfo && d.payments[1].stageInfo.name || "")')"
+
 echo "== договор из реестра → график =="
 chk "owner завёл договор в ядре" 200 "$(code OWN POST /contracts '{"name":"Старый договор","code":"Старый","title":"Договор 55-25-ЭП от 01.03.2025","clientShort":"Хаят","sum":20000000,"paid":6000000,"remaining":14000000,"company":"ТОО MOST Architects"}')"
 CT=$(call OWN GET /crm/meta | js 'd.contracts.find(c=>c.name==="Старый договор").id')

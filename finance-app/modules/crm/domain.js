@@ -11,7 +11,10 @@
   const STATUSES = ['Новый', 'Расчёт', 'КП отправлено', 'Торг', 'Договор', 'Отказ'];
   const OPEN = s => !['Договор', 'Отказ'].includes(s);
   const KP_STAGE = ['КП отправлено', 'Торг', 'Договор']; // КП уже у заказчика
-  const TRACKS = { concept: 'Концепция', ep: 'ЭП', rp: 'РП', an: 'АН' };
+  // решение директора 24.09.2026: концепция — первый этап ЭП; старые лиды со стадией concept считаются ЭП
+  const TRACKS = { ep: 'ЭП', rp: 'РП', an: 'АН' };
+  const normTrack = t => t === 'concept' ? 'ep' : TRACKS[t] ? t : 'rp';
+  const trackName = t => TRACKS[normTrack(t)];
   const SOURCES = ['Повторный заказчик', 'Рекомендация', 'Входящий звонок', 'Сайт / соцсети', 'Тендер', 'Прочее'];
   const OBJECT_TYPES = ['ЖК', 'Бизнес-центр / офисы', 'Коммерция / ТРЦ', 'Виллы / коттеджи', 'Социальный объект', 'Интерьер', 'Прочее'];
   const REASONS = ['Цена', 'Сроки', 'Выбрали другого', 'Проект заморожен', 'Нет ответа', 'Не наш профиль', 'Прочее'];
@@ -64,7 +67,7 @@
   const KP_STATUS = { 'У клиента': 'КП отправлено', 'Выполнено': 'Договор', 'Отказ': 'Отказ', 'В работе': 'Расчёт' };
   function leadFromProposal(p, kpCalc) {
     const c = p.kp && kpCalc ? kpCalc(p.kp) : null; const kp = p.kp || {};
-    const track = kp.template && TRACKS[kp.template] ? kp.template : /(^|\W)рп(\W|$)|рабоч/i.test(p.title || '') ? 'rp' : /(^|\W)эп(\W|$)|эскиз/i.test(p.title || '') ? 'ep' : /концеп/i.test(p.title || '') ? 'concept' : 'rp';
+    const track = kp.template && (TRACKS[kp.template] || kp.template === 'concept') ? normTrack(kp.template) : /(^|\W)рп(\W|$)|рабоч/i.test(p.title || '') ? 'rp' : /(^|\W)эп(\W|$)|эскиз/i.test(p.title || '') ? 'ep' : /концеп/i.test(p.title || '') ? 'ep' : 'rp';
     const status = KP_STATUS[p.status] || 'КП отправлено';
     return { client: p.client || kp.client || '', contact: p.contact || '', object: kp.object || String(p.title || '').replace(/\.(docx?|pdf)/gi, '').trim(), address: kp.address || '', track, source: 'Прочее',
       area: c ? c.area : 0, rate: c ? c.rate : 0, sum: num(p.sum) || (c ? c.total : 0), vatIncluded: c ? c.vatIncluded : false, status, proposalId: p.id, kpAt: KP_STAGE.includes(status) || status === 'Отказ' ? (kp.date || today()) : '' };
@@ -72,14 +75,16 @@
 
   // ---- график платежей: шаблон 30/30/30/10, привязка к этапам проекта (stage — номер этапа pm; 0 — при подписании) ----
   const PAY_TEMPLATES = {
-    rp: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'Этап 2. Финальные планы', share: 30, stage: 4 }, { name: 'Комплектация для экспертизы', share: 30, stage: 7 }, { name: 'Выдача на стройку', share: 10, stage: 9 }],
-    ep: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'Планы согласованы', share: 30, stage: 4 }, { name: 'ЭП согласован с заказчиком', share: 30, stage: 6 }, { name: 'Градсовет', share: 10, stage: 7 }],
-    concept: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'Форэскиз', share: 30, stage: 1 }, { name: 'Концепция', share: 30, stage: 2 }, { name: 'Концепция утверждена', share: 10, stage: 3 }],
+  // match — часть названия этапа pm: при создании графика номер этапа берётся по названию (шаблоны pm меняются), stage — запасной номер
+    rp: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'Этап 2. Финальные планы', share: 30, stage: 4, match: 'Финальные планы' }, { name: 'Комплектация для экспертизы', share: 30, stage: 7, match: 'Комплектация' }, { name: 'Выдача на стройку', share: 10, stage: 9, match: 'Выдача' }],
+    ep: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'Планы согласованы', share: 30, stage: 5, match: 'Планы' }, { name: 'ЭП согласован с заказчиком', share: 30, stage: 7, match: 'согласование ЭП' }, { name: 'Градсовет', share: 10, stage: 8, match: 'Градсовет' }],
     an: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'Платёж 2', share: 30, stage: '' }, { name: 'Платёж 3', share: 30, stage: '' }, { name: 'Окончательный расчёт', share: 10, stage: '' }],
   };
   // суммы по долям: последний платёж добирает округление
-  function schedule(total, tpl) {
-    total = Math.round(num(total)); const rows = (tpl || PAY_TEMPLATES.rp).map((r, i) => ({ n: i + 1, name: r.name, share: num(r.share), stage: r.stage === '' || r.stage == null ? '' : num(r.stage), sum: Math.round(total * num(r.share) / 100) }));
+  // stageNames — названия этапов проекта pm (если проект уже есть): строка шаблона с match получает номер найденного этапа
+  const stageByName = (names, match) => { if (!match || !names || !names.length) return -1; const m = String(match).toLowerCase(); const i = names.findIndex(n => String(n).toLowerCase().includes(m)); return i < 0 ? -1 : i + 1; };
+  function schedule(total, tpl, stageNames) {
+    total = Math.round(num(total)); const rows = (tpl || PAY_TEMPLATES.rp).map((r, i) => { const byName = stageByName(stageNames, r.match); return { n: i + 1, name: r.name, share: num(r.share), stage: byName > 0 ? byName : r.stage === '' || r.stage == null ? '' : num(r.stage), sum: Math.round(total * num(r.share) / 100) }; });
     const sh = rows.reduce((a, r) => a + r.share, 0); if (rows.length && sh === 100) rows[rows.length - 1].sum += total - rows.reduce((a, r) => a + r.sum, 0);
     return rows;
   }
@@ -183,7 +188,7 @@
     const table = pl.length ? `<table class="grid"><tr><th>№</th><th>Этап</th><th>Доля</th><th>Сумма, ₸</th></tr>${pl.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.name)}</td><td>${num(p.share)} %</td><td style="text-align:right">${moneyStr(p.sum)}</td></tr>`).join('')}<tr><td></td><td><b>Итого</b></td><td>${pl.reduce((a, p) => a + num(p.share), 0)} %</td><td style="text-align:right"><b>${moneyStr(pl.reduce((a, p) => a + num(p.sum), 0))}</b></td></tr></table>` : '<p>—</p>';
     const ps = pay ? num(pay.sum) : 0; const psNo = c.vatIncluded ? ps / (1 + vat) : ps; const psVat = c.vatIncluded ? ps - psNo : 0;
     const vatStr = c.vatIncluded ? `с учётом НДС ${Math.round(vat * 100)} %` : 'без НДС';
-    return { 'заказчик': lead.client || '', 'бин': lead.bin || '', 'контакт': lead.contact || '', 'объект': lead.object || '', 'адрес': lead.address || '', 'стадия': TRACKS[lead.track] || lead.track || '',
+    return { 'заказчик': lead.client || '', 'бин': lead.bin || '', 'контакт': lead.contact || '', 'объект': lead.object || '', 'адрес': lead.address || '', 'стадия': trackName(lead.track),
       'площадь': moneyStr(c.area), 'ставка': moneyStr(c.rate), 'сумма': moneyStr(c.sum), 'сумма_прописью': inWords(c.sum), 'ндс': vatStr,
       'сумма_без_ндс': moneyStr(c.noVat), 'сумма_ндс': moneyStr(c.vatIncluded ? c.sum - c.noVat : 0), 'компания': lead.company || '', 'номер_договора': lead.contractNo || '', 'дата_договора': fdate(lead.contractDate), 'дата': fdate(today()),
       'график': table, 'этап': pay ? pay.name : '', 'доля': pay ? num(pay.share) : '', 'сумма_этапа': moneyStr(ps), 'сумма_этапа_прописью': inWords(ps), 'сумма_этапа_без_ндс': moneyStr(psNo), 'ндс_этапа': moneyStr(psVat) };
@@ -200,7 +205,7 @@
   }
   const row1c = (kind, d) => ({ 'Вид': kind, 'Дата': d['дата'], 'Организация': d['компания'], 'Контрагент': d['заказчик'], 'БИН': d['бин'], 'Договор': d['номер_договора'], 'Дата договора': d['дата_договора'], 'Содержание': `Проектные работы, ${d['стадия']}, ${d['этап']} (${d['доля']} %), ${d['объект']}`, 'Сумма': d['сумма_этапа'].replace(/\s/g, ''), 'НДС': d['ндс_этапа'].replace(/\s/g, ''), 'Сумма без НДС': d['сумма_этапа_без_ндс'].replace(/\s/g, '') });
 
-  return { STATUSES, OPEN, KP_STAGE, TRACKS, SOURCES, OBJECT_TYPES, REASONS, PAY_STATUS, COMPANIES, PAY_TEMPLATES, FIELDS, DEFAULT_TEMPLATES, KP_STATUS,
+  return { STATUSES, OPEN, KP_STAGE, TRACKS, normTrack, trackName, SOURCES, OBJECT_TYPES, REASONS, PAY_STATUS, COMPANIES, PAY_TEMPLATES, FIELDS, DEFAULT_TEMPLATES, KP_STATUS,
     isLeader, canOpen, canEditLeads, canPayments, canDocs, canEditTemplates, canSign, canSeeLead, ownLead,
-    leadCalc, funnel, leadOverdue, leadFromProposal, schedule, stageState, paymentState, expected, words, inWords, moneyStr, fdate, docData, fill, docPage, csv1c, row1c, num, today, addDays, days };
+    stageByName, leadCalc, funnel, leadOverdue, leadFromProposal, schedule, stageState, paymentState, expected, words, inWords, moneyStr, fdate, docData, fill, docPage, csv1c, row1c, num, today, addDays, days };
 });

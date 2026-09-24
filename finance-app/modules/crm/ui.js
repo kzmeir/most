@@ -22,7 +22,7 @@
 </ul>`],
     ['Лиды и воронка', `
 <ol>
-<li><b>+ Лид</b> — новое обращение: заказчик, объект, тип объекта, стадия (концепция / ЭП / РП / АН), площадь и ставка ₸/м² (сумма посчитается сама), с НДС или без, источник, ответственный, дата и шаг следующего контакта.</li>
+<li><b>+ Лид</b> — новое обращение: заказчик, объект, тип объекта, стадия (ЭП / РП / АН; концепция — первый этап ЭП), площадь и ставка ₸/м² (сумма посчитается сама), с НДС или без, источник, ответственный, дата и шаг следующего контакта.</li>
 <li><b>Из реестра КП</b> — заводит лиды по КП из «Финансов», которые ещё не связаны с лидом (статус КП переносится: «У клиента» → «КП отправлено», «Отказ» → «Отказ»).</li>
 <li>Вид <b>Канбан</b> — колонки по статусам; <b>Таблица</b> — все поля. Щелчок по лиду открывает карточку.</li>
 <li>Внизу — <b>аналитика</b>: конверсия КП → договор (отказы до отправки КП не считаются), причины отказов, средняя ставка ₸/м² <b>без НДС</b> по типам объектов — по отправленным КП и по подписанным договорам. Период — «за всё время» или с начала года.</li>
@@ -31,14 +31,14 @@
 <ul>
 <li>Кнопки статусов переводят лид по воронке; для <b>отказа</b> обязательна причина — из них строится аналитика.</li>
 <li><b>Договор подписан</b> (руководитель): № и дата договора, компания, сумма, связь с договором из реестра «Финансов» (если он уже заведён). Затем — создать новый проект в «Проектах» (стадия берётся из лида, назначьте ПМ/ГИП и даты) или привязать существующий. Автоматически создаётся график платежей по шаблону стадии.</li>
-<li>После подписания в карточке виден график платежей и ссылка на проект.</li>
+<li>После подписания в карточке виден график платежей и ссылка на проект. «Коммерция» работает на сайте «Финансы», а карточка проекта открывается в новой вкладке на сайте MOST ERP.</li>
 </ul>`],
     ['График платежей', `
 <ol>
 <li>По каждой сделке — строки графика: этап оплаты, доля %, сумма, <b>привязка к этапу проекта</b>, ожидаемая дата и статус «Ожидается → Акт выставлен → Оплачен».</li>
 <li><b>Ожидаемая дата</b>: срок, заданный вручную; иначе дата акта + срок оплаты; аванс — подписание + срок оплаты; иначе окончание этапа проекта (плановое или фактическое) + срок оплаты (по умолчанию 10 дней, «Настройки» в «Финансах»).</li>
 <li>Когда все пункты этапа в проекте отмечены сделанными, у платежа появляется <b>«пора выставлять акт»</b>: передайте бухгалтеру данные (раздел «Документы» → «Данные для АВР»), после выставления в 1С нажмите «Акт выставлен», после поступления денег — «Оплачен».</li>
-<li><b>Шаблоны графиков</b>: РП — аванс 30 %, финальные планы 30 %, комплектация для экспертизы 30 %, выдача 10 %; ЭП — аванс 30 %, планы 30 %, ЭП согласован 30 %, градсовет 10 %. «Изменить график» — свои доли и этапы (пока ничего не выставлено).</li>
+<li><b>Шаблоны графиков</b>: РП — аванс 30 %, финальные планы 30 %, комплектация для экспертизы 30 %, выдача 10 %; ЭП (включая концепцию как первый этап) — аванс 30 %, планы 30 %, ЭП согласован 30 %, градсовет 10 %. Этапы привязываются к этапам проекта по названию. «Изменить график» — свои доли и этапы (пока ничего не выставлено).</li>
 <li><b>+ По договору из реестра</b> — завести график по уже подписанному договору из «Финансов» (на остаток к оплате).</li>
 <li>Вверху — ожидаемые поступления по месяцам на полгода; эти же данные передаются в прогноз денег «Финансов».</li>
 </ol>`, 'crmpay'],
@@ -76,8 +76,10 @@
     const mln = n => { n = Number(n) || 0; return Math.abs(n) >= 1e6 ? (n / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' млн' : new Intl.NumberFormat('ru-RU').format(Math.round(n)); };
     const ST_CHIP = { 'Новый': ['neutral', 'Новый'], 'Расчёт': ['accent', 'Расчёт'], 'КП отправлено': ['warn', 'КП отправлено'], 'Торг': ['warn', 'Торг'], 'Договор': ['ok', 'Договор'], 'Отказ': ['crit', 'Отказ'] };
     const PAY_CHIP = { 'Ожидается': ['neutral', 'Ожидается'], 'Акт выставлен': ['warn', 'Акт выставлен'], 'Оплачен': ['ok', 'Оплачен'] };
-    const TRACK = t => (CR.TRACKS[t] || t || '');
-    const PMP = window.MOST_SITE === 'fin' ? `${location.protocol}//${location.hostname}:3001/#/pmp?id=` : '#/pmp?id='; // «Коммерция» на сайте «Финансы», карточки проектов — на ERP
+    const TRACK = t => CR.trackName(t); // старая стадия concept показывается как ЭП
+    // «Коммерция» на сайте «Финансы», карточки проектов — на сайте MOST ERP (порт ERP отдаёт /api/crm/meta)
+    const pmpHref = id => (window.MOST_SITE === 'fin' ? `${location.protocol}//${location.hostname}:${(META && META.erpPort) || 3001}/#/pmp?id=` : '#/pmp?id=') + encodeURIComponent(id);
+    const pmpLink = (id, text) => `<a href="${pmpHref(id)}"${window.MOST_SITE === 'fin' ? ' target="_blank" rel="noopener" title="Откроется на сайте MOST ERP"' : ''}>${text}</a>`;
     const rerender = async () => { const y = window.scrollY; await route(); window.scrollTo(0, y); };
     let badgeAt = 0;
     const badges = async force => { if (!force && Date.now() - badgeAt < 60000) return; badgeAt = Date.now(); try { const b = await api('/crm/badges'); ui.setBadge('crmleads', b.crmleads); if ('crmpay' in b) ui.setBadge('crmpay', b.crmpay); } catch { /* нет доступа */ } };
@@ -228,7 +230,7 @@ ${kv('Сумма', l.calc.sum ? `<b>${money(l.calc.sum)}</b> ${l.vatIncluded ? '
 ${kv('Источник', esc(l.source))}${kv('Ответственный', esc(l.respName || pname(l.respId)))}${kv('Следующий контакт', l.nextDate && CR.OPEN(l.status) ? `<span class="${l.overdue ? 'crm-over' : ''}">${fdate(l.nextDate)}</span> ${esc(l.nextStep || '')}` : '')}
 ${kv('Отказ', l.status === 'Отказ' ? esc([l.reason, l.reasonNote].filter(Boolean).join(': ')) : '')}${kv('КП', l.proposal ? `${esc(l.proposal.title)} · ${money(l.proposal.sum)} · ${esc(l.proposal.status)}` : '')}
 ${kv('Договор', l.contractNo || l.contract ? `№ ${esc(l.contractNo || '—')} от ${fdate(l.contractDate)} · ${esc(l.company || '')}${l.contract ? ` <span class="faint">(реестр: ${esc(l.contract.name)})</span>` : ''}` : '')}
-${kv('Проект', l.pm ? `<a href="${PMP}${encodeURIComponent(l.pm.id)}">${esc(TRACK(l.pm.track))} · ${esc(l.pm.name)}</a> · ${esc(l.pm.status)}` : '')}${kv('Заметка', esc(l.note))}
+${kv('Проект', l.pm ? `${pmpLink(l.pm.id, `${esc(TRACK(l.pm.track))} · ${esc(l.pm.name)}`)} · ${esc(l.pm.status)}` : '')}${kv('Заметка', esc(l.note))}
 </div></div><div class="card"><div class="label">История</div><ol class="crm-hist">${(l.history || []).slice().reverse().map(h => `<li>${fdate(h.at)} · <b>${esc(h.status)}</b>${h.note ? ' — ' + esc(h.note) : ''} <span class="faint">${esc(h.byName || '')}</span></li>`).join('') || '<li>—</li>'}</ol></div></div>` +
         (m.rights.payments && (l.status === 'Договор' || (l.payments || []).length) ? `<h2>График платежей</h2><div class="actions" style="margin-bottom:8px"><button class="btn sm" data-act="crmSched" data-id="${l.id}">Изменить график</button><button class="btn sm" data-act="crmPayAdd" data-id="${l.id}">+ платёж</button><button class="btn sm" data-act="crmLink" data-id="${l.id}">Проект…</button>${m.rights.leader ? '<button class="btn sm danger" data-act="crmDelLead">Удалить лид</button>' : ''}</div>` + payTable(l, names) : (m.rights.leader ? `<div class="actions" style="margin-top:14px"><button class="btn sm danger" data-act="crmDelLead">Удалить лид</button></div>` : ''));
       ui.ACT.crmEditLead = () => editLead(l); ui.ACT.crmSt = ({ st }) => setStatus(l, st); ui.ACT.crmSign = () => signLead(l);
@@ -253,7 +255,7 @@ ${kv('Проект', l.pm ? `<a href="${PMP}${encodeURIComponent(l.pm.id)}">${es
 <div class="card"><div class="label">Ожидается за 6 месяцев</div><div class="val">${mln(d.expected.reduce((a, e) => a + e.amount, 0))}</div><div class="foot">по графикам, включая просроченные</div></div></div>` +
         (mk.length ? `<div class="card" style="margin-bottom:14px"><div class="label">Ожидаемые поступления по месяцам</div><div class="crm-bars">${mk.map(k => `<div class="r"><span>${esc(ui.mname ? ui.mname(k) : k)}</span><div class="bar"><i style="width:${Math.round(months[k] / maxM * 100)}%"></i></div><span class="num">${mln(months[k])}</span></div>`).join('')}</div></div>` : '') +
         `<div class="filters">${sel('crm-pst', [['open', 'С неоплаченными'], ['ready', 'Пора выставлять / просрочено'], ['paid', 'Оплачены полностью'], ['all', 'Все']], fs)}</div>` +
-        (deals.length ? deals.map(x => `<div class="card crm-deal"><div class="h"><div class="grow"><a href="${leadLink(x.id)}"><b>${esc(x.client || '—')}</b> · ${esc(x.object || '')}</a><div class="faint">${esc(TRACK(x.track))} · договор № ${esc(x.contractNo || '—')} от ${fdate(x.contractDate)} · ${money(x.calc.sum)} ${x.vatIncluded ? 'с НДС' : 'без НДС'}${x.pm ? ` · проект: <a href="${PMP}${encodeURIComponent(x.pm.id)}">${esc(x.pm.name)}</a>` : ' · <span class="warn-text">без проекта — этапы не отслеживаются</span>'}</div></div>
+        (deals.length ? deals.map(x => `<div class="card crm-deal"><div class="h"><div class="grow"><a href="${leadLink(x.id)}"><b>${esc(x.client || '—')}</b> · ${esc(x.object || '')}</a><div class="faint">${esc(TRACK(x.track))} · договор № ${esc(x.contractNo || '—')} от ${fdate(x.contractDate)} · ${money(x.calc.sum)} ${x.vatIncluded ? 'с НДС' : 'без НДС'}${x.pm ? ` · проект: ${pmpLink(x.pm.id, esc(x.pm.name))}` : ' · <span class="warn-text">без проекта — этапы не отслеживаются</span>'}</div></div>
 <div class="actions"><button class="btn sm" data-act="crmSched" data-id="${x.id}">Изменить график</button><button class="btn sm" data-act="crmPayAdd" data-id="${x.id}">+ платёж</button><button class="btn sm" data-act="crmLink" data-id="${x.id}">Проект…</button></div></div>${payTable(x, x.stageNames || [])}</div>`).join('') : empty('Сделок нет — отметьте «Договор подписан» в карточке лида или заведите график по договору из реестра'));
       $('#crm-pst').onchange = e => { location.hash = '#/crmpay?' + qsOf({ st: e.target.value }); };
       ui.ACT.crmFromContract = () => modal('График по договору из реестра', formHtml([
