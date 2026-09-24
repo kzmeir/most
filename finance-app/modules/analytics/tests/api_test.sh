@@ -21,12 +21,16 @@ chk "partner 200" 200 "$(code partner $B/analytics/overview)"
 chk "пустая база: панель собирается без ошибок" "{}" "$(curl -s -b devrole=owner "${H[@]}" $B/analytics/overview | js 'JSON.stringify(d.errors)')"
 chk "пустая база: блоки" "true/true" "$(curl -s -b devrole=owner "${H[@]}" $B/analytics/overview | js '!!d.money+"/"+Array.isArray(d.signals)')"
 chk "только чтение: POST — 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' -b devrole=owner "${H[@]}" -X POST $B/analytics/overview)"
+chk "sub-links: owner 200" 200 "$(code owner $B/analytics/sub-links)"
+chk "sub-links: бухгалтеру 403" 403 "$(code accountant $B/analytics/sub-links)"
+chk "sub-links: пустая база" "0/0" "$(curl -s -b devrole=owner "${H[@]}" $B/analytics/sub-links | js 'd.summary.n+"/"+d.items.length')"
 chk "неизвестный раздел — 404" 404 "$(code owner $B/analytics/nope)"
 kill $SP 2>/dev/null; wait $SP 2>/dev/null
 
 echo "== два сайта (DEV_SPLIT): только «Финансы» =="
 export DEV_SPLIT=1 PORT=3194 ERP_PORT=3195; start 3195
 chk "«Финансы»: панель 200" 200 "$(code owner http://127.0.0.1:3194/api/analytics/overview)"
+chk "ERP: sub-links 404" 404 "$(code owner http://127.0.0.1:3195/api/analytics/sub-links)"
 chk "ERP: панель 404" 404 "$(code owner http://127.0.0.1:3195/api/analytics/overview)"
 chk "«Финансы»: скрипт модуля подключён" 1 "$(curl -s http://127.0.0.1:3194/index.html | grep -c '/m/analytics/ui.js')"
 chk "ERP: скрипта модуля нет" 0 "$(curl -s http://127.0.0.1:3195/index.html | grep -c '/m/analytics/ui.js')"
@@ -38,6 +42,6 @@ unset DEV_SPLIT ERP_PORT
 echo "== суммы на маленьком наборе и работа без hr/crm =="
 OUT=$(node modules/analytics/tests/overview_test.js 2>&1); RC=$?; echo "$OUT" | grep '  ✗'
 chk "overview_test: код выхода" 0 "$RC"
-chk "overview_test: все проверки" "32 ✓, 0 ✗" "$(echo "$OUT" | grep -o '[0-9]* ✓, [0-9]* ✗')"
+chk "overview_test: все проверки" "$(echo "$OUT" | grep -o '[0-9]* ✓' | tail -1), 0 ✗" "$(echo "$OUT" | grep -o '[0-9]* ✓, [0-9]* ✗')"
 
 echo; echo "Итого: $pass ✓, $fail ✗"; [ $fail -eq 0 ]

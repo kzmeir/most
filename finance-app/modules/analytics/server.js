@@ -39,21 +39,39 @@ function moneyBlock(ctx, t, opts) {
   let taxes = []; try { taxes = (D.taxCalendar(t, 2, db.settings) || []).filter(x => x.date >= t && x.date <= addDays(t, 30)).map(x => ({ date: x.date, title: x.title, kind: x.kind || '', note: x.note || '' })); } catch (e) { taxes = []; }
   return { balances, receivables, forecast, months, taxes, margin: marginBlock(ctx, opts) };
 }
-// маржа по финансовым проектам: контракт без НДС − субподряд − ФОТ-оценка (часы табелей × ставка, если включён hr)
+// субподряд ↔ финансовый проект: subcontracts.project — свободный текст старой таблицы; привязан, если совпал с projects.id или projects.name (как в ядре)
+function subLinks(db) {
+  const byId = new Map((db.projects || []).map(p => [p.id, p])), byName = new Map((db.projects || []).map(p => [p.name, p]));
+  const of = s => byId.get(s.project) || byName.get(s.project) || null;
+  const unlinked = (db.subcontracts || []).filter(s => !of(s));
+  return { of, unlinked, summary: { n: unlinked.length, sum: unlinked.reduce((a, s) => a + num(s.sum), 0), paid: unlinked.reduce((a, s) => a + num(s.paid), 0), names: new Set(unlinked.map(s => String(s.project || '').trim())).size, total: (db.subcontracts || []).length } };
+}
+// предложения привязки: по каждому непривязанному тексту subcontracts.project — лучшие кандидаты из projects
+function subLinkSuggestions(db) {
+  const L = subLinks(db); const groups = new Map();
+  for (const s of L.unlinked) { const k = String(s.project || '').trim(); const g = groups.get(k) || { project: k, n: 0, sum: 0, paid: 0, ids: [], contractors: new Set() }; g.n++; g.sum += num(s.sum); g.paid += num(s.paid); g.ids.push(s.id); if (s.contractor) g.contractors.add(String(s.contractor).trim()); groups.set(k, g); }
+  const projects = (db.projects || []).map(p => ({ id: p.id, name: p.name || p.id, status: p.status || '', contractNoVat: p.contractNoVat }));
+  const items = [...groups.values()].map(g => { const candidates = g.project ? AN.suggestProjects(g.project, projects, 3) : []; return { project: g.project || '(пусто)', n: g.n, sum: g.sum, paid: g.paid, subcontractIds: g.ids, contractors: [...g.contractors].slice(0, 6), best: candidates[0] || null, candidates }; })
+    .sort((a, b) => b.sum - a.sum);
+  return { summary: L.summary, items, levels: { high: items.filter(i => i.best && i.best.level === 'high').length, medium: items.filter(i => i.best && i.best.level === 'medium').length, low: items.filter(i => i.best && i.best.level === 'low').length, none: items.filter(i => !i.best).length } };
+}
+// маржа по финансовым проектам: контракт без НДС − субподряд − ФОТ-оценка (часы табелей × ставка, если включён hr).
+// Нет привязанного субподряда — маржа не считается (прочерк), показывается только верхняя оценка «не больше»
 function marginBlock(ctx, opts) {
-  const { db } = ctx; const hr = moduleOn(ctx, 'hr') && ctx.modules.hr.laborCost ? ctx.modules.hr : null;
+  const { db } = ctx; const hr = moduleOn(ctx, 'hr') && ctx.modules.hr.laborCost ? ctx.modules.hr : null; const L = subLinks(db);
   const pmByFin = new Map(); for (const p of db.pmProjects || []) if (p.projectId) (pmByFin.get(p.projectId) || pmByFin.set(p.projectId, []).get(p.projectId)).push(p);
   const rows = [];
   for (const p of db.projects || []) {
     if (p.status === 'archive' || p.status === 'Завершён') continue; const contract = num(p.contractNoVat); if (!contract) continue;
-    const subs = (db.subcontracts || []).filter(s => s.project === p.id || s.project === p.name);
+    const subs = (db.subcontracts || []).filter(s => L.of(s) === p);
     const subSum = subs.reduce((s, x) => s + num(x.sum), 0), subPaid = subs.reduce((s, x) => s + num(x.paid), 0);
     let labor = null, hours = null; if (hr) { labor = 0; hours = 0; for (const pp of pmByFin.get(p.id) || []) { try { const c = hr.laborCost(ctx, pp.id, { includeDraft: false }); labor += num(c.cost); hours += num(c.hours); } catch (e) { /* нет данных */ } } }
-    const margin = contract - subSum - (labor || 0);
-    rows.push({ id: p.id, name: p.name || p.id, client: p.client || '', contract, subs: subSum, subPaid, labor, hours, margin, pct: Math.round(margin / contract * 1000) / 10, pm: (pmByFin.get(p.id) || []).map(x => ({ id: x.id, name: x.name, track: x.track })) });
+    const upper = contract - subSum - (labor || 0); const known = subs.length > 0;
+    rows.push({ id: p.id, name: p.name || p.id, client: p.client || '', contract, subs: subSum, subPaid, subsN: subs.length, subsLinked: known, labor, hours, margin: known ? upper : null, pct: known ? Math.round(upper / contract * 1000) / 10 : null, upper, upperPct: Math.round(upper / contract * 1000) / 10, pm: (pmByFin.get(p.id) || []).map(x => ({ id: x.id, name: x.name, track: x.track })) });
   }
   rows.sort((a, b) => b.contract - a.contract);
-  return { rows: rows.slice(0, (opts && opts.marginTop) || 25), total: { contract: rows.reduce((s, r) => s + r.contract, 0), subs: rows.reduce((s, r) => s + r.subs, 0), labor: hr ? rows.reduce((s, r) => s + (r.labor || 0), 0) : null }, withLabor: !!hr, projects: rows.length };
+  return { rows: rows.slice(0, (opts && opts.marginTop) || 25), total: { contract: rows.reduce((s, r) => s + r.contract, 0), subs: rows.reduce((s, r) => s + r.subs, 0), labor: hr ? rows.reduce((s, r) => s + (r.labor || 0), 0) : null }, withLabor: !!hr, projects: rows.length,
+    withSubs: rows.filter(r => r.subsLinked).length, unlinkedSubs: L.summary };
 }
 
 // ---- проекты: портфель, Пульс, горящие, блокеры, загрузка ГИП/ПМ ----
@@ -132,7 +150,9 @@ function handle(ctx) {
   if (!AN.canOpen(user)) return err(403, 'Панель директора — только для руководителей');
   if (ctx.site && ctx.site === 'erp') return err(404, 'Панель директора — на сайте «Финансы»');
   if (a === 'overview' && method === 'GET') return ok(overview(ctx, {}));
+  // предложения привязки субподрядов к проектам — для интерфейса привязки в «Финансах» (сами привязки пишет ядро)
+  if (a === 'sub-links' && method === 'GET') return ok(subLinkSuggestions(ctx.db));
   return err(404, 'Нет такого раздела аналитики');
 }
 
-module.exports = { id: 'analytics', api: 'analytics', site: 'fin', collections: [], handle, overview, domain: AN };
+module.exports = { id: 'analytics', api: 'analytics', site: 'fin', collections: [], handle, overview, subLinkSuggestions, domain: AN };

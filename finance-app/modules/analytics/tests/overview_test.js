@@ -29,8 +29,8 @@ function makeDb(enabled) {
       { id: 'd3', type: 'avr', client: 'ТОО Оплатил', amount: 999999, status: 'done', actDate: addD(-60), paid: true },
     ],
     contracts: [], proposals: [], counterparties: [],
-    projects: [{ id: 'P1', name: 'Проект 1', client: 'ТОО А', contractNoVat: 10000000, status: 'В работе' }, { id: 'P2', name: 'Проект 2', contractNoVat: 0 }],
-    subcontracts: [{ id: 's1', project: 'P1', contractor: 'ИП Смежник', sum: 2500000, paid: 1000000 }, { id: 's2', project: 'Проект 1', contractor: 'ТОО КЖ', sum: 500000, paid: 0 }],
+    projects: [{ id: 'P1', name: 'Проект 1', client: 'ТОО А', contractNoVat: 10000000, status: 'В работе' }, { id: 'P2', name: 'Проект 2', contractNoVat: 0 }, { id: 'ДЗЮДО ЦЕНТР', name: 'Дзюдо центр РП', contractNoVat: 4000000, status: 'В работе' }, { id: 'Dom Ministr', name: 'Dom Ministr', status: 'archive' }],
+    subcontracts: [{ id: 's1', project: 'P1', contractor: 'ИП Смежник', sum: 2500000, paid: 1000000 }, { id: 's2', project: 'Проект 1', contractor: 'ТОО КЖ', sum: 500000, paid: 0 }, { id: 's3', project: 'Дзюдо Центр', contractor: 'ИП ОВ', sum: 900000, paid: 100000 }, { id: 's4', project: 'Дзюдо Центр', contractor: 'ИП ВК', sum: 100000, paid: 0 }, { id: 's5', project: 'Дом министра', contractor: 'ИП ЭЛ', sum: 50000, paid: 0 }, { id: 's6', project: 'Непонятный объект', contractor: 'ИП Х', sum: 10000, paid: 0 }],
     pmProjects: [{ id: 'pm1', name: 'РП Проект 1', track: 'rp', status: 'В работе', start: '2026-01-10', due: '2026-08-31', gipId: 'u-gip', projectId: 'P1' }, { id: 'pm2', name: 'Концепция старая', track: 'concept', status: 'В работе', start: '2026-09-01', due: '2027-03-01' }],
     pmItems: [{ id: 'i1', pid: 'pm1', stage: 1, stageName: '1. ИРД', title: 'Пункт', role: 'ГИП', weeks: 2, due: '2026-03-01', done: false }, { id: 'i2', pid: 'pm1', stage: 2, stageName: '2', title: 'Пункт 2', role: 'ОВ', section: 'ОВ', weeks: 1, due: '2026-09-20', done: false }],
     pmBlockers: [{ id: 'b1', pid: 'pm1', what: 'ИРД', holder: 'Заказчик', since: addD(-30), status: 'open' }],
@@ -61,7 +61,22 @@ const mr = d.money.margin.rows.find(r => r.id === 'P1');
 chk('маржа: субподряд по id и по названию проекта', 3000000, mr.subs);
 chk('маржа = 10 000 000 − 3 000 000 − ФОТ 0', 7000000, mr.margin);
 chk('маржа %', 70, mr.pct);
-chk('проекты без суммы договора не в марже', 1, d.money.margin.projects);
+chk('проекты без суммы договора не в марже', 2, d.money.margin.projects);
+const dz = d.money.margin.rows.find(r => r.id === 'ДЗЮДО ЦЕНТР');
+chk('без привязанного субподряда маржа не считается', [false, null, null], [dz.subsLinked, dz.margin, dz.pct]);
+chk('оценка «не больше» = договор − ФОТ', 4000000, dz.upper);
+chk('с привязанным субподрядом 1 проект', 1, d.money.margin.withSubs);
+chk('непривязанный субподряд: шт., сумма, названий', [4, 1060000, 3], [d.money.margin.unlinkedSubs.n, d.money.margin.unlinkedSubs.sum, d.money.margin.unlinkedSubs.names]);
+console.log('== предложения привязки субподряда ==');
+const sl = AN.subLinkSuggestions(makeDb([]));
+chk('групп по названию объекта', 3, sl.items.length);
+chk('сначала крупные', 'Дзюдо Центр', sl.items[0].project);
+chk('Дзюдо Центр → Дзюдо центр РП (high)', ['ДЗЮДО ЦЕНТР', 'high'], [sl.items[0].best.id, sl.items[0].best.level]);
+chk('группа: 2 договора, id и подрядчики', [2, ['s3', 's4'], ['ИП ОВ', 'ИП ВК']], [sl.items[0].n, sl.items[0].subcontractIds, sl.items[0].contractors]);
+chk('Дом министра → Dom Ministr (латиница)', 'Dom Ministr', sl.items.find(i => i.project === 'Дом министра').best.id);
+chk('непохожее — без кандидата', null, sl.items.find(i => i.project === 'Непонятный объект').best);
+chk('опечатка: Теректы ↔ Теректи', true, require(path.join(APP, 'modules', 'analytics', 'domain.js')).matchScore('ТЕРЕКТЫ', 'Теректи РП').score >= 0.85);
+chk('разные номера не склеиваются: НОВА-23 / НОВА 24', true, require(path.join(APP, 'modules', 'analytics', 'domain.js')).matchScore('НОВА-23', 'НОВА 24').score < 0.65);
 chk('прогноз: 13 недель от остатка', [13, 3500000], [d.money.forecast.weeks.length, d.money.forecast.start]);
 chk('проекты: активных 2', 2, d.projects.active);
 chk('старая концепция — среди ЭП', ['ep', 'rp'], d.projects.portfolio.map(x => x.track).sort());

@@ -38,5 +38,42 @@
   }
   const plural = (n, a, b, c) => { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? b : c; };
 
-  return { canOpen, LIMITS, ZONE_LABEL, ZONE_ORDER, signals, money, mln, fdate, plural, num };
+  // ---- сопоставление свободного текста subcontracts.project с проектами финансов ----
+  // Нормализация: регистр, ё→е, латиница → кириллица по звучанию (Hayat → хаят, Monte Rossa → монте росса), без кавычек и служебных слов.
+  const LAT = [['sch', 'щ'], ['sh', 'ш'], ['ch', 'ч'], ['zh', 'ж'], ['kh', 'х'], ['ts', 'ц'], ['yu', 'ю'], ['ya', 'я'], ['yo', 'е'], ['ay', 'ай'], ['ey', 'ей'], ['oy', 'ой'], ['a', 'а'], ['b', 'б'], ['c', 'к'], ['d', 'д'], ['e', 'е'], ['f', 'ф'], ['g', 'г'], ['h', 'х'], ['i', 'и'], ['j', 'дж'], ['k', 'к'], ['l', 'л'], ['m', 'м'], ['n', 'н'], ['o', 'о'], ['p', 'п'], ['q', 'к'], ['r', 'р'], ['s', 'с'], ['t', 'т'], ['u', 'у'], ['v', 'в'], ['w', 'в'], ['x', 'кс'], ['y', 'и'], ['z', 'з']];
+  const toCyr = w => { let s = w, out = ''; while (s) { const p = LAT.find(([l]) => s.startsWith(l)); if (p) { out += p[1]; s = s.slice(p[0].length); } else { out += s[0]; s = s.slice(1); } } return out; };
+  const STOP = new Set(['жк', 'рп', 'эп', 'бц', 'тоо', 'ип', 'ао', 'рд', 'псд', 'проект', 'проекта', 'очередь', 'очереди', 'оч', 'и', 'на', 'по', 'в', 'для', 'доп', 'работы', 'кп', 'ан', 'ер', 'рп', 'га']);
+  const norm = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[«»"'`“”„()\[\],.;:!?/\\|+&№#-]+/g, ' ').replace(/([а-яa-z])(\d)/g, '$1 $2').replace(/(\d)([а-яa-z])/g, '$1 $2').trim();
+  const tokens = s => norm(s).split(/\s+/).filter(Boolean).map(w => /[a-z]/.test(w) ? toCyr(w) : w).filter(w => !STOP.has(w) && !(w.length === 1 && !/\d/.test(w)));
+  // Левенштейн → сходство 0..1
+  function sim(a, b) {
+    if (a === b) return 1; if (!a || !b) return 0;
+    const m = a.length, n = b.length; let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+    return 1 - prev[n] / Math.max(m, n);
+  }
+  // слово к слову: точное, начало (≥ 4 букв — «алатауская» / «алатау»), опечатка (сходство ≥ 0,75); цифры — только точно
+  const wordSim = (a, b) => { if (a === b) return 1; if (/\d/.test(a) || /\d/.test(b)) return 0; const s = Math.min(a.length, b.length); if (s >= 4 && (a.startsWith(b) || b.startsWith(a))) return 0.9; const r = sim(a, b); return r >= 0.75 ? r : 0; };
+  // оценка пары «текст субподряда — проект»: покрытие слов с обеих сторон + склейка без пробелов (монтеросса / монте росса)
+  function matchScore(text, cand) {
+    const A = tokens(text), B = tokens(cand); if (!A.length || !B.length) return { score: 0, why: '' };
+    const best = (xs, ys) => xs.map(x => Math.max(0, ...ys.map(y => wordSim(x, y))));
+    const ab = best(A, B), ba = best(B, A); const cover = xs => xs.reduce((s, v) => s + v, 0) / xs.length;
+    let score = 0.6 * cover(ab) + 0.4 * cover(ba); let why = ab.every(v => v === 1) ? 'все слова совпадают' : ab.some(v => v === 1) ? 'совпадают слова' : ab.some(v => v > 0) ? 'похожие слова' : '';
+    const digits = xs => xs.filter(w => /\d/.test(w)).sort().join(' '); // «НОВА 23» и «НОВА 24» — разные объекты
+    const glued = digits(A) === digits(B) ? sim(A.join(''), B.join('')) : 0; if (glued >= 0.8 && glued > score) { score = glued; why = 'одно и то же написание'; }
+    return { score: Math.round(score * 100) / 100, why };
+  }
+  // кандидаты для одного текста: projects [{ id, name, status, contractNoVat }] → лучшие (активные с договором — выше при равной оценке)
+  function suggestProjects(text, projects, limit) {
+    const rows = [];
+    for (const p of projects || []) {
+      const a = matchScore(text, p.name), b = p.id !== p.name ? matchScore(text, p.id) : { score: 0 }; const m = a.score >= b.score ? a : b; if (m.score < 0.45) continue;
+      const bonus = (p.status !== 'archive' ? 0.03 : 0) + (num(p.contractNoVat) ? 0.02 : 0);
+      rows.push({ id: p.id, name: p.name || p.id, status: p.status || '', contractNoVat: num(p.contractNoVat), score: m.score, rank: m.score + bonus, why: m.why, by: a.score >= b.score ? 'name' : 'id' });
+    }
+    return rows.sort((x, y) => y.rank - x.rank).slice(0, limit || 3).map(({ rank, ...r }) => Object.assign(r, { level: r.score >= 0.85 ? 'high' : r.score >= 0.65 ? 'medium' : 'low' }));
+  }
+
+  return { canOpen, LIMITS, ZONE_LABEL, ZONE_ORDER, signals, money, mln, fdate, plural, num, tokens, sim, matchScore, suggestProjects };
 });
