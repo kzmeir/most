@@ -11,7 +11,7 @@ function cleanLead(f) {
   const o = Object.assign({}, f);
   for (const k of ['area', 'rate', 'sum']) if (k in o) o[k] = C.num(o[k]);
   if ('vatIncluded' in o) o.vatIncluded = o.vatIncluded === true || o.vatIncluded === 'true' || o.vatIncluded === '1';
-  if ('track' in o && !C.TRACKS[o.track]) o.track = 'rp';
+  if ('track' in o) o.track = C.normTrack(o.track); // concept → ep
   for (const k of LEAD_FIELDS) if (k in o && typeof o[k] === 'string') o[k] = o[k].trim();
   return o;
 }
@@ -38,7 +38,9 @@ function contractMeta(c) {
 // строки графика по сделке: доли → суммы от суммы договора, привязка к проекту pm
 function makeSchedule(ctx, l, rows, byUserId, append) {
   const total = C.leadCalc(l, vatOf(ctx)).sum; const base = append ? ctx.db.crmPayments.filter(p => p.leadId === l.id).reduce((m, p) => Math.max(m, C.num(p.n)), 0) : 0;
-  const made = C.schedule(total, rows).map((r, i) => Object.assign(r, { id: ctx.store.id(), n: base + i + 1, leadId: l.id, contractId: l.contractId || '', pmProjectId: l.pmProjectId || '', vatIncluded: !!l.vatIncluded, due: rows[i].due || '', status: 'Ожидается', actDate: '', paidDate: '', note: '', createdAt: new Date().toISOString(), createdBy: byUserId || '' }));
+  const pm = ctx.modules.pm && ctx.modules.pm.domain; const pp = l.pmProjectId && (ctx.db.pmProjects || []).find(p => p.id === l.pmProjectId);
+  const names = pm && pp ? pm.stageNamesOf((ctx.db.pmItems || []).filter(i => i.pid === pp.id), pp.track) : [];
+  const made = C.schedule(total, rows, names).map((r, i) => Object.assign(r, { id: ctx.store.id(), n: base + i + 1, leadId: l.id, contractId: l.contractId || '', pmProjectId: l.pmProjectId || '', vatIncluded: !!l.vatIncluded, due: rows[i].due || '', status: 'Ожидается', actDate: '', paidDate: '', note: '', createdAt: new Date().toISOString(), createdBy: byUserId || '' }));
   ctx.db.crmPayments.push(...made); return made;
 }
 // этап проекта закрыт в pm → у платежей по этому этапу отметка readyAt («пора выставлять акт»; сам признак считается и на лету)
@@ -66,7 +68,7 @@ function handle(ctx) {
   const resolve = payResolver(ctx);
   const payOut = p => Object.assign({}, p, C.paymentState(p, resolve(p)));
   const leadOut = l => {
-    const o = Object.assign({}, l, { calc: C.leadCalc(l, vat), overdue: C.leadOverdue(l, t), respName: ctx.userName ? ctx.userName(l.respId) : '', pm: pmBrief(l.pmProjectId), canEdit: editor });
+    const o = Object.assign({}, l, { track: C.normTrack(l.track), calc: C.leadCalc(l, vat), overdue: C.leadOverdue(l, t), respName: ctx.userName ? ctx.userName(l.respId) : '', pm: pmBrief(l.pmProjectId), canEdit: editor });
     delete o.history;
     const kp = l.proposalId && db.proposals.find(x => x.id === l.proposalId); if (kp) o.proposal = { id: kp.id, title: kp.title, sum: kp.sum, status: kp.status };
     const ct = l.contractId && db.contracts.find(x => x.id === l.contractId); if (ct) o.contract = { id: ct.id, name: ct.name || ct.code, title: ct.title || '', sum: ct.sum, company: ct.company || '' };
@@ -86,6 +88,7 @@ function handle(ctx) {
   // ---- справочники и списки для форм ----
   if (a === 'meta' && method === 'GET') {
     const out = { statuses: C.STATUSES, tracks: C.TRACKS, sources: C.SOURCES, objectTypes: C.OBJECT_TYPES, reasons: C.REASONS, payStatus: C.PAY_STATUS, payTemplates: C.PAY_TEMPLATES, companies: C.COMPANIES, fields: C.FIELDS,
+      erpPort: Number(process.env.ERP_PORT) || (Number(process.env.PORT) || 3000) + 1, // ссылки на карточки проектов (сайт MOST ERP)
       rights: { leader, editor, payments: C.canPayments(user), docs: C.canDocs(user), templates: C.canEditTemplates(user), sign: C.canSign(user) }, vatRate: vat, term: termOf(ctx) };
     if (editor) {
       const used = new Set(db.crmLeads.map(l => l.proposalId).filter(Boolean));
@@ -149,13 +152,13 @@ function handle(ctx) {
       let pmId = body.pmProjectId || '';
       if (!pmId && body.createProject !== false && ctx.modules.pm && ctx.modules.pm.createProject) {
         const fin = ct && ctx.D.contractProject ? ctx.D.contractProject(ct, db.projects) : null;
-        const p = ctx.modules.pm.createProject(ctx, { track: l.track || 'rp', name: String(body.projectName || l.object || l.client).trim(), client: l.client || '', address: l.address || '', area: l.area || '', projectId: fin ? fin.id : '', start: body.start || l.contractDate, due: body.due || '', fit: !!body.due, pmId: body.pmId || '', gipId: body.gipId || '', comment: `Из коммерции: лид № ${l.no}, договор № ${l.contractNo || '—'} от ${C.fdate(l.contractDate)}` }, user.id);
+        const p = ctx.modules.pm.createProject(ctx, { track: C.normTrack(l.track), name: String(body.projectName || l.object || l.client).trim(), client: l.client || '', address: l.address || '', area: l.area || '', projectId: fin ? fin.id : '', start: body.start || l.contractDate, due: body.due || '', fit: !!body.due, pmId: body.pmId || '', gipId: body.gipId || '', comment: `Из коммерции: лид № ${l.no}, договор № ${l.contractNo || '—'} от ${C.fdate(l.contractDate)}` }, user.id);
         pmId = p.id;
       }
       l.pmProjectId = pmId || l.pmProjectId || ''; l.status = 'Договор'; l.signedAt = t; l.signedBy = user.id; if (!l.kpAt) l.kpAt = l.contractDate; l.reason = '';
       history(l, 'Договор', `подписан № ${l.contractNo || '—'} от ${C.fdate(l.contractDate)}`);
       let made = 0;
-      if (!paysOf(l.id).length) { const rows = Array.isArray(body.schedule) && body.schedule.length ? body.schedule : C.PAY_TEMPLATES[l.track] || C.PAY_TEMPLATES.rp; made = makeSchedule(ctx, l, rows, user.id).length; }
+      if (!paysOf(l.id).length) { const rows = Array.isArray(body.schedule) && body.schedule.length ? body.schedule : C.PAY_TEMPLATES[C.normTrack(l.track)] || C.PAY_TEMPLATES.rp; made = makeSchedule(ctx, l, rows, user.id).length; }
       else for (const p of paysOf(l.id)) if (!p.pmProjectId) p.pmProjectId = l.pmProjectId;
       saveAudit('sign', 'crmLeads', l.id, { pmProjectId: l.pmProjectId, payments: made });
       const contract = { id: l.contractId || '', leadId: l.id, no: l.contractNo || '', date: l.contractDate, sum: C.leadCalc(l, vat).sum, vatIncluded: !!l.vatIncluded, client: l.client || '', object: l.object || '', company: l.company || '', track: l.track };
@@ -166,7 +169,7 @@ function handle(ctx) {
     if (l && c === 'schedule' && method === 'POST') {
       if (!C.canPayments(user)) return err(403, 'График платежей ведут руководители');
       const old = paysOf(l.id); if (old.some(p => p.status !== 'Ожидается')) return err(409, 'В графике есть выставленные или оплаченные платежи — меняйте строки по одной');
-      const rows = Array.isArray(body.rows) && body.rows.length ? body.rows : C.PAY_TEMPLATES[body.template || l.track] || C.PAY_TEMPLATES.rp;
+      const rows = Array.isArray(body.rows) && body.rows.length ? body.rows : C.PAY_TEMPLATES[C.normTrack(body.template || l.track)] || C.PAY_TEMPLATES.rp;
       const sh = rows.reduce((s, r) => s + C.num(r.share), 0); if (Math.abs(sh - 100) > 0.01) return err(400, `Сумма долей ${sh} %, должно быть 100 %`);
       if (!C.leadCalc(l, vat).sum) return err(400, 'У сделки нет суммы договора');
       for (const p of old) db.crmPayments.splice(db.crmPayments.indexOf(p), 1);
@@ -199,7 +202,7 @@ function handle(ctx) {
     const ct = db.contracts.find(x => x.id === body.contractId); if (!ct) return err(404, 'Договор не найден');
     if (db.crmLeads.some(l => l.contractId === ct.id)) return err(409, 'По этому договору уже есть сделка');
     const m = contractMeta(ct); const sum = C.num(body.sum) || C.num(ct.remaining) || C.num(ct.sum); if (!sum) return err(400, 'В договоре нет суммы — укажите сумму графика');
-    const track = C.TRACKS[body.track] ? body.track : 'rp'; const rows = Array.isArray(body.rows) && body.rows.length ? body.rows : C.PAY_TEMPLATES[track];
+    const track = C.normTrack(body.track); const rows = Array.isArray(body.rows) && body.rows.length ? body.rows : C.PAY_TEMPLATES[track];
     const sh = rows.reduce((s, r) => s + C.num(r.share), 0); if (Math.abs(sh - 100) > 0.01) return err(400, `Сумма долей ${sh} %, должно быть 100 %`);
     const l = { id: store.id(), no: nextNo(), client: ct.clientShort || ct.client || '', object: ct.name || ct.code || '', track, objectType: 'Прочее', source: 'Реестр договоров', sum, vatIncluded: !/без ндс/i.test(ct.note || ''), status: 'Договор', contractId: ct.id, contractNo: m.no, contractDate: m.date, company: ct.company || '', pmProjectId: pmBrief(body.pmProjectId) ? body.pmProjectId : '', respId: user.id, kpAt: m.date || t, signedAt: m.date || t, createdAt: now(), createdBy: user.id, history: [] };
     history(l, 'Договор', 'из реестра договоров' + (C.num(ct.paid) && !C.num(body.sum) ? `; уже оплачено ${C.moneyStr(ct.paid)} — график на остаток` : '')); db.crmLeads.push(l);
