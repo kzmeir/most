@@ -1,13 +1,16 @@
 # Docker для MostServer (Synology, Container Manager) и любого другого сервера с Docker.
-# Без сборки образа: код монтируется в готовый node:22-alpine (сервер без npm-зависимостей).
+# Без сборки образа: код монтируется в готовый node:24-alpine (сервер без npm-зависимостей).
+# node:24, а не 22 — база на встроенном node:sqlite (data/db.sqlite), в 24-й он без экспериментального флага.
 # Инструкция сисадмину — docs/DEPLOY.md. Порт по умолчанию 3000 (5000/5001 заняты DSM — не трогать).
 services:
   most-finance:
-    image: node:22-alpine
+    image: node:24-alpine
     container_name: most-finance
     working_dir: /app
     command: ["node", "server.js"]
     volumes:
+      # ВАЖНО: источник тома — локальный диск NAS, не смонтированная сетевая папка (SMB/CIFS)!
+      # SQLite в режиме WAL требует блокировок файловой системы, которых сетевые шары не дают надёжно.
       - .:/app
     ports:
       - "${PORT:-3000}:3000"

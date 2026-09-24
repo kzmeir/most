@@ -235,19 +235,16 @@ echo "== закрытые коллекции модулей: общий /api/<к
 chk "pmProjects closed" 404 "$(code -b $CO $B/pmProjects)"
 chk "pmItems closed" 404 "$(code -b $CO $B/pmItems)"
 chk "pmBlockers closed" 404 "$(code -b $CO $B/pmBlockers)"
-chk "sysOutbox closed" 404 "$(code -b $CO $B/sysOutbox)"
 chk "hrTimesheets closed" 404 "$(code -b $CO $B/hrTimesheets)"
 chk "crmLeads closed" 404 "$(code -b $CO $B/crmLeads)"
 chk "kbNews closed" 404 "$(code -b $CO $B/kbNews)"
 
-echo "== модуль sys: /api/sys/* =="
+echo "== модуль sys: /api/sys/status (уведомления отложены — см. modules/sys/README.md) =="
 chk "sys status owner 200" 200 "$(code -b $CO $B/sys/status)"
 chk "sys status accountant 403" 403 "$(code -b $CA $B/sys/status)"
-chk "sys settings owner 200" 200 "$(code -b $CO $B/sys/settings)"
-chk "sys settings pm-role 403" 403 "$(code -b $CP $B/sys/settings)"
-NTF=$(curl -s -b $CO $H -X POST $B/sys/notify/test -d '{}')
-chk "sys notify test queued" 1 "$(echo "$NTF" | python3 -c 'import sys,json;print(json.load(sys.stdin)["sent"])')"
-chk "sys outbox has item" true "$(curl -s -b $CO $B/sys/outbox | python3 -c 'import sys,json;print(str(len(json.load(sys.stdin))>=1).lower())')"
+chk "sys status pm-role 403" 403 "$(code -b $CP $B/sys/status)"
+ST=$(curl -s -b $CO $B/sys/status)
+chk "sys status: база sqlite" true "$(echo "$ST" | python3 -c 'import sys,json;print(str(json.load(sys.stdin)["dbFile"].endswith("db.sqlite")).lower())')"
 
 echo "== DEV_USER: вход без пароля только локально, никогда через туннель =="
 kill $SP 2>/dev/null; wait $SP 2>/dev/null
