@@ -143,6 +143,14 @@
       { name: '1. Запуск АН', items: [I('Договор и график авторского надзора', 'ГИП', 1, 'Договор АН подписан, график выездов согласован с заказчиком'), I('Журнал авторского надзора открыт', 'ГИП', 1, 'Журнал АН зарегистрирован на объекте'), I('Состав группы АН по разделам', 'ГИП', 1, 'Назначены ответственные АР, КЖ, инженерия')] },
     ],
   };
+  // Решение директора 24.09.2026: концепция — не отдельная стадия, а первый этап ЭП (форэскиз → концепция → согласование → договор на ЭП).
+  // Трек concept остаётся в данных для старых карточек (они сворачиваются в ЭП при «передаче»); АН в интерфейсе скрыт («панель планирования сейчас не нужна»), данные и API сохранены.
+  const CONCEPT_STAGE = { name: '1. Концепция (форэскиз → концепция → согласование)', items: TEMPLATES.concept.flatMap(s => s.items).map(x => /^Передача в ЭП/.test(x.t) ? Object.assign({}, x, { t: 'КП и договор на ЭП (70 %)', crit: 'Договор на ЭП подписан, назначен ПМ' }) : x) };
+  TEMPLATES.ep = [CONCEPT_STAGE].concat(TEMPLATES.ep.map((s, i) => Object.assign({}, s, { name: s.name.replace(/^\d+\.\s*/, `${i + 2}. `) })));
+  const VISIBLE_TRACKS = ['ep', 'rp'];                     // что предлагаем создавать и показываем в меню
+  const HIDDEN_TRACKS = ['concept', 'an'];
+  const normalizeTrack = t => t === 'concept' ? 'ep' : (TRACKS[t] ? t : 'rp'); // «Концепция» при создании/импорте — это ЭП
+  const shownTrack = t => t !== 'an';                       // что попадает в сводку, реестры и «мои задачи» (старые концепции — среди ЭП)
   const AN_MONTHLY = [I('Выезды на объект по графику', 'ГИП', 4, 'Отметки о выездах в журнале АН'), I('Записи в журнале АН', 'ГИП', 4), I('Ответы на запросы подрядчика', 'ГАП', 4, 'Все запросы закрыты письменно'), I('Приёмка скрытых работ (КЖ)', 'ГКП', 4, 'Акты скрытых работ подписаны'), I('Ежемесячный акт АН', 'ГИП', 4, 'Акт АН за месяц подписан заказчиком')];
   const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
   const stageNames = track => (TEMPLATES[track] || []).map(s => s.name);
@@ -339,6 +347,6 @@
   // снимок показателей для ретроспективы
   const retroSnapshot = (h, blockers) => ({ progress: h.progress, zone: h.zone, consumption: h.consumption, curV: h.curV, avgV: h.avgV, addedW: h.addedW, remain: h.remain, forecast: h.forecast, returns: h.returns, blockers: (blockers || []).filter(b => b.status !== 'closed').length });
 
-  return { TRACKS, TRACK_SHORT, TRACK_ORDER, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
+  return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
     W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot };
 });

@@ -1,5 +1,5 @@
 'use strict';
-// Модуль «Управление проектами» (концепция / ЭП / РП / АН): /api/pm/*. Свои права (domain.js), финансы здесь не видны —
+// Модуль «Управление проектами» (ЭП / РП; треки concept и an скрыты — см. domain.js): /api/pm/*. Свои права (domain.js), финансы здесь не видны —
 // всё нужное из финансов (список проектов для связи, факт бюджета, подрядчики для подсказок) отдаётся отсюда с проверкой прав.
 const PM = require('./domain');
 
@@ -36,14 +36,26 @@ function cleanBudget(b) {
   for (const s of Array.isArray(b.sections) ? b.sections : []) { const name = String((s && s.name) || '').trim(); if (!name) continue; out.sections.push({ name, sum: Number(s.sum) || 0, executor: String(s.executor || '') }); }
   return out;
 }
-// сигнатуру не менять — её используют другие модули. fields.track: concept|ep|rp|an; fields.fit — уложить план в дату по договору; fields.months — месяцев АН
+// сигнатуру не менять — её используют другие модули. fields.track: ep|rp (concept сворачивается в ЭП — его первый этап; an — скрытый трек, только через API); fields.fit — уложить план в дату по договору; fields.months — месяцев АН
 function createProject(ctx, fields, byUserId) {
-  const p = Object.assign(ctx.pick(fields, FIELDS), { id: ctx.store.id(), track: TRACKS.includes(fields.track) ? fields.track : 'rp', name: String(fields.name).trim(), status: fields.status || 'В работе', risk: fields.risk || 'Низкий', createdAt: new Date().toISOString(), createdBy: byUserId || '' });
+  const p = Object.assign(ctx.pick(fields, FIELDS), { id: ctx.store.id(), track: PM.normalizeTrack(fields.track), name: String(fields.name).trim(), status: fields.status || 'В работе', risk: fields.risk || 'Низкий', createdAt: new Date().toISOString(), createdBy: byUserId || '' });
   if (!PM.STATUS.includes(p.status)) p.status = 'В работе'; if (!PM.RISK.includes(p.risk)) p.risk = 'Низкий';
   if (fields.budget) p.budget = cleanBudget(fields.budget);
   ctx.db.pmProjects.push(p); addItems(ctx, PM.itemsFromTemplate(p.track, p.id, { start: p.start, due: p.due, months: fields.months }));
   if (p.start) { const r = applyPlan(ctx, p, p.start, !!(fields.fit && p.due)); if (!p.forecast) p.forecast = fields.fit && p.due ? p.due : r.end; }
   ctx.store.save(); ctx.store.audit(byUserId || '', 'create', 'pmProjects', p.id); ctx.emit('pm.project.created', { project: p });
+  return p;
+}
+// старая карточка концепции сворачивается в ЭП: её пункты становятся этапом 1 «Концепция», добавляются этапы 2–9 шаблона ЭП; отметки «сделано» сохраняются
+function collapseConcept(ctx, p, body, byUserId) {
+  body = body || {}; const t = PM.today();
+  const mine = ctx.db.pmItems.filter(i => i.pid === p.id);
+  for (const it of mine) Object.assign(it, { stage: 1, stageName: PM.CONCEPT_STAGE.name });
+  let order = Math.max(0, ...mine.map(i => i.order || 0));
+  addItems(ctx, PM.itemsFromTemplate('ep', p.id, {}).filter(i => i.stage > 1).map(i => Object.assign(i, { order: ++order })));
+  Object.assign(p, { track: 'ep', pmId: body.pmId || p.pmId || '', collapsedFrom: 'concept', collapsedAt: t, updatedAt: new Date().toISOString(), updatedBy: byUserId || '' });
+  if (body.due) p.due = body.due; const start = body.start || p.start || t; const r = applyPlan(ctx, p, start, !!p.due); if (!p.start) p.start = start; p.forecast = p.due || r.end;
+  ctx.store.save(); ctx.store.audit(byUserId || '', 'collapse', 'pmProjects', p.id, { to: 'ep' }); ctx.emit('pm.project.handover', { from: p, to: p });
   return p;
 }
 // финансовый проект, к которому привязан проект управления
@@ -81,7 +93,7 @@ function handle(ctx) {
   };
   // счётчики в меню: просроченные «мои» пункты и блокеры старше 14 дней
   const myItems = () => {
-    const active = new Set(db.pmProjects.filter(p => PM.ACTIVE(p.status)).map(p => p.id));
+    const active = new Set(db.pmProjects.filter(p => PM.ACTIVE(p.status) && PM.shownTrack(p.track)).map(p => p.id));
     return db.pmItems.filter(it => active.has(it.pid) && !it.done && !it.na).filter(it => { const p = findP(it.pid); if (!p) return false;
       if (it.assigneeId && it.assigneeId === user.id) return true;
       if (user.role === 'lead') return !!user.section && PM.itemSection(it) === user.section;
@@ -89,11 +101,11 @@ function handle(ctx) {
       if (p.pmId === user.id && ['ПМ', 'Заказчик'].includes(it.role)) return true;
       return PM.isLeader(user) && !!it.due && it.due < t; });
   };
-  if (a === 'badges' && method === 'GET') return ok({ pmmy: myItems().filter(it => it.due && it.due < t).length, pmbl: db.pmBlockers.filter(x => x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE((findP(x.pid) || {}).status)).length });
+  if (a === 'badges' && method === 'GET') return ok({ pmmy: myItems().filter(it => it.due && it.due < t).length, pmbl: db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE(q.status); }).length });
   if (a === 'overview' && method === 'GET') {
-    const dash = PM.dashboard(db.pmProjects, db.pmItems, db.pmBlockers, t);
+    const dash = PM.dashboard(db.pmProjects.filter(p => PM.shownTrack(p.track)), db.pmItems, db.pmBlockers, t); // АН скрыт из сводки (данные и карточки по API остаются)
     dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }, PM.canBudget(user, r) ? { throughput: PM.throughput(r, r.health) } : {}));
-    return ok(Object.assign(dash, { blockersList: db.pmBlockers.map(blockerOut), canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
+    return ok(Object.assign(dash, { blockersList: db.pmBlockers.filter(x => PM.shownTrack((findP(x.pid) || {}).track)).map(blockerOut), canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
   }
   if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
   if (a === 'finance' && b === 'projects' && method === 'GET') { if (!PM.isLeader(user)) return err(403, 'Только руководитель'); return ok(finProjects()); }
@@ -101,7 +113,7 @@ function handle(ctx) {
     if (!b && method === 'GET') return ok(db.pmProjects.filter(p => !ctx.qs.track || p.track === ctx.qs.track).map(p => Object.assign(projOut(PM.summary(p, db.pmItems, db.pmBlockers, t)), { canEdit: PM.isManager(user, p) })));
     if (!b && method === 'POST') {
       if (!PM.canCreate(user)) return err(403, 'Создавать проекты могут руководители, ПМ и ГИП');
-      if (!TRACKS.includes(body.track) || !String(body.name || '').trim()) return err(400, 'Укажите стадию (концепция / ЭП / РП / АН) и название');
+      if (!TRACKS.includes(body.track) || !String(body.name || '').trim()) return err(400, 'Укажите стадию (ЭП / РП) и название');
       const f = Object.assign({}, body); if (user.role === 'gip' && !f.gipId) f.gipId = user.id; if (user.role === 'pm' && !f.pmId) f.pmId = user.id;
       if (!PM.isLeader(user)) delete f.budget;
       return ok(card(createProject(ctx, f, user.id)));
@@ -132,6 +144,7 @@ function handle(ctx) {
     // передача дальше: концепция → ЭП, ЭП → РП (новый проект со своим шаблоном; старый закрывается)
     if (p && c === 'handover' && method === 'POST') {
       const next = PM.NEXT_TRACK[p.track]; if (!next) return err(400, 'Передать дальше можно концепцию (в ЭП) и эскизный проект (в РП)'); if (!PM.isManager(user, p)) return err(403, 'Передаёт ПМ проекта или руководитель');
+      if (p.track === 'concept') { collapseConcept(ctx, p, body, user.id); return ok(card(p)); } // старая концепция сворачивается в ЭП на месте
       const linkKey = next + 'Id'; if (p[linkKey] && findP(p[linkKey])) return err(400, 'Проект уже передан дальше');
       const q = createProject(ctx, { track: next, name: body.name || p.name, no: p.no || '', client: p.client || '', address: p.address || '', area: p.area || '', projectId: p.projectId || '', folder: p.folder || '', members: p.members || {}, pmId: body.pmId || p.pmId || '', gipId: body.gipId || p.gipId || '', start: body.start || t, due: body.due || '', fit: !!body.due, comment: body.comment || '', miroUrl: next === 'ep' ? (p.miroUrl || '') : '' }, user.id);
       q[p.track + 'Id'] = p.id; Object.assign(p, { status: 'Готово', [linkKey]: q.id, handedAt: t }); store.save(); store.audit(user.id, 'handover', 'pmProjects', p.id, { to: q.id, track: next }); ctx.emit('pm.project.handover', { from: p, to: q }); return ok(card(q));
@@ -203,7 +216,7 @@ function handle(ctx) {
     const mode = body.mode === 'replace' ? 'replace' : 'skip'; const since = body.since || t;
     const rep = { created: [], replaced: [], skipped: [], unlinked: [], items: 0, done: 0, tasks: 0, blockers: 0, budgets: 0 };
     for (const src of list) {
-      const name = String(src.name || '').trim(); const track = TRACKS.includes(src.track) ? src.track : 'rp'; if (!name) continue;
+      const name = String(src.name || '').trim(); const track = PM.normalizeTrack(src.track); if (!name) continue;
       const ex = db.pmProjects.find(q => q.track === track && String(q.name).trim().toLowerCase() === name.toLowerCase());
       if (ex) {
         if (mode !== 'replace') { rep.skipped.push(name); continue; }
@@ -232,4 +245,4 @@ function handle(ctx) {
   return err(404, 'Нет такого действия');
 }
 
-module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers'], handle, createProject, domain: PM };
+module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers'], handle, createProject, collapseConcept, domain: PM };
