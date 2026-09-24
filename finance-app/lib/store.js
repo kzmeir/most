@@ -78,6 +78,8 @@ function listBackups() {
 function save() { autoBackup(); persist(); }
 
 function get() { return db || load(); }
+// коллекции модулей (modules/*/server.js → collections) регистрируются до store.load()
+function register(cols) { for (const c of cols || []) if (!COLLECTIONS.includes(c)) COLLECTIONS.push(c); }
 function id() { return crypto.randomUUID(); }
 
 function col(name) {
@@ -111,4 +113,4 @@ function audit(userId, action, collection, docId, extra) {
   persist();
 }
 
-module.exports = { load, save, persist, backup, listBackups, get, id, col, insert, update, remove, find, audit, COLLECTIONS, DATA_DIR, DB_FILE, BACKUP_DIR };
+module.exports = { register, load, save, persist, backup, listBackups, get, id, col, insert, update, remove, find, audit, COLLECTIONS, DATA_DIR, DB_FILE, BACKUP_DIR };

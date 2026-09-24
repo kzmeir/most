@@ -8,7 +8,6 @@ const { URL } = require('url');
 const store = require('./lib/store');
 const auth = require('./lib/auth');
 const D = require('./lib/domain');
-const PM = require('./lib/pm');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -19,7 +18,30 @@ const FILE_COLS = ['invoices', 'docs', 'contracts', 'subcontracts', 'proposals']
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8' };
 const MAX_OPS = 3000;
 
+// ---------- модули ERP: modules/<id>/server.js (API + коллекции), domain.js и ui.js (браузер). Контракт — docs/ARCHITECTURE.md ----------
+const MODULES_DIR = path.join(__dirname, 'modules');
+const MODULES = (fs.existsSync(MODULES_DIR) ? fs.readdirSync(MODULES_DIR) : []).sort()
+  .filter(n => /^[a-z][a-z0-9]*$/.test(n) && fs.existsSync(path.join(MODULES_DIR, n, 'server.js')))
+  .map(n => Object.assign(require(path.join(MODULES_DIR, n, 'server.js')), { dir: path.join(MODULES_DIR, n), id: n }));
+const MODULE_BY_ID = Object.fromEntries(MODULES.map(m => [m.id, m]));
+const MODULE_COLS = new Set(MODULES.flatMap(m => m.collections || []));
+store.register([...MODULE_COLS]);
+// события между модулями: ctx.emit('pm.project.created', data) → у всех модулей on['pm.project.created'](ctx, data)
+function emit(ctx, name, data) { for (const m of MODULES) { const h = m.on && m.on[name]; if (h) { try { h(Object.assign({}, ctx, { module: m.id }), data); } catch (e) { console.error(`[${m.id}] ${name}:`, e.message); } } } }
+const pickKeys = (o, keys) => Object.fromEntries(keys.filter(k => k in (o || {})).map(k => [k, o[k]]));
+// скрипты модулей для браузера: /m/<id>/domain.js, /m/<id>/ui.js (подключаются в index.html перед app.js)
+const moduleScripts = () => MODULES.flatMap(m => ['domain.js', 'ui.js'].filter(f => fs.existsSync(path.join(m.dir, f))).map(f => `<script src="/m/${m.id}/${f}"></script>`)).join('\n');
+
 store.load();
+
+// режим разработки: DEV_USER=<роль> — вход без пароля, только с этого компьютера (127.0.0.1). На рабочем сервере не задавать.
+const DEV_ROLE = process.env.DEV_USER || '';
+function devUser(req) {
+  if (!DEV_ROLE || process.env.TRUST_PROXY || req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']) return null; // через туннель — никогда
+  if (!/^(::1|127\.|::ffff:127\.)/.test(req.socket.remoteAddress || '')) return null;
+  const c = auth.parseCookies(req); const role = D.ROLES.includes(c.devrole) ? c.devrole : (D.ROLES.includes(DEV_ROLE) ? DEV_ROLE : 'owner');
+  return { id: 'dev-' + role, login: 'dev', name: `Разработчик (${D.ROLE_LABEL[role]})`, role, section: c.devsection || process.env.DEV_SECTION || '', seeBudget: true, token: '' };
+}
 
 // ---------- helpers ----------
 function send(res, status, body, headers) {
@@ -85,7 +107,7 @@ async function api(req, res, url, user) {
   const qs = Object.fromEntries(url.searchParams.entries());
 
   // --- public ---
-  if (seg === 'status' && method === 'GET') return ok(res, { publicUrl: publicUrl(), needsSetup: db.users.length === 0, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0' });
+  if (seg === 'status' && method === 'GET') return ok(res, { publicUrl: publicUrl(), needsSetup: db.users.length === 0 && !DEV_ROLE, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0' });
   if (seg === 'setup' && method === 'POST') {
     if (db.users.length) return err(res, 403, 'Уже настроено');
     if (!body.login || !body.password || String(body.password).length < 6) return err(res, 400, 'Логин и пароль (мин. 6 символов)');
@@ -110,7 +132,12 @@ async function api(req, res, url, user) {
   if (!user) return err(res, 401, 'Не авторизован');
   const role = user.role;
   if (seg === 'people' && method === 'GET') return ok(res, db.users.filter(u => u.active !== false).map(u => ({ id: u.id, name: u.name || u.login, role: u.role, roleLabel: D.ROLE_LABEL[u.role], section: u.section || '' })));
-  if (seg === 'pm') return pmApi(req, res, parts, method, body, user, db);
+  const mod = MODULES.find(m => m.api === seg);
+  if (mod) {
+    const ctx = { req, res, parts, method, body, user, db, qs, store, auth, D, today, num, pick: pickKeys, userName, modules: MODULE_BY_ID, ok: b => ok(res, b), err: (s, m) => err(res, s, m), send: (s, b, h) => send(res, s, b, h) };
+    ctx.emit = (name, data) => emit(ctx, name, data);
+    return mod.handle(ctx);
+  }
 
   // --- dashboard / backup / seed / 1c ---
   if (seg === 'dashboard') { if (!D.canDashboard(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.dashboard(db)); }
@@ -228,7 +255,7 @@ async function api(req, res, url, user) {
       if (!body.login || !body.password || !D.ROLES.includes(body.role)) return err(res, 400, 'Логин, пароль, роль');
       if (db.users.some(u => u.login === String(body.login).trim().toLowerCase())) return err(res, 409, 'Такой логин уже есть');
       const { salt, hash } = auth.hashPassword(body.password);
-      const u = store.insert('users', { login: String(body.login).trim().toLowerCase(), name: body.name || body.login, role: body.role, section: String(body.section || ''), seeBudget: body.seeBudget === true || body.seeBudget === 'true', salt, passHash: hash, active: true, createdAt: new Date().toISOString() });
+      const u = store.insert('users', { login: String(body.login).trim().toLowerCase(), name: body.name || body.login, role: body.role, section: String(body.section || ''), seeBudget: body.seeBudget === true || body.seeBudget === 'true', employeeId: String(body.employeeId || ''), salt, passHash: hash, active: true, createdAt: new Date().toISOString() });
       store.audit(user.id, 'create', 'users', u.id); return ok(res, auth.publicUser(u));
     }
     if (method === 'PUT' && id2) {
@@ -237,6 +264,7 @@ async function api(req, res, url, user) {
       if (body.name) patch.name = body.name;
       if ('section' in body) patch.section = String(body.section || '');
       if ('seeBudget' in body) patch.seeBudget = body.seeBudget === true || body.seeBudget === 'true';
+      if ('employeeId' in body) patch.employeeId = String(body.employeeId || '');
       if (body.role && D.ROLES.includes(body.role)) { if (u.id === user.id && body.role !== 'owner') return err(res, 400, 'Нельзя снять роль владельца с себя'); patch.role = body.role; }
       if (typeof body.active === 'boolean') { if (u.id === user.id && !body.active) return err(res, 400, 'Нельзя отключить себя'); patch.active = body.active; }
       if (body.password) { const { salt, hash } = auth.hashPassword(body.password); patch.salt = salt; patch.passHash = hash; }
@@ -278,7 +306,7 @@ async function api(req, res, url, user) {
   }
 
   // --- generic collections ---
-  if (!store.COLLECTIONS.includes(seg) || seg === 'users') return err(res, 404, 'Нет такого раздела');
+  if (!store.COLLECTIONS.includes(seg) || seg === 'users' || MODULE_COLS.has(seg)) return err(res, 404, 'Нет такого раздела'); // коллекции модулей — только через их API
   const action = method === 'GET' ? 'read' : 'write';
   if (!D.can(role, seg, action)) return err(res, 403, action === 'read' ? 'Нет доступа к разделу' : 'Только просмотр');
   const list = db[seg];
@@ -315,113 +343,15 @@ async function api(req, res, url, user) {
   return err(res, 405, 'Метод не поддерживается');
 }
 
-// ---------- управление проектами (ЭП / РП): отдельные права, финансы в этом разделе не видны ----------
-const PM_FIELDS = ['name', 'client', 'address', 'area', 'status', 'risk', 'gipId', 'pmId', 'start', 'due', 'forecast', 'comment', 'projectId', 'members', 'miroUrl'];
-const pick = (o, keys) => Object.fromEntries(keys.filter(k => k in (o || {})).map(k => [k, o[k]]));
-function pmApi(req, res, parts, method, body, user, db) {
-  const [, a, b, c] = parts;
-  if (!PM.canOpen(user)) return err(res, 403, 'Нет доступа к управлению проектами');
-  const t = today(); const findP = id => db.pmProjects.find(p => p.id === id);
-  const projOut = p => { const o = Object.assign({}, p); if (!PM.canBudget(user, p)) delete o.budget; return o; };
-  const addItems = list => { for (const it of list) { it.id = store.id(); db.pmItems.push(it); } return list; };
-  const applyPlan = (p, start, fit) => { const its = db.pmItems.filter(i => i.pid === p.id); const r = PM.plan(its, start, fit ? p.due : ''); for (const it of its) if (!it.done && r.due[it.id]) it.due = r.due[it.id]; return r; };
-  const card = p => {
-    const out = { project: projOut(p), items: db.pmItems.filter(i => i.pid === p.id).sort((x, y) => x.stage - y.stage || x.order - y.order), blockers: db.pmBlockers.filter(x => x.pid === p.id), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), summary: PM.summary(p, db.pmItems, db.pmBlockers, t) };
-    if (out.canBudget) {
-      out.budget = PM.budgetCalc(p.budget);
-      const fp = p.projectId ? db.projects.find(x => x.id === p.projectId) : null;
-      if (fp) { const ops = db.ops.filter(o => (o.project === fp.id || o.project === fp.name) && D.catKind(db.categories, o.category) !== 'transfer'); out.fact = { project: fp.name, income: ops.reduce((s, o) => s + num(o.credit), 0), expense: ops.reduce((s, o) => s + num(o.debit), 0), n: ops.length, subPaid: db.subcontracts.filter(s => s.project === fp.id || s.project === fp.name).reduce((s, x) => s + num(x.paid), 0) }; }
-    }
-    return out;
-  };
-  if (a === 'overview' && method === 'GET') {
-    const dash = PM.dashboard(db.pmProjects, db.pmItems, db.pmBlockers, t);
-    dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }));
-    return ok(res, Object.assign(dash, { blockersList: db.pmBlockers.map(x => Object.assign({}, x, { project: (findP(x.pid) || {}).name || '', track: (findP(x.pid) || {}).track || '' })), canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? db.projects.map(p => ({ id: p.id, name: p.name })) : [] }));
-  }
-  if (a === 'my' && method === 'GET') {
-    const active = new Set(db.pmProjects.filter(p => !['Готово', 'Отменён'].includes(p.status)).map(p => p.id));
-    const mine = db.pmItems.filter(it => active.has(it.pid) && !it.done && !it.na).filter(it => { const p = findP(it.pid);
-      if (it.assigneeId === user.id) return true;
-      if (user.role === 'lead') return !!user.section && PM.itemSection(it) === user.section;
-      if (p.gipId === user.id && ['ГИП', 'Заказчик'].includes(it.role)) return true;
-      if (p.pmId === user.id && ['ПМ', 'Заказчик'].includes(it.role)) return true;
-      return PM.isLeader(user) && it.due && it.due < t; });
-    return ok(res, mine.map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
-  }
-  if (a === 'projects') {
-    if (!b && method === 'POST') {
-      if (!PM.canCreate(user)) return err(res, 403, 'Создавать проекты могут руководители, ПМ и ГИП');
-      if (!['ep', 'rp'].includes(body.track) || !String(body.name || '').trim()) return err(res, 400, 'Укажите стадию (ЭП/РП) и название');
-      const p = Object.assign(pick(body, PM_FIELDS), { id: store.id(), track: body.track, name: String(body.name).trim(), status: body.status || 'В работе', risk: body.risk || 'Низкий', createdAt: new Date().toISOString(), createdBy: user.id });
-      if (user.role === 'gip' && !p.gipId) p.gipId = user.id; if (user.role === 'pm' && !p.pmId) p.pmId = user.id;
-      db.pmProjects.push(p); addItems(PM.itemsFromTemplate(p.track, p.id));
-      if (p.start) { const r = applyPlan(p, p.start, !!(body.fit && p.due)); if (!p.forecast) p.forecast = r.end; }
-      store.save(); store.audit(user.id, 'create', 'pmProjects', p.id); return ok(res, card(p));
-    }
-    const p = b && findP(b); if (b && !p) return err(res, 404, 'Проект не найден');
-    if (p && !c && method === 'GET') return ok(res, card(p));
-    if (p && !c && method === 'PUT') {
-      if (!PM.isManager(user, p)) return err(res, 403, 'Менять карточку могут руководитель, ГИП и ПМ проекта');
-      const patch = pick(body, PM_FIELDS); if ('budget' in body) { if (!PM.canBudget(user, p)) return err(res, 403, 'Нет доступа к бюджету'); patch.budget = body.budget; }
-      if (('gipId' in patch || 'pmId' in patch) && !PM.isLeader(user)) { delete patch.gipId; delete patch.pmId; }
-      Object.assign(p, patch, { updatedAt: new Date().toISOString(), updatedBy: user.id }); store.save(); store.audit(user.id, 'update', 'pmProjects', p.id); return ok(res, card(p));
-    }
-    if (p && !c && method === 'DELETE') {
-      if (!PM.isLeader(user)) return err(res, 403, 'Удалять может руководитель');
-      db.pmItems = db.pmItems.filter(i => i.pid !== p.id); db.pmBlockers = db.pmBlockers.filter(x => x.pid !== p.id); db.pmProjects = db.pmProjects.filter(x => x.id !== p.id);
-      store.save(); store.audit(user.id, 'delete', 'pmProjects', p.id); return ok(res, { ok: true });
-    }
-    if (p && c === 'plan' && method === 'POST') {
-      if (!PM.isManager(user, p)) return err(res, 403, 'Планировать может ГИП/ПМ проекта');
-      const start = body.start || p.start || t; const r = applyPlan(p, start, !!body.fit && !!p.due); p.start = start; if (!body.fit) p.forecast = r.end;
-      store.save(); store.audit(user.id, 'plan', 'pmProjects', p.id, { start, fit: !!body.fit }); return ok(res, card(p));
-    }
-    if (p && c === 'handover' && method === 'POST') {
-      if (p.track !== 'ep') return err(res, 400, 'Передать в РП можно эскизный проект'); if (!PM.isManager(user, p)) return err(res, 403, 'Передаёт ПМ проекта или руководитель');
-      const rp = { id: store.id(), track: 'rp', name: p.name, client: p.client || '', address: p.address || '', area: p.area || '', projectId: p.projectId || '', members: p.members || {}, pmId: p.pmId || '', gipId: body.gipId || p.gipId || '', status: 'В работе', risk: 'Низкий', start: body.start || t, due: body.due || '', epId: p.id, createdAt: new Date().toISOString(), createdBy: user.id };
-      db.pmProjects.push(rp); addItems(PM.itemsFromTemplate('rp', rp.id)); rp.forecast = applyPlan(rp, rp.start, !!rp.due).end;
-      Object.assign(p, { status: 'Готово', rpId: rp.id, handedAt: t }); store.save(); store.audit(user.id, 'handover', 'pmProjects', p.id, { rp: rp.id }); return ok(res, card(rp));
-    }
-    if (p && c === 'items' && method === 'POST') {
-      if (!PM.isManager(user, p)) return err(res, 403, 'Добавлять пункты может ГИП/ПМ проекта');
-      const st = Number(body.stage) || 1; const same = db.pmItems.filter(i => i.pid === p.id && i.stage === st);
-      const it = addItems([{ pid: p.id, stage: st, stageName: (same[0] || {}).stageName || PM.stageNames(p.track)[st - 1] || `Этап ${st}`, title: String(body.title || '').trim() || 'Пункт', role: body.role || 'ГИП', section: PM.ROLE_SECTION[body.role] || '', weeks: num(body.weeks) || 1, crit: body.crit || '', optional: false, done: false, na: false, due: body.due || '', assigneeId: body.assigneeId || '', note: body.note || '', order: Math.max(0, ...db.pmItems.filter(i => i.pid === p.id).map(i => i.order || 0)) + 1, custom: true }])[0];
-      store.save(); store.audit(user.id, 'create', 'pmItems', it.id); return ok(res, it);
-    }
-  }
-  if (a === 'items' && b) {
-    const it = db.pmItems.find(i => i.id === b); if (!it) return err(res, 404, 'Пункт не найден'); const p = findP(it.pid);
-    if (method === 'PUT') {
-      if (!PM.canEditItem(user, p, it)) return err(res, 403, 'Этот пункт ведёт другой раздел');
-      const patch = pick(body, ['done', 'na', 'due', 'note', 'assigneeId', 'doneNote']);
-      if (PM.isManager(user, p)) Object.assign(patch, pick(body, ['title', 'role', 'weeks', 'crit', 'stage']));
-      if ('done' in patch) { patch.done = !!patch.done; if (patch.done && !it.done) { patch.doneAt = t; patch.doneBy = user.id; } if (!patch.done) { patch.doneAt = ''; patch.doneBy = ''; } }
-      if ('role' in patch) patch.section = PM.ROLE_SECTION[patch.role] || '';
-      Object.assign(it, patch); store.save(); store.audit(user.id, 'update', 'pmItems', it.id, patch.done !== undefined ? { done: patch.done } : null); return ok(res, it);
-    }
-    if (method === 'DELETE') { if (!PM.isManager(user, p)) return err(res, 403, 'Удалять пункты может ГИП/ПМ проекта'); db.pmItems = db.pmItems.filter(i => i.id !== it.id); store.save(); store.audit(user.id, 'delete', 'pmItems', b); return ok(res, { ok: true }); }
-  }
-  if (a === 'blockers') {
-    const F = ['what', 'holder', 'ownerId', 'expected', 'lastContact', 'status', 'comment', 'since'];
-    if (!b && method === 'POST') { const p = findP(body.pid); if (!p) return err(res, 400, 'Нет проекта'); if (!PM.isManager(user, p) && user.role !== 'lead') return err(res, 403, 'Нет прав');
-      const x = Object.assign(pick(body, F), { id: store.id(), pid: p.id, status: body.status || 'open', since: body.since || t, createdAt: new Date().toISOString(), createdBy: user.id }); db.pmBlockers.push(x); store.save(); store.audit(user.id, 'create', 'pmBlockers', x.id); return ok(res, x); }
-    const x = b && db.pmBlockers.find(z => z.id === b); if (!x) return err(res, 404, 'Блокер не найден'); const p = findP(x.pid);
-    if (!PM.isManager(user, p) && x.createdBy !== user.id) return err(res, 403, 'Менять может ГИП/ПМ проекта или автор');
-    if (method === 'PUT') { Object.assign(x, pick(body, F), x.status !== 'closed' && body.status === 'closed' ? { closedAt: t } : {}); store.save(); store.audit(user.id, 'update', 'pmBlockers', x.id); return ok(res, x); }
-    if (method === 'DELETE') { db.pmBlockers = db.pmBlockers.filter(z => z.id !== x.id); store.save(); store.audit(user.id, 'delete', 'pmBlockers', x.id); return ok(res, { ok: true }); }
-  }
-  return err(res, 404, 'Нет такого действия');
-}
-
 // ---------- static ----------
 function serveStatic(req, res, url) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/' || !path.extname(p)) p = '/index.html';
+  if (p === '/index.html') { const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8').replace('<script src="/app.js"></script>', moduleScripts() + '\n<script src="/app.js"></script>'); res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' }); return res.end(html); }
+  const mm = p.match(/^\/m\/([a-z][a-z0-9]*)\/(domain|ui)\.js$/); if (mm && MODULE_BY_ID[mm[1]]) { const file = path.join(MODULE_BY_ID[mm[1]].dir, mm[2] + '.js'); if (fs.existsSync(file)) { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(file)); } return err(res, 404, 'not found'); }
   if (p === '/statement.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'statement.js'))); }
   if (p === '/help.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'help.js'))); }
   if (p === '/xlsx.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'xlsx.js'))); }
-  if (p === '/pm.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'pm.js'))); }
   if (p === '/domain.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache' }); return res.end(fs.readFileSync(path.join(__dirname, 'lib', 'domain.js'))); }
   const file = path.normalize(path.join(PUBLIC, p));
   if (!file.startsWith(PUBLIC)) return err(res, 403, 'forbidden');
@@ -435,7 +365,7 @@ function serveStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
-    if (url.pathname.startsWith('/api')) return await api(req, res, url, auth.currentUser(req));
+    if (url.pathname.startsWith('/api')) return await api(req, res, url, devUser(req) || auth.currentUser(req));
     if (req.method === 'GET') return serveStatic(req, res, url);
     return err(res, 405, 'method');
   } catch (e) {
@@ -464,7 +394,8 @@ function takeLock() {
 }
 takeLock();
 
-server.listen(PORT, '0.0.0.0', () => {
+if (DEV_ROLE) console.log(`\n  РЕЖИМ РАЗРАБОТКИ: вход без пароля как «${DEV_ROLE}», сервер слушает только 127.0.0.1. Не использовать с рабочей базой.`);
+server.listen(PORT, DEV_ROLE ? '127.0.0.1' : '0.0.0.0', () => {
   console.log('\n  MOST Финансы запущен.');
   console.log(`  На этом компьютере:  http://localhost:${PORT}`);
   for (const ip of lanIPs()) console.log(`  Для команды в сети:  http://${ip}:${PORT}`);

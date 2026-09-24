@@ -6,12 +6,13 @@
   else root.MostDomain = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const COLLECTIONS = ['users', 'docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'counterparties', 'stages', 'ops', 'accounts', 'categories', 'payroll', 'employees', 'vacations', 'obligations', 'cash', 'audit', 'pmProjects', 'pmItems', 'pmBlockers'];
+  const COLLECTIONS = ['users', 'docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'counterparties', 'stages', 'ops', 'accounts', 'categories', 'payroll', 'employees', 'vacations', 'obligations', 'cash', 'audit']; // коллекции модулей добавляет store.register
   const PM_READ = ['docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'counterparties', 'stages'];
-  const ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm', 'gip', 'lead'];
+  const ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm', 'gip', 'lead', 'staff'];
+  const SECTIONS = ['АР', 'КЖ', 'ГП', 'ОВ', 'ВК', 'ЭЛ', 'СС', 'ГСВ', 'ТХ', 'Смета', 'Визуализация']; // разделы для руководителей разделов
   const ADMIN = ['owner', 'partner', 'accountant', 'secretary']; // полный доступ; секретарю закрыт только дашборд
   const canDashboard = r => ADMIN.includes(r) && r !== 'secretary';
-  const ROLE_LABEL = { owner: 'Владелец', partner: 'Партнёр', accountant: 'Бухгалтер', secretary: 'Секретарь', pm: 'Проектный менеджер', gip: 'ГИП', lead: 'Руководитель раздела' };
+  const ROLE_LABEL = { owner: 'Владелец', partner: 'Партнёр', accountant: 'Бухгалтер', secretary: 'Секретарь', pm: 'Проектный менеджер', gip: 'ГИП', lead: 'Руководитель раздела', staff: 'Сотрудник' };
   const KINDS = { expense: 'Расход', income: 'Доход', transfer: 'Перевод между своими счетами', tax: 'Налоги', payroll: 'Зарплата', owner: 'Вывод учредителям' };
   // ставки налогов РК 2026 по умолчанию — сверить с бухгалтером (меняются в «Налоги → Ставки»)
   const DEFAULT_TAX = { mrp: 4325, mzp: 85000, ipn: 0.10, ipnDeductMrp: 30, opv: 0.10, opvCapMzp: 50, vosms: 0.02, vosmsCapMzp: 20, opvr: 0.025, opvrCapMzp: 50, so: 0.05, soCapMzp: 7, oosms: 0.03, oosmsCapMzp: 40, sn: 0.06 };
@@ -21,7 +22,6 @@
   function can(role, collection, action) {
     if (!ROLES.includes(role)) return false;
     if (collection === 'users') return role === 'owner';
-    if (/^pm[A-Z]/.test(collection)) return false; // управление проектами — только через /api/pm (свои права)
     if (collection === 'settings') return action === 'read' ? ADMIN.includes(role) : role === 'owner';
     if (ADMIN.includes(role)) return true;
     return role === 'pm' && PM_READ.includes(collection) && action === 'read'; // ГИП и руководители разделов финансы не видят
@@ -590,5 +590,5 @@
     return cols;
   }
 
-  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, receivables, cashForecast };
+  return { SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, receivables, cashForecast };
 });

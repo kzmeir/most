@@ -114,29 +114,30 @@ const NAV = [
   { id: 'obligations', label: 'Обязательные платежи', icon: '🔁', admin: true },
   { id: 'reports', label: 'Отчёты', icon: '📊', admin: true },
   { id: 'settings', label: 'Настройки', icon: '⚙', admin: true },
-  { id: 'pm', label: 'Сводка', icon: '◎', pm: true },
-  { id: 'pmep', label: 'Эскизные проекты', icon: '✎', pm: true },
-  { id: 'pmrp', label: 'Рабочие проекты', icon: '▤', pm: true },
-  { id: 'pmmy', label: 'Мои задачи', icon: '☑', pm: true },
-  { id: 'pmbl', label: 'Блокеры', icon: '⛔', pm: true },
   { id: 'help', label: 'Инструкция', icon: '?', any: true },
 ];
-const PM_IDS = ['pm', 'pmep', 'pmrp', 'pmmy', 'pmbl', 'pmp'];
-const navAll = () => NAV.filter(n => n.any ? true : n.pm ? window.MostPM.canOpen(state.user) : n.dash ? window.MostDomain.canDashboard(state.user.role) : n.col ? canR(n.col) : (!n.admin || isAdmin()));
-const hasFin = () => navAll().some(n => !n.pm && !n.any), hasPm = () => navAll().some(n => n.pm);
+// модули ERP (modules/<id>/ui.js) регистрируются в window.MOST_MODULES до app.js; «Финансы» — встроенный модуль
+const MODS = [{ id: 'fin', title: 'Финансы', nav: NAV.filter(n => !n.any), routes: ['project'], canOpen: () => true }];
+const finNavOk = n => n.dash ? window.MostDomain.canDashboard(state.user.role) : n.col ? canR(n.col) : (!n.admin || isAdmin());
+const modNav = m => m.id === 'fin' ? m.nav.filter(finNavOk) : (m.nav || []).filter(n => !n.can || n.can(state.user));
+const visibleMods = () => MODS.filter(m => { try { return m.canOpen(state.user) && modNav(m).length; } catch { return false; } });
+const modOf = id => visibleMods().find(m => modNav(m).some(n => n.id === id) || (m.routes || []).includes(id));
+const navAll = () => [...visibleMods().flatMap(modNav), NAV.find(n => n.id === 'help')];
 function drawNav(id) {
-  const mod = PM_IDS.includes(id) || !hasFin() ? 'pm' : 'fin'; const nav = navAll().filter(n => n.any || (mod === 'pm' ? n.pm : !n.pm));
-  const sw = hasFin() && hasPm() ? `<div class="modsw"><a href="#/${(navAll().find(n => !n.pm && !n.any) || {}).id}" class="${mod === 'fin' ? 'active' : ''}">Финансы</a><a href="#/pm" class="${mod === 'pm' ? 'active' : ''}">Проекты</a></div>` : '';
-  $('#nav').innerHTML = sw + nav.map(n => `<a href="#/${n.id}" data-id="${n.id}"${n.id === id || (id === 'pmp' && n.id === 'pm') ? ' class="active"' : ''}><span>${n.icon}</span>${esc(n.label)}<span class="badge" id="badge-${n.id}" hidden></span></a>`).join('');
+  const mods = visibleMods(); const cur = modOf(id) || mods[0] || MODS[0];
+  const sw = mods.length > 1 ? `<div class="modsw">${mods.map(m => `<a href="#/${modNav(m)[0].id}" class="${m === cur ? 'active' : ''}">${esc(m.title)}</a>`).join('')}</div>` : '';
+  const items = [...modNav(cur), NAV.find(n => n.id === 'help')];
+  $('#nav').innerHTML = sw + items.map(n => `<a href="#/${n.id}" data-id="${n.id}"${n.id === id ? ' class="active"' : ''}><span>${n.icon || '•'}</span>${esc(n.label)}<span class="badge" id="badge-${n.id}" hidden></span></a>`).join('');
+  const bs = $('.side .brand small'); if (bs) bs.textContent = cur.title.toLowerCase();
 }
 function renderApp() {
-  const nav = navAll().filter(n => !n.any); if (!nav.length) nav.push(NAV.find(n => n.id === 'help'));
+  const nav = navAll();
   $('#app').innerHTML = `<div class="shell"><aside class="side" id="side"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>финансы</small></b></div><nav class="nav" id="nav"></nav><div class="me"><b>${esc(state.user.name)}</b><span class="muted">${esc(state.user.roleLabel || state.user.role)}</span>${state.status.web ? '' : '<br><button class="btn sm" id="logout" style="margin-top:8px">Выйти</button>'}</div></aside><div><div class="topbar"><button class="icon-btn" id="burger">☰</button><b>most · финансы</b></div><main class="main" id="main"></main></div></div>`;
   if (!$('#dl-cp')) document.body.insertAdjacentHTML('beforeend', '<datalist id="dl-cp"></datalist><datalist id="dl-projects"></datalist>'); refreshCpList();
   if ($('#logout')) $('#logout').onclick = async () => { await api('/logout', { method: 'POST' }); state.user = null; location.hash = ''; renderLogin(); };
   $('#burger').onclick = () => $('#side').classList.toggle('open');
   $('#nav').addEventListener('click', () => $('#side').classList.remove('open'));
-  if (!location.hash || !navAll().some(n => location.hash.startsWith('#/' + n.id)) && !location.hash.startsWith('#/project?') && !location.hash.startsWith('#/pmp?')) location.hash = '#/' + nav[0].id;
+  const hid = (location.hash.replace('#/', '') || '').split('?')[0]; if (!hid || !(navAll().some(n => n.id === hid) || modOf(hid))) location.hash = '#/' + nav[0].id;
   route();
   refreshBadge();
 }
@@ -915,12 +916,12 @@ SECTIONS.settings = async main => {
   const audit = await api('/audit').catch(() => []);
   const cash = await api('/cash').catch(() => []);
   const bal = await api('/balances').catch(() => []);
-  const ROLE = { owner: 'Владелец', partner: 'Партнёр', accountant: 'Бухгалтер', secretary: 'Секретарь', pm: 'Проджект-менеджер' };
+  const ROLE = window.MostDomain.ROLE_LABEL; const emps = isOwner() ? await api('/employees').catch(() => []) : [];
   const year = today().slice(0, 4);
   main.innerHTML = head('Настройки') +
     (!st.hasData && st.seed.available && isOwner() ? `<div class="notice">База пустая. <button class="btn primary sm" data-act="seed">Загрузить данные из таблицы «Бюджет МОСТ»</button> — операции с 2018 года, договоры, подрядчики, АВР, КП, справочники.</div>` : '') +
     (isOwner() && st.web ? accessBlock(users) : '') +
-    (isOwner() && !st.web ? `<h2>Пользователи и роли</h2>${tbl([{ t: 'Имя' }, { t: 'Логин' }, { t: 'Роль' }, { t: 'Статус' }, { t: '' }], users.map(u => `<tr><td><b>${esc(u.name)}</b></td><td class="muted">${esc(u.login)}</td><td>${esc(ROLE[u.role] || u.role)}</td><td>${u.active ? '<span class="chip ok">активен</span>' : '<span class="chip neutral">отключён</span>'}</td><td><div class="actions"><button class="btn sm" data-act="userEdit" data-id="${u.id}">✎</button>${u.id !== state.user.id ? `<button class="btn sm" data-act="userToggle" data-id="${u.id}" data-active="${u.active}">${u.active ? 'Отключить' : 'Включить'}</button>` : ''}</div></td></tr>`))}<p><button class="btn primary" data-act="userAdd">+ Пользователь</button></p><p class="faint">Владелец, партнёр, бухгалтер — полный доступ. Секретарь — всё то же, кроме дашборда; согласовывать оплату не может. Проджект-менеджер — только просмотр актов/счетов клиентам, счетов к оплате, проектов и договоров; операции, ЗП и остальное скрыты (проверяет сервер).</p>` : '') +
+    (isOwner() && !st.web ? `<h2>Пользователи и роли</h2>${tbl([{ t: 'Имя' }, { t: 'Логин' }, { t: 'Роль' }, { t: 'Статус' }, { t: '' }], users.map(u => `<tr><td><b>${esc(u.name)}</b></td><td class="muted">${esc(u.login)}</td><td>${esc(ROLE[u.role] || u.role)}</td><td>${u.active ? '<span class="chip ok">активен</span>' : '<span class="chip neutral">отключён</span>'}</td><td><div class="actions"><button class="btn sm" data-act="userEdit" data-id="${u.id}">✎</button>${u.id !== state.user.id ? `<button class="btn sm" data-act="userToggle" data-id="${u.id}" data-active="${u.active}">${u.active ? 'Отключить' : 'Включить'}</button>` : ''}</div></td></tr>`))}<p><button class="btn primary" data-act="userAdd">+ Пользователь</button></p><p class="faint">Владелец, партнёр, бухгалтер — полный доступ. Секретарь — всё то же, кроме дашборда; согласовывать оплату не может. Проектный менеджер — управление проектами и просмотр актов, счетов, договоров. ГИП и руководитель раздела — только модуль проектов (руководителю раздела укажите раздел). Сотрудник — модули для всех: табель, знания и обучение. Финансы им не видны (проверяет сервер).</p>` : '') +
     `<h2>Остатки на счетах</h2><div class="card"><p class="muted" style="margin-top:0">Опорный остаток берётся из выписки (при загрузке) или вводится вручную с датой; дальше остаток считается по операциям после этой даты. В поле «Счёт» укажите код из справочника, чтобы связать.</p>${cash.length ? tbl([{ t: 'Счёт' }, { t: 'Компания' }, { t: 'Остаток', cls: 'amt' }, { t: 'На дату' }, { t: '' }], cash.map(c => `<tr><td><b>${esc(c.account || c.id)}</b></td><td>${esc(c.company)}</td><td class="amt num">${money(c.balance)}</td><td>${fdate(c.asOf)}</td><td>${actions('cash', c.id).replace('data-act="edit"', 'data-act="cashEdit"')}</td></tr>`)) : ''}<p><button class="btn" data-act="cashAdd">+ Остаток</button></p>${bal.length ? `<h3 style="margin:14px 0 6px">Расчёт по операциям</h3>${tbl([{ t: 'Счёт' }, { t: 'Компания' }, { t: 'Опорный остаток' }, { t: 'Операций после' }, { t: 'Расчёт сейчас', cls: 'amt' }, { t: 'Последняя операция' }], bal.map(b => `<tr><td><b>${esc(b.id)}</b></td><td class="muted">${esc(b.company)}</td><td>${b.anchor ? `${money(b.anchor.balance)} <span class="faint">на ${fdate(b.anchor.asOf)}</span>` : '<span class="faint">нет — загрузите выписку</span>'}</td><td>${b.anchor ? b.opsAfter : '—'}</td><td class="amt num">${b.balance !== null ? money(b.balance) : '—'}</td><td class="muted">${fdate(b.lastOp)}</td></tr>`))}` : ''}<datalist id="dl-accounts">${state.accounts.map(a => `<option value="${esc(a.id)}">`).join('')}</datalist></div>` +
     `<h2>Справочник счетов</h2>${tbl([{ t: 'Код' }, { t: 'Название' }, { t: 'Компания' }, { t: 'Активен' }, { t: '' }], state.accounts.map(a => `<tr><td><b>${esc(a.id)}</b>${a.iban ? `<div class="faint">${esc(a.iban)}</div>` : ''}</td><td>${esc(a.name || '')}</td><td>${esc(a.company || '')}</td><td>${yn(a.active !== false)}</td><td>${isOwner() ? `<div class="actions"><button class="btn sm" data-act="accEdit" data-id="${esc(a.id)}">✎</button></div>` : ''}</td></tr>`))}${isOwner() ? '<p><button class="btn" data-act="accAdd">+ Счёт</button></p>' : ''}` +
     `<h2>Справочник категорий</h2>${tbl([{ t: 'Категория' }, { t: 'Описание' }, { t: 'Вид' }, { t: '' }], state.categories.map(c => `<tr><td><b>${esc(c.id)}</b></td><td class="muted">${esc(c.name || '')}</td><td>${esc(KIND_LABEL[c.kind] || c.kind || '')}</td><td>${isOwner() ? `<div class="actions"><button class="btn sm" data-act="catEdit" data-id="${esc(c.id)}">✎</button></div>` : ''}</td></tr>`))}${isOwner() ? '<p><button class="btn" data-act="catAdd">+ Категория</button></p><p class="faint">Вид «Перевод» исключается из доходов и расходов. «Доход» — категории поступлений от клиентов.</p>' : ''}` +
@@ -945,7 +946,7 @@ SECTIONS.settings = async main => {
     ACT.accessAdd = async ({ id }) => { await api('/users', { method: 'POST', body: { id, role: $('#acc-role').value } }); toast('Добавлено'); state.people = await api('/people'); route(); };
     ACT.accessDel = async ({ id }) => { if (!confirm('Убрать роль? Доступ к странице снимается отдельно в меню «Поделиться».')) return; await api('/users/' + id, { method: 'DELETE' }); toast('Убрано'); state.people = await api('/people'); route(); };
   }
-  const userFields = (edit) => [{ name: 'name', label: 'Имя', required: true, half: true }, { name: 'login', label: 'Логин', required: !edit, half: true }, { name: 'role', label: 'Роль', type: 'select', options: Object.entries(ROLE) }, { name: 'password', label: edit ? 'Новый пароль (пусто — не менять)' : 'Пароль', type: 'password', required: !edit }];
+  const userFields = (edit) => [{ name: 'name', label: 'Имя', required: true, half: true }, { name: 'login', label: 'Логин', required: !edit, half: true }, { name: 'role', label: 'Роль', type: 'select', options: Object.entries(ROLE), half: true }, { name: 'employeeId', label: 'Сотрудник (для табеля и обучения)', type: 'select', options: [['', '—'], ...emps.map(e => [e.id, e.name])], half: true }, { name: 'section', label: 'Раздел (для руководителя раздела)', type: 'select', options: [['', '—'], ...window.MostDomain.SECTIONS], half: true }, { name: 'seeBudget', label: 'Видит бюджет своих проектов (ГИП/ПМ)', type: 'select', options: YESNO, half: true }, { name: 'password', label: edit ? 'Новый пароль (пусто — не менять)' : 'Пароль', type: 'password', required: !edit }];
   ACT.userAdd = () => modal('Новый пользователь', formHtml(userFields(false)), async v => { await api('/users', { method: 'POST', body: v }); toast('Пользователь создан'); state.people = await api('/people'); route(); });
   ACT.userEdit = ({ id }) => { const u = users.find(x => x.id === id); modal('Пользователь', formHtml(userFields(true).filter(f => f.name !== 'login'), u), async v => { if (!v.password) delete v.password; await api('/users/' + id, { method: 'PUT', body: v }); toast('Сохранено'); state.people = await api('/people'); route(); }); };
   ACT.userToggle = async ({ id, active }) => { await api('/users/' + id, { method: 'PUT', body: { active: active !== 'true' } }); toast('Готово'); route(); };
@@ -969,6 +970,11 @@ function peopleName(id) { const p = state.people.find(x => x.id === id); return 
 
 // ---- shared delete ----
 ACT.del = async ({ col, id }) => { if (!confirm('Удалить запись?')) return; await api(`/${col}/${id}`, { method: 'DELETE' }); toast('Удалено'); route(); if (col === 'docs') refreshBadge(); };
+
+// ---- API для модулей: modules/<id>/ui.js получают эти помощники в init(ui) ----
+const UI = { state, api, qsOf, toast, modal, closeModal, field, formHtml, numify, boolify, yn, esc, money, money0, fdate, today, ym, cut, mname, head, tbl, empty, chip, sel, bind, params, route, peopleName, isAdmin, isOwner, canR, canW, SECTIONS, ACT, $ };
+window.MostUI = UI;
+for (const m of window.MOST_MODULES || []) { try { if (m.init) m.init(UI); if (!MODS.some(x => x.id === m.id)) MODS.push(m); } catch (e) { console.error('Модуль ' + m.id + ':', e); } }
 
 boot();
 })();

@@ -7,3 +7,4 @@ tests/tmp/
 tests/fixtures/*
 !tests/fixtures/statement.xlsx
 __pycache__/
+data-dev/

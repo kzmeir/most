@@ -1,0 +1,87 @@
+# MOST ERP — модули и правила параллельной работы
+
+Одна программа (`server.js`, Node.js без npm-зависимостей), одна база (`data/db.json`). Поверх ядра подключаются модули из `modules/<id>/`. Финансы пока живут в ядре (`lib/domain.js`, `public/app.js`) и считаются встроенным модулем `fin`.
+
+## Кто что трогает
+
+| Папка / файл | Владелец | Кто ещё меняет |
+|---|---|---|
+| `server.js`, `lib/store.js`, `lib/auth.js`, `lib/domain.js`, `public/app.js`, `public/index.html`, `public/styles.css`, `docs/ARCHITECTURE.md` | ведущая сессия (ядро) | никто; нужна правка ядра — запись в `modules/<id>/CORE-REQUESTS.md` своей ветки |
+| `modules/pm/` | поток A — управление проектами | — |
+| `modules/hr/` | поток B — персонал, табель, загрузка | — |
+| `modules/crm/` | поток C — коммерция | — |
+| `modules/kb/` | поток D — знания и обучение | — |
+| `modules/sys/`, `tools/`, `tests/`, `*.bat`, Docker | поток E — сервис и инфраструктура | — |
+
+Стили: у модуля свои классы с префиксом `<id>-` в `modules/<id>/ui.js` (вставляет `<style>` при init). Общие стили из `public/styles.css` используйте как есть.
+
+## Контракт модуля
+
+`modules/<id>/server.js` (обязателен):
+
+```js
+module.exports = {
+  id: 'kb', api: 'kb',                    // /api/kb/...
+  collections: ['kbNews', 'kbArticles'],  // коллекции в db.json; имена с префиксом модуля
+  handle(ctx) { ... },                    // все запросы /api/<api>/*; пользователь уже проверен (ctx.user)
+  on: { 'pm.project.created': (ctx, data) => {} }, // необязательно: события других модулей
+  // любые функции для других модулей: ctx.modules.<id>.<функция>(ctx, ...)
+};
+```
+
+`ctx`: `parts` (путь после `/api/`), `method`, `body`, `qs`, `user` ({id, role, section, seeBudget, employeeId}), `db` (вся база), `store` (`save()`, `id()`, `audit(userId, action, collection, docId, extra)`), `D` (lib/domain.js), `today()`, `num()`, `pick(obj, keys)`, `userName(id)`, `modules`, `emit(name, data)`, `ok(body)`, `err(status, message)`, `send(status, body, headers)`.
+
+Правила:
+- Права проверяет **сервер** в `handle`, интерфейс лишь прячет кнопки.
+- Коллекции модуля недоступны через общий `/api/<коллекция>` — только через API модуля.
+- Чужие коллекции только читаем. Изменить чужое — через функцию модуля-владельца (`ctx.modules.pm.createProject(ctx, fields, userId)`) или событие.
+- Каждое изменение — `store.save()` и `store.audit(...)`.
+- Никаких npm-зависимостей и внешних сервисов без согласования с ядром.
+
+`modules/<id>/domain.js` (необязателен): чистая логика, UMD как `modules/pm/domain.js` (в браузере — `window.Most<Id>`), подключается до `ui.js`.
+
+`modules/<id>/ui.js`:
+
+```js
+(window.MOST_MODULES = window.MOST_MODULES || []).push({
+  id: 'kb', title: 'Знания',
+  nav: [{ id: 'kbnews', label: 'Новости', icon: '📰', can: u => true }], // id разделов уникальны, начинаются с id модуля
+  routes: ['kbarticle'],        // скрытые разделы (карточки): #/kbarticle?id=…
+  canOpen: u => true,           // кому показывать модуль в переключателе
+  init(ui) { ui.SECTIONS.kbnews = async main => { main.innerHTML = ui.head('Новости') + ...; ui.bind(main); }; },
+});
+```
+
+`ui` — помощники ядра: `api`, `state` (user, people, settings, projects…), `head`, `tbl`, `empty`, `chip`, `sel`, `modal`, `formHtml`, `field`, `numify`, `boolify`, `toast`, `bind` + `ACT`, `params`, `qsOf`, `route`, `esc`, `money`, `fdate`, `today`, `mname`, `cut`, `peopleName`, `isAdmin`, `isOwner`, `canR`, `canW`, `$`. Действия кнопок: `data-act="kbRead"` → `ui.ACT.kbRead = ({ id }) => …` (имена с префиксом модуля).
+
+## Общие данные (только чтение для модулей)
+
+- Пользователи: `db.users` — `id, name, role, section, seeBudget, employeeId`. Роли: `owner, partner` (руководители), `accountant, secretary` (финансы), `pm` (проектный менеджер), `gip`, `lead` (руководитель раздела, `section`), `staff` (сотрудник). Разделы: `D.SECTIONS`.
+- Сотрудники: `db.employees` — `id, name, company, position, salary (на руки), hired, status, resigned`. Пользователь ↔ сотрудник: `users.employeeId`.
+- Проекты управления: `db.pmProjects` (`id, track: 'ep'|'rp', name, client, gipId, pmId, status, start, due, forecast, projectId → db.projects.id`), `db.pmItems` (`pid, stage, stageName, title, role, section, due, done`). Владелец — модуль pm.
+- Финансовые проекты и договоры: `db.projects`, `db.contracts` (`projectId`), акты `db.docs`, операции `db.ops` (только руководители и финансы).
+
+## События
+
+| Событие | Кто шлёт | Данные |
+|---|---|---|
+| `pm.project.created` | pm | `{ project }` |
+| `pm.item.done` | pm | `{ item, project }` |
+| `crm.contract.signed` | crm | `{ contract, pmProjectId }` |
+| `kb.test.passed` | kb | `{ userId, testId, score }` |
+| `sys.notify` — не событие, а функция `ctx.modules.sys.notify(ctx, { userIds, text, link })` | sys | — |
+
+Новое событие — допишите строку в таблицу в своей ветке (это единственная правка ядра без запроса).
+
+## Как разрабатывать и проверять
+
+1. Своя ветка `erp/<id>` от `erp/main`, коммиты только в свою папку (+ `CORE-REQUESTS.md`).
+2. Тестовая база: скопируйте `\\MostServer\Documents\MOST-Финансы\data\db.json` в `finance-app/data-dev/<id>/db.json` (папка в .gitignore, реальные данные компании — не коммитить и никуда не отправлять) или начните с пустой.
+3. Запуск без пароля (только с этого компьютера):
+   `set DATA_DIR=data-dev\<id>& set DEV_USER=owner& set PORT=<порт>& node server.js`
+   Порты: pm 3101, hr 3102, crm 3103, kb 3104, sys 3105. Роль для проверки прав — cookie `devrole=gip` (и `devsection=ОВ` для руководителя раздела) в браузере или `DEV_USER=gip`.
+4. Рабочий сервер (`\\MostServer\...`, порт 3000) не трогать и не перезапускать — выкладывает ведущая сессия после слияния.
+5. Перед сдачей: `node --check` своих файлов, проверка прав каждой ролью, короткий отчёт в `modules/<id>/README.md` («Сделано / Как проверить / Что осталось»).
+6. Коммит — подпись `Co-Authored-By: Claude …` как в истории репозитория. Не пушить, не сливать в `erp/main` самостоятельно.
+
+Веб-версия (`web/`) модули не поддерживает и не развивается; офисная версия — основная.
