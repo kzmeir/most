@@ -80,6 +80,7 @@ module.exports = {
 |---|---|---|
 | `pm.project.created` | pm | `{ project }` |
 | `pm.item.done` | pm | `{ item, project }` |
+| `pm.project.handover` | pm | `{ from, to }` — передача концепция → ЭП → РП |
 | `crm.contract.signed` | crm | `{ contract, pmProjectId }` |
 | `kb.test.passed` | kb | `{ userId, testId, score }` |
 
