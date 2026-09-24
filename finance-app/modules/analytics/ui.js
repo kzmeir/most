@@ -9,6 +9,9 @@
     ['Панель директора', `
 <p>Одна страница о состоянии бюро: деньги, проекты, продажи, люди. Только чтение — всё вводится в своих разделах. Видят владелец и партнёр.</p>
 <ul>
+<li><b>Период</b> (месяц / квартал / год / 12 месяцев) меняет выручку и расходы (для месяца — по неделям) и продажи; остатки, дебиторка и прогноз всегда на сегодня.</li>
+<li><b>Панель в PDF</b> — печатная версия для совещаний: светлая тема, A4 альбом, без меню, с датой и периодом. В окне печати выберите «Сохранить как PDF».</li>
+<li><b>Было / стало</b> — раз в неделю сохраняется снимок сигналов; панель показывает, какие проблемы ушли, какие появились и какие остались с прошлой недели.</li>
 <li><b>Сигналы недели</b> (сверху) — до 7 главных проблем: кассовый разрыв в прогнозе, дебиторка старше 30 дней, проекты в красной и чёрной зоне буфера, прошедшие сроки по договору, блокеры дольше 14 дней, перегруженные разделы, КП без ответа дольше 14 дней, ближайшие налоги. Щелчок — переход в раздел.</li>
 <li><b>Деньги</b>: остаток на счетах (по опорным остаткам — счета без остатка не учтены, их число показано), дебиторка по возрасту, прогноз на 13 недель с поступлениями по графикам платежей «Коммерции», выручка и расходы по месяцам за год (без переводов), маржа проектов: договор без НДС − субподряд − ФОТ по табелям (если включён «Персонал»). Если к проекту не привязан ни один договор субподряда, маржа не считается: показана серая оценка «не больше», а над таблицей — сколько субподрядов ещё не привязано.</li>
 <li><b>Проекты</b>: портфель по стадиям и статусам, буфер по Методу Пульса — точка проекта на графике «выполнено / съедено буфера» (зелёная, жёлтая, красная, чёрная зона), горящие проекты, блокеры, загрузка ГИП и ПМ. Карточки проектов открываются на сайте MOST ERP.</li>
@@ -31,6 +34,21 @@
 .an-zone{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:0}
 .an-z-blue{background:#5b8def}.an-z-green{background:var(--ok)}.an-z-yellow{background:var(--warn)}.an-z-red{background:var(--crit)}.an-z-black{background:var(--ink)}
 .an-muted{color:var(--ink-faint);font-size:12.5px}
+.an-per{display:flex;gap:4px;flex-wrap:wrap;margin:-4px 0 14px}.an-per a{padding:5px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--ink-soft);font-size:13px}.an-per a.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.an-hist{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:18px}@media(max-width:900px){.an-hist{grid-template-columns:minmax(0,1fr)}}.an-hist .card{padding:10px 12px}.an-hist ul{margin:4px 0 0;padding-left:16px;font-size:12.5px}.an-hist .gone li{color:var(--ok);text-decoration:line-through}.an-hist .added li{color:var(--crit)}
+.an-print{display:none}
+@media print{
+ :root{--paper:#fff;--panel:#fff;--panel-2:#f1f1f0;--ink:#000;--ink-soft:#555;--ink-faint:#888;--line:#d9d9d9;--accent:#ff4d23;--ok:#2f7d4f;--ok-bg:#e6f2ea;--warn:#9a6a12;--warn-bg:#f6ecd6;--crit:#c0341d;--crit-bg:#fbe3dd;--shadow:none}
+ @page{size:A4 landscape;margin:10mm}
+ html,body{background:#fff!important;color:#000}
+ .side,.topbar,.modsw,#nav,.an-per,.an-noprint,.head .btn,.head a.btn,.an-h .btn,#toast{display:none!important}
+ .shell{display:block!important}.main{padding:0!important;margin:0!important;max-width:none!important;width:auto!important}
+ .an-print{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--accent);padding-bottom:4px;margin-bottom:8px;font-size:11pt}
+ .card,.an-sig a,.an-2>div,.an-kpi>*{break-inside:avoid;box-shadow:none}
+ .an-h{break-after:avoid;margin-top:12px}.an-sc{width:auto;min-width:0}.tbl{overflow:visible!important}
+ a{color:inherit;text-decoration:none}
+ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 </style>`);
     const mln = AN.mln; const num = AN.num;
     const zoneDot = z => z ? `<span class="an-zone an-z-${esc(z)}" title="${esc(AN.ZONE_LABEL[z] || '')}"></span>` : '';
@@ -45,12 +63,12 @@
     const MON = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
     // ---- SVG: столбцы «выручка / расходы» по месяцам ----
-    function barsSvg(months) {
+    function barsSvg(months, unit) {
       const W = 640, H = 220, L = 46, B = 26, T = 10; const max = Math.max(1, ...months.flatMap(m => [m.income, m.expense]));
       const bw = (W - L - 10) / months.length; const y = v => T + (H - T - B) * (1 - v / max);
       const grid = [0, 0.25, 0.5, 0.75, 1].map(f => `<line x1="${L}" x2="${W - 4}" y1="${y(max * f)}" y2="${y(max * f)}" stroke="var(--line)" stroke-width="1"/><text x="${L - 6}" y="${y(max * f) + 4}" text-anchor="end" font-size="10" fill="var(--ink-faint)">${short(max * f)}</text>`).join('');
-      const bars = months.map((m, i) => { const x = L + i * bw + bw * 0.12, w = bw * 0.36; const [yy, mm] = m.ym.split('-');
-        return `<g><title>${MON[Number(mm) - 1]} ${yy}: выручка ${mln(m.income)}, расходы ${mln(m.expense)}</title><rect x="${x}" y="${y(m.income)}" width="${w}" height="${H - B - y(m.income)}" rx="2" fill="var(--accent)"/><rect x="${x + w + 2}" y="${y(m.expense)}" width="${w}" height="${H - B - y(m.expense)}" rx="2" fill="var(--ink-faint)" opacity=".75"/><text x="${x + w}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)">${MON[Number(mm) - 1]}</text></g>`; }).join('');
+      const bars = months.map((m, i) => { const x = L + i * bw + bw * 0.12, w = bw * 0.36; const [yy, mm] = (m.ym || m.from).split('-'); const lbl = unit === 'week' ? fdate(m.from).slice(0, 5) : MON[Number(mm) - 1]; const tip = unit === 'week' ? `${fdate(m.from)}–${fdate(m.to)}` : `${MON[Number(mm) - 1]} ${yy}`;
+        return `<g><title>${tip}: выручка ${mln(m.income)}, расходы ${mln(m.expense)}</title><rect x="${x}" y="${y(m.income)}" width="${w}" height="${H - B - y(m.income)}" rx="2" fill="var(--accent)"/><rect x="${x + w + 2}" y="${y(m.expense)}" width="${w}" height="${H - B - y(m.expense)}" rx="2" fill="var(--ink-faint)" opacity=".75"/><text x="${x + w}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)">${lbl}</text></g>`; }).join('');
       return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Выручка и расходы по месяцам">${grid}${bars}</svg><div class="an-leg"><span><i style="background:var(--accent)"></i>выручка</span><span><i style="background:var(--ink-faint)"></i>расходы</span></div>`;
     }
     // ---- SVG: прогноз остатка по неделям ----
@@ -82,10 +100,14 @@
 
     ui.SECTIONS.analytics = async main => {
       main.innerHTML = head('Панель директора', 'Собираю данные…');
-      const d = await api('/analytics/overview'); ERP = d.erpPort || ERP;
+      const per = ui.params().get('period') || '12m';
+      const d = await api('/analytics/overview?period=' + encodeURIComponent(per)); ERP = d.erpPort || ERP;
       const parts = [];
       // сигналы
-      parts.push(d.signals.length ? `<div class="an-sig">${d.signals.map(s => `<a class="${esc(s.level)}" href="${href(s.link) || '#/analytics'}"${ext(s.link)}><i></i><div><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div></a>`).join('')}</div>` : '<div class="notice">Главных проблем на этой неделе нет.</div>');
+      const h = d.history; const hl = xs => xs.length ? `<ul>${xs.slice(0, 8).map(x => `<li>${esc(x.title)}</li>`).join('')}${xs.length > 8 ? `<li>… ещё ${xs.length - 8}</li>` : ''}</ul>` : '<div class="an-muted">—</div>';
+      const histHtml = h && h.diff ? `<div class="an-h"><h2>Было / стало</h2><span class="faint">неделя ${esc(h.week)} против ${esc(h.prevWeek)}</span></div><div class="an-hist"><div class="card gone"><div class="label">Ушли (${h.diff.gone.length})</div>${hl(h.diff.gone)}</div><div class="card added"><div class="label">Новые (${h.diff.added.length})</div>${hl(h.diff.added)}</div><div class="card"><div class="label">Остались (${h.diff.kept.length})</div>${hl(h.diff.kept)}</div></div>`
+        : h ? `<p class="an-muted an-noprint" style="margin:-8px 0 16px">История сигналов ведётся с недели ${esc(h.week)}: сравнение «было / стало» появится на следующей неделе.</p>` : '';
+      parts.push(d.signals.length ? `<div class="an-sig">${d.signals.map(s => `<a class="${esc(s.level)}" href="${href(s.link) || '#/analytics'}"${ext(s.link)}><i></i><div><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div></a>`).join('')}</div>` : '<div class="notice">Главных проблем на этой неделе нет.</div>'); parts.push(histHtml);
       // деньги
       const m = d.money;
       if (m) {
@@ -94,8 +116,9 @@
           `<div class="an-kpi">${tile('Остаток на счетах', mln(b.total), b.byCompany.filter(c => c.balance).map(c => `${esc(c.company)}: ${mln(c.balance)}`).join('<br>') || '—', { site: 'fin', hash: '#/dashboard' })}
 ${tile('Дебиторка', mln(r.total), `${r.n} актов · старше 30 дн. <b class="${r.over30 ? 'crit-text' : ''}">${mln(r.over30)}</b>`, { site: 'fin', hash: '#/receivables' })}
 ${tile('Минимум остатка за 13 недель', mln(f.min), f.gap ? `<span class="crit-text">разрыв с ${fdate(f.gap.from)}</span>` : 'разрыва нет', { site: 'fin', hash: '#/forecast' }, f.min < 0 ? 'crit-text' : '')}
+${tile(`Выручка за ${m.period.label}`, mln(m.period.income), `расходы ${mln(m.period.expense)} · итог <b class="${m.period.net < 0 ? 'crit-text' : 'ok-text'}">${mln(m.period.net)}</b>`, { site: 'fin', hash: '#/reports' })}
 ${tile('Поступления / платежи 13 нед.', `${mln(f.inflow)}`, `платежи ${mln(f.outflow)}${f.fromSchedules ? ` · по графикам «Коммерции» ${mln(f.fromSchedules)}` : ''}`, { site: 'fin', hash: '#/forecast' })}</div>
-<div class="an-2"><div class="card an-chart"><div class="label">Прогноз остатка на 13 недель</div>${forecastSvg(f)}</div><div class="card an-chart"><div class="label">Выручка и расходы за 12 месяцев</div>${barsSvg(m.months)}</div></div>
+<div class="an-2"><div class="card an-chart"><div class="label">Прогноз остатка на 13 недель</div>${forecastSvg(f)}</div><div class="card an-chart"><div class="label">Выручка и расходы: ${esc(m.period.label)}${m.period.unit === 'week' ? ' (по неделям)' : ''}</div>${barsSvg(m.series, m.period.unit)}</div></div>
 <div class="an-2"><div class="card"><div class="label">Дебиторка по возрасту</div>${r.buckets.map(x => bar(x.label, x.sum, Math.max(...r.buckets.map(y => y.sum)), mln(x.sum), x.from > 90)).join('')}${r.topOver.length ? `<div class="label" style="margin-top:10px">Должники старше 30 дней</div>${r.topOver.slice(0, 6).map(x => `<div class="an-muted">${esc(x.client)} — <b>${mln(x.sum)}</b> · ${x.n} акт., до ${x.maxAge} дн.</div>`).join('')}` : ''}</div>
 <div class="card"><div class="label">Налоги и бюджет на 30 дней</div>${m.taxes.length ? m.taxes.map(t => `<div class="an-muted"><b>${fdate(t.date)}</b> ${esc(t.title)}${t.note ? ` · ${esc(t.note)}` : ''}</div>`).join('') : '<div class="an-muted">нет</div>'}</div></div>` +
           `<div class="card" style="padding:0;margin-bottom:12px"><div class="label" style="padding:12px 14px 0">Маржа проектов: договор без НДС − субподряд${m.margin.withLabor ? ' − ФОТ по табелям' : ' (ФОТ не учтён: модуль «Персонал» выключен)'} · ${m.margin.projects} проектов, с привязанным субподрядом ${m.margin.withSubs}</div>` +
@@ -122,7 +145,7 @@ ${p.load.length ? `<div class="label" style="margin-top:12px">Загрузка �
       const s = d.sales;
       if (s) {
         const fn = s.funnel; const maxN = Math.max(1, ...fn.byStatus.map(x => x.n));
-        parts.push(sec('Продажи', `с начала года: договоров ${s.year.won} на ${mln(s.year.wonSum)}`, { site: 'fin', hash: '#/crmleads' }) +
+        parts.push(sec('Продажи', `${esc(s.period.label)}: лидов ${fn.total}, договоров ${fn.won} на ${mln(fn.wonSum)} · с начала года: договоров ${s.year.won} на ${mln(s.year.wonSum)}`, { site: 'fin', hash: '#/crmleads' }) +
           `<div class="an-kpi">${tile('КП в работе', s.kp.n, mln(s.kp.sum) + ' без НДС', { site: 'fin', hash: '#/crmleads?st=open' })}${tile('Конверсия КП → договор', fn.conversion == null ? '—' : fn.conversion + ' %', `всех закрытых: ${fn.conversionAll == null ? '—' : fn.conversionAll + ' %'}`, { site: 'fin', hash: '#/crmleads' })}
 ${tile('В работе всего', fn.open, mln(fn.openSum) + ' без НДС', { site: 'fin', hash: '#/crmleads' })}${tile('КП без ответа > 14 дн.', s.noAnswer.length, s.noAnswer.length ? mln(s.noAnswer.reduce((a, x) => a + x.sum, 0)) : '—', { site: 'fin', hash: '#/crmleads' }, s.noAnswer.length ? 'warn-text' : '')}</div>
 <div class="an-2"><div class="card"><div class="label">Воронка</div>${fn.byStatus.map(x => bar(x.status, x.n, maxN, `${x.n} · ${mln(x.sum)}`)).join('')}${fn.reasons.length ? `<div class="label" style="margin-top:10px">Причины отказов</div><div class="an-muted">${fn.reasons.map(x => `${esc(x.reason)}: ${x.n}`).join(' · ')}</div>` : ''}</div>
@@ -140,8 +163,10 @@ ${tile('Разделов перегружено', withCap.filter(x => x.load >= 
 <div class="card"><div class="label">Факт часов за 12 недель</div>${f && f.bySection.length ? f.bySection.slice(0, 8).map(x => bar(x.section, x.hours, f.bySection[0].hours, `${Math.round(x.hours)} ч`)).join('') + `<div class="label" style="margin-top:10px">По проектам</div>` + f.byProject.slice(0, 8).map(x => bar(x.name, x.hours, f.byProject[0].hours, `${x.hours} ч`)).join('') : '<div class="an-muted">табелей нет</div>'}</div></div>`);
       }
       const errs = Object.entries(d.errors || {});
-      main.innerHTML = head('Панель директора', `на ${fdate(d.today)} · только чтение`, '<button class="btn" id="an-reload">Обновить</button>') + parts.join('') + (errs.length ? `<div class="notice warn">Не удалось посчитать: ${errs.map(([k, v]) => `${esc(k)} — ${esc(v)}`).join('; ')}</div>` : '');
+      main.innerHTML = `<div class="an-print"><b>MOST · Панель директора</b><span>на ${fdate(d.today)} · период: ${esc(d.period.label)}</span></div>` + head('Панель директора', `на ${fdate(d.today)} · только чтение`, '<button class="btn" id="an-print" title="Печать или сохранение в PDF: светлая тема, A4 альбом">⎙ Панель в PDF</button><button class="btn" id="an-reload">Обновить</button>') +
+        `<div class="an-per">${Object.entries(AN.PERIODS).map(([k, v]) => `<a href="#/analytics?period=${k}" class="${d.period.period === k ? 'on' : ''}">${esc(v)}</a>`).join('')}<span class="an-muted" style="align-self:center;margin-left:6px">период для выручки, расходов и продаж: ${esc(d.period.label)}</span></div>` + parts.join('') + (errs.length ? `<div class="notice warn">Не удалось посчитать: ${errs.map(([k, v]) => `${esc(k)} — ${esc(v)}`).join('; ')}</div>` : '');
       document.getElementById('an-reload').onclick = () => ui.route();
+      document.getElementById('an-print').onclick = () => { const t = document.title; document.title = `MOST — панель директора ${d.today} (${d.period.label})`; window.print(); setTimeout(() => { document.title = t; }, 500); };
     };
   },
 });

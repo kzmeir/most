@@ -14,27 +14,54 @@
 
   // сигналы недели: 5–7 главных проблем, самые тяжёлые сверху. d — ответ /api/analytics/overview (без signals)
   // link: { site: 'fin' | 'erp', hash } — интерфейс строит адрес (ERP — другой порт)
-  function signals(d) {
-    const out = []; const add = (level, weight, title, text, link) => out.push({ level, weight, title, text, link: link || null });
+  // key — постоянный ключ проблемы (тип + объект) для истории по неделям
+  function allSignals(d) {
+    const out = []; let key = ''; const add = (level, weight, title, text, link) => out.push({ key, level, weight, title, text, link: link || null });
     const m = d.money || {};
-    if (m.forecast && m.forecast.gap) { const g = m.forecast.gap; add('crit', 100, `Кассовый разрыв с ${fdate(g.from)}`, `Прогноз остатка ${mln(g.balance)} на неделе ${fdate(g.from)}–${fdate(g.to)}; минимум ${mln(m.forecast.min)}.`, { site: 'fin', hash: '#/forecast' }); }
+    if (m.forecast && m.forecast.gap) { key = 'cash-gap'; const g = m.forecast.gap; add('crit', 100, `Кассовый разрыв с ${fdate(g.from)}`, `Прогноз остатка ${mln(g.balance)} на неделе ${fdate(g.from)}–${fdate(g.to)}; минимум ${mln(m.forecast.min)}.`, { site: 'fin', hash: '#/forecast' }); }
     if (m.receivables) {
-      const r = m.receivables; const over = num(r.over30);
+      const r = m.receivables; const over = num(r.over30); key = 'receivables-30';
       if (over > 0) add(r.over90 > 0 ? 'crit' : 'warn', 80 + Math.min(15, over / 1e7), `Дебиторка старше ${LIMITS.receivableDays} дней: ${mln(over)}`, (r.topOver || []).slice(0, 3).map(x => `${x.client} — ${mln(x.sum)} (${x.maxAge} дн.)`).join('; ') + (r.over90 ? `. Старше 90 дней: ${mln(r.over90)}.` : ''), { site: 'fin', hash: '#/receivables' });
     }
     const p = d.projects || {};
-    for (const x of (p.list || []).filter(x => x.zone === 'black' || x.zone === 'red').slice(0, 3))
-      add(x.zone === 'black' ? 'crit' : 'warn', x.zone === 'black' ? 90 : 75, `${x.name}: ${x.zone === 'black' ? 'буфер исчерпан' : 'красная зона'}`, `Буфер съеден на ${Math.round(num(x.consumption) * 100)} %, выполнено ${Math.round(num(x.progress) * 100)} %${x.due ? `, срок по договору ${fdate(x.due)}` : ''} — ${ZONE_LABEL[x.zone]}.`, { site: 'erp', hash: `#/pmp?id=${encodeURIComponent(x.id)}` });
-    const late = (p.list || []).filter(x => x.late); if (late.length) add('crit', 85, `Срок по договору прошёл: ${late.length} ${plural(late.length, 'проект', 'проекта', 'проектов')}`, late.slice(0, 4).map(x => `${x.name} (${fdate(x.due)})`).join(', '), { site: 'erp', hash: '#/pm' });
-    if ((p.blockers || []).length) add('warn', 60, `Блокеры дольше ${LIMITS.blockerDays} дней: ${p.blockers.length}`, p.blockers.slice(0, 3).map(b => `${b.project}: ${b.what} (${b.days} дн., ${b.holder || '—'})`).join('; '), { site: 'erp', hash: '#/pmbl' });
+    for (const x of (p.list || []).filter(x => x.zone === 'black' || x.zone === 'red').slice(0, 3)) {
+      key = 'zone:' + x.id; add(x.zone === 'black' ? 'crit' : 'warn', x.zone === 'black' ? 90 : 75, `${x.name}: ${x.zone === 'black' ? 'буфер исчерпан' : 'красная зона'}`, `Буфер съеден на ${Math.round(num(x.consumption) * 100)} %, выполнено ${Math.round(num(x.progress) * 100)} %${x.due ? `, срок по договору ${fdate(x.due)}` : ''} — ${ZONE_LABEL[x.zone]}.`, { site: 'erp', hash: `#/pmp?id=${encodeURIComponent(x.id)}` }); }
+    const late = (p.list || []).filter(x => x.late); key = 'contract-late'; if (late.length) add('crit', 85, `Срок по договору прошёл: ${late.length} ${plural(late.length, 'проект', 'проекта', 'проектов')}`, late.slice(0, 4).map(x => `${x.name} (${fdate(x.due)})`).join(', '), { site: 'erp', hash: '#/pm' });
+    key = 'blockers-14'; if ((p.blockers || []).length) add('warn', 60, `Блокеры дольше ${LIMITS.blockerDays} дней: ${p.blockers.length}`, p.blockers.slice(0, 3).map(b => `${b.project}: ${b.what} (${b.days} дн., ${b.holder || '—'})`).join('; '), { site: 'erp', hash: '#/pmbl' });
     const ppl = d.people;
-    if (ppl && ppl.sections) for (const s of ppl.sections.filter(s => s.capacity > 0 && s.load >= LIMITS.overload).slice(0, 2))
-      add(s.load >= 1.5 ? 'crit' : 'warn', 55 + Math.min(20, (s.load - 1) * 40), `Раздел ${s.section} перегружен: ${Math.round(s.load * 100)} %`, `План ${Math.round(s.plan)} ч против ёмкости ${Math.round(s.capacity)} ч на ${ppl.weeks} нед.${s.overdue ? `, долг по просроченным пунктам ${Math.round(s.overdue)} ч` : ''}.`, { site: 'erp', hash: '#/hrload' });
+    if (ppl && ppl.sections) for (const s of ppl.sections.filter(s => s.capacity > 0 && s.load >= LIMITS.overload).slice(0, 2)) {
+      key = 'overload:' + s.section; add(s.load >= 1.5 ? 'crit' : 'warn', 55 + Math.min(20, (s.load - 1) * 40), `Раздел ${s.section} перегружен: ${Math.round(s.load * 100)} %`, `План ${Math.round(s.plan)} ч против ёмкости ${Math.round(s.capacity)} ч на ${ppl.weeks} нед.${s.overdue ? `, долг по просроченным пунктам ${Math.round(s.overdue)} ч` : ''}.`, { site: 'erp', hash: '#/hrload' }); }
     const s = d.sales;
-    if (s && s.noAnswer && s.noAnswer.length) add('warn', 50, `КП без ответа дольше ${LIMITS.kpNoAnswerDays} дней: ${s.noAnswer.length}`, s.noAnswer.slice(0, 3).map(x => `${x.client || x.object} — ${mln(x.sum)} (${x.days} дн.)`).join('; '), { site: 'fin', hash: '#/crmleads?st=КП отправлено' });
-    if (m.taxes && m.taxes.length) { const t = m.taxes[0]; add('info', 20, `Налоги: ${fdate(t.date)} — ${t.title}`, m.taxes.slice(0, 3).map(x => `${fdate(x.date)} ${x.title}`).join('; '), { site: 'fin', hash: '#/taxes' }); }
+    key = 'kp-no-answer'; if (s && s.noAnswer && s.noAnswer.length) add('warn', 50, `КП без ответа дольше ${LIMITS.kpNoAnswerDays} дней: ${s.noAnswer.length}`, s.noAnswer.slice(0, 3).map(x => `${x.client || x.object} — ${mln(x.sum)} (${x.days} дн.)`).join('; '), { site: 'fin', hash: '#/crmleads?st=КП отправлено' });
+    if (m.taxes && m.taxes.length) { const t = m.taxes[0]; key = 'tax:' + t.date + ':' + t.title; add('info', 20, `Налоги: ${fdate(t.date)} — ${t.title}`, m.taxes.slice(0, 3).map(x => `${fdate(x.date)} ${x.title}`).join('; '), { site: 'fin', hash: '#/taxes' }); }
     const rank = { crit: 2, warn: 1, info: 0 };
-    return out.sort((a, b) => rank[b.level] - rank[a.level] || b.weight - a.weight).slice(0, LIMITS.maxSignals).map(({ weight, ...x }) => x);
+    return out.sort((a, b) => rank[b.level] - rank[a.level] || b.weight - a.weight).map(({ weight, ...x }) => x);
+  }
+  const signals = d => allSignals(d).slice(0, LIMITS.maxSignals);
+
+  // ---- периоды для денег и продаж: месяц / квартал / год / 12 месяцев (по умолчанию) ----
+  const PERIODS = { month: 'Месяц', quarter: 'Квартал', year: 'Год', '12m': '12 месяцев' };
+  const pad = n => String(n).padStart(2, '0');
+  function periodRange(period, t) {
+    const p = PERIODS[period] ? period : '12m'; const [y, m] = t.split('-').map(Number); let from;
+    if (p === 'month') from = `${y}-${pad(m)}-01`;
+    else if (p === 'quarter') from = `${y}-${pad(Math.floor((m - 1) / 3) * 3 + 1)}-01`;
+    else if (p === 'year') from = `${y}-01-01`;
+    else from = new Date(Date.UTC(y, m - 12, 1)).toISOString().slice(0, 10);
+    const MON = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+    const label = p === 'month' ? `${MON[m - 1]} ${y}` : p === 'quarter' ? `${Math.floor((m - 1) / 3) + 1} квартал ${y}` : p === 'year' ? `${y} год` : '12 месяцев';
+    return { period: p, from, to: t, label };
+  }
+  // ISO-неделя «2026-W39»
+  function isoWeek(d) {
+    const t = new Date(String(d).slice(0, 10) + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + 3 - (t.getUTCDay() + 6) % 7);
+    const y = t.getUTCFullYear(); const jan4 = new Date(Date.UTC(y, 0, 4)); const w = 1 + Math.round((t - jan4) / 6048e5 - 3 / 7 + ((jan4.getUTCDay() + 6) % 7) / 7);
+    return `${y}-W${pad(w)}`;
+  }
+  // «было на прошлой неделе / стало»: prev, cur — списки сигналов с key
+  function diffSignals(prev, cur) {
+    const pk = new Map((prev || []).map(x => [x.key, x])), ck = new Map((cur || []).map(x => [x.key, x]));
+    return { gone: (prev || []).filter(x => !ck.has(x.key)), added: (cur || []).filter(x => !pk.has(x.key)), kept: (cur || []).filter(x => pk.has(x.key)).map(x => Object.assign({}, x, { was: pk.get(x.key).level })) };
   }
   const plural = (n, a, b, c) => { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? b : c; };
 
@@ -75,5 +102,5 @@
     return rows.sort((x, y) => y.rank - x.rank).slice(0, limit || 3).map(({ rank, ...r }) => Object.assign(r, { level: r.score >= 0.85 ? 'high' : r.score >= 0.65 ? 'medium' : 'low' }));
   }
 
-  return { canOpen, LIMITS, ZONE_LABEL, ZONE_ORDER, signals, money, mln, fdate, plural, num, tokens, sim, matchScore, suggestProjects };
+  return { canOpen, LIMITS, ZONE_LABEL, ZONE_ORDER, signals, allSignals, PERIODS, periodRange, isoWeek, diffSignals, money, mln, fdate, plural, num, tokens, sim, matchScore, suggestProjects };
 });

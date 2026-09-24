@@ -100,6 +100,42 @@ chk('люди: блок есть (hr включён)', true, !!d.people);
 chk('сигналы: дебиторка, срок, блокеры, КП', true, ['Дебиторка', 'Срок по договору', 'Блокеры', 'КП без ответа'].every(k => d.signals.some(s => s.title.includes(k))));
 chk('сигналов не больше 7', true, d.signals.length <= 7);
 
+console.log('== периоды ==');
+const dm = AN.overview(ctxOf(makeDb(['pm', 'crm', 'hr']), all), { today: T, period: 'month' });
+chk('месяц: ряд по неделям с 1-го числа', ['week', '2026-09-01', 3], [dm.money.period.unit, dm.money.series[0].from, dm.money.series.length]);
+chk('месяц: выручка / расходы / итог', [3000000, 800000, 2200000], [dm.money.period.income, dm.money.period.expense, dm.money.period.net]);
+const dq = AN.overview(ctxOf(makeDb(['pm', 'crm', 'hr']), all), { today: T, period: 'quarter' });
+chk('квартал: месяцы июль–сентябрь', ['2026-07', '2026-08', '2026-09'], dq.money.series.map(x => x.ym));
+chk('квартал: расходы до опорного остатка тоже в периоде (август)', 900000, dq.money.period.expense);
+const dy = AN.overview(ctxOf(makeDb(['pm', 'crm', 'hr']), all), { today: T, period: 'year' });
+chk('год: 9 месяцев с января', 9, dy.money.series.length);
+chk('по умолчанию — 12 месяцев', ['12m', 12], [d.period.period, d.money.series.length]);
+chk('неизвестный период → 12 месяцев', '12m', AN.overview(ctxOf(makeDb(['pm']), all), { today: T, period: 'decade' }).period.period);
+const dbS = makeDb(['pm', 'crm', 'hr']); dbS.crmLeads.push({ id: 'l0', client: 'Старый', object: 'Старый', status: 'Отказ', reason: 'Цена', kpAt: '2025-01-10', createdAt: '2025-01-05T00:00:00Z', history: [] });
+chk('продажи за период: лид от 21.08 не в сентябре; лид 2025-01 не в 12 мес.', [0, 1], [AN.overview(ctxOf(dbS, all), { today: T, period: 'month' }).sales.funnel.total, AN.overview(ctxOf(dbS, all), { today: T, period: '12m' }).sales.funnel.total]);
+
+console.log('== история сигналов по неделям ==');
+const A2 = require(path.join(APP, 'modules', 'analytics', 'domain.js'));
+chk('ISO-неделя', ['2026-W38', '2026-W53', '2025-W01'], [A2.isoWeek(T), A2.isoWeek('2027-01-01'), A2.isoWeek('2024-12-30')]);
+chk('у сигналов постоянные ключи', true, d.signals.every(x => x.key));
+const df = A2.diffSignals([{ key: 'a', level: 'warn', title: 'A' }, { key: 'b', level: 'crit', title: 'B' }], [{ key: 'b', level: 'warn', title: 'B' }, { key: 'c', level: 'crit', title: 'C' }]);
+chk('diff: ушли / новые / остались (с прежним уровнем)', [['a'], ['c'], ['b'], 'crit'], [df.gone.map(x => x.key), df.added.map(x => x.key), df.kept.map(x => x.key), df.kept[0].was]);
+// handle: снимок текущей недели и сравнение с прошлой
+const dbH = makeDb(['pm', 'crm', 'hr']); dbH.analyticsSnapshots = [{ id: '2026-W37', week: '2026-W37', signals: [{ key: 'cash-gap', level: 'crit', title: 'Кассовый разрыв' }, { key: 'receivables-30', level: 'warn', title: 'Дебиторка' }] }];
+let saved = 0; const audits = [];
+const hctx = Object.assign(ctxOf(dbH, all), { parts: ['analytics', 'overview'], method: 'GET', qs: {}, user: { id: 'u1', role: 'owner' }, store: { save: () => saved++, audit: (...x) => audits.push(x) }, ok: b => ({ ok: true, body: b }), err: (st, m) => ({ ok: false, status: st, m }) });
+const r1 = AN.handle(hctx);
+chk('снимок текущей недели создан и сохранён', [2, '2026-W38', 1], [dbH.analyticsSnapshots.length, r1.body.history.week, saved]);
+chk('сравнение с прошлой неделей', '2026-W37', r1.body.history.prevWeek);
+chk('ушёл кассовый разрыв, дебиторка осталась', [true, true], [r1.body.history.diff.gone.some(x => x.key === 'cash-gap'), r1.body.history.diff.kept.some(x => x.key === 'receivables-30')]);
+chk('новые — например, прошедший срок', true, r1.body.history.diff.added.some(x => x.key === 'contract-late'));
+AN.handle(hctx); chk('повторное открытие без изменений — без записи', 1, saved);
+chk('полный список сигналов в ответ не уходит', undefined, r1.body.allSignals);
+const r2 = AN.handle(Object.assign({}, hctx, { user: { id: 'u2', role: 'accountant' } }));
+chk('бухгалтеру — 403, снимок не пишется', [403, 1], [r2.status, saved]);
+const hist = AN.handle(Object.assign({}, hctx, { parts: ['analytics', 'history'] }));
+chk('история: недели по убыванию', ['2026-W38', '2026-W37'], hist.body.map(x => x.week));
+
 console.log('== без hr и crm ==');
 const d2 = AN.overview(ctxOf(makeDb(['pm']), all), { today: T });
 chk('без ошибок', {}, d2.errors);
