@@ -28,7 +28,7 @@ chk "secretary my 200" 200 "$(code SEC GET /pm/my)"
 chk "staff badges 403" 403 "$(code STAFF GET /pm/badges)"
 chk "коллекция pmProjects через общий API закрыта" 404 "$(code OWN GET /pmProjects)"
 chk "шаблон РП = 79 пунктов" 79 "$(call OWN GET /pm/overview | js 'd.templates.rp')"
-chk "шаблоны: концепция 13, ЭП 35" "13/35" "$(call OWN GET /pm/overview | js 'd.templates.concept+"/"+d.templates.ep')"
+chk "шаблоны: ЭП 48 (этап 1 — концепция), в данных концепция 13" "48/13" "$(call OWN GET /pm/overview | js 'd.templates.ep+"/"+d.templates.concept')"
 
 echo "== создание =="
 RP=$(call OWN POST /pm/projects "{\"track\":\"rp\",\"name\":\"Тест РП\",\"no\":\"1\",\"client\":\"ТОО Тест\",\"start\":\"$T\",\"due\":\"$DUE\",\"fit\":true,\"gipId\":\"dev-gip\",\"folder\":\"S:\\\\001-2026-Тест\",\"budget\":{\"contract\":100000000,\"sections\":[{\"name\":\"АР\",\"sum\":30000000,\"executor\":\"Внутренние\"}]}}")
@@ -39,11 +39,13 @@ chk "все пункты получили срок" 79 "$(echo "$RP" | js 'd.ite
 chk "бюджет виден владельцу" 100000000 "$(echo "$RP" | js 'd.budget.contract')"
 chk "подсказка имени папки №-год-название" "001-$(date +%Y)-Тест РП" "$(echo "$RP" | js 'd.folderHint')"
 EP=$(call OWN POST /pm/projects "{\"track\":\"ep\",\"name\":\"Тест ЭП\",\"pmId\":\"dev-pm\",\"start\":\"$T\",\"miroUrl\":\"https://miro.com/app/board/uXjVKabc123=/\"}")
-EPID=$(echo "$EP" | js 'd.project.id'); chk "owner создал ЭП (8 этапов)" 8 "$(echo "$EP" | js 'd.stageNames.length')"
+EPID=$(echo "$EP" | js 'd.project.id'); chk "owner создал ЭП (9 этапов, 1-й — концепция)" "9/1. Концепция (форэскиз → концепция → согласование)" "$(echo "$EP" | js 'd.stageNames.length+"/"+d.stageNames[0]')"
 AN=$(call OWN POST /pm/projects "{\"track\":\"an\",\"name\":\"Тест АН\",\"start\":\"2026-10-01\",\"due\":\"2027-01-15\",\"fit\":true}")
-chk "АН: запуск + 4 месяца = 5 этапов" 5 "$(echo "$AN" | js 'd.stageNames.length')"
+chk "АН: запуск + 4 месяца = 5 этапов (API сохранён)" 5 "$(echo "$AN" | js 'd.stageNames.length')"
+chk "АН скрыт из сводки и счётчиков" true "$(call OWN GET /pm/overview | js '!d.rows.some(r=>r.track==="an") && d.byTrack.an.n===0')"
 CN=$(call OWN POST /pm/projects "{\"track\":\"concept\",\"name\":\"Тест концепция\",\"pmId\":\"dev-pm\",\"start\":\"$T\"}")
-CNID=$(echo "$CN" | js 'd.project.id'); chk "концепция: 3 этапа, 13 пунктов" "3/13" "$(echo "$CN" | js 'd.stageNames.length+"/"+d.items.length')"
+CNID=$(echo "$CN" | js 'd.project.id'); chk "стадия «Концепция» создаёт ЭП: 48 пунктов, 13 в этапе 1" "ep/48/13" "$(echo "$CN" | js 'd.project.track+"/"+d.items.length+"/"+d.items.filter(i=>i.stage===1).length')"
+chk "старая концепция сворачивается в ЭП на месте: 48 пунктов, 13 в этапе 1, отметки целы, 9 этапов" "ep/48/13/2/9" "$(node -e "const S=require('./modules/pm/server.js'),PM=require('./modules/pm/domain.js');let n=0;const ctx={db:{pmProjects:[],pmItems:[],pmBlockers:[]},store:{id:()=>'i'+(n++),save(){},audit(){}},emit(){}};const p={id:'c1',track:'concept',name:'Старая концепция',status:'В работе',start:'2026-01-12'};ctx.db.pmProjects.push(p);const its=PM.itemsFromTemplate('concept','c1',{}).map(i=>Object.assign(i,{id:'i'+(n++)}));ctx.db.pmItems.push(...its);its[0].done=true;its[1].done=true;S.collapseConcept(ctx,p,{},'dev-owner');const m=ctx.db.pmItems.filter(i=>i.pid==='c1');console.log([p.track,m.length,m.filter(i=>i.stage===1).length,m.filter(i=>i.done).length,new Set(m.map(i=>i.stage)).size].join('/'))" 2>/dev/null)"
 chk "ошибка без стадии" 400 "$(code OWN POST /pm/projects '{"name":"x"}')"
 chk "accountant создать нельзя" 403 "$(code ACC POST /pm/projects '{"track":"rp","name":"x"}')"
 chk "lead создать нельзя" 403 "$(code LEAD POST /pm/projects '{"track":"rp","name":"x"}')"
@@ -106,9 +108,9 @@ chk "ПМ передал свой ЭП в РП" rp "$(echo "$HO" | js 'd.project
 chk "у РП ссылка на ЭП" "$PMEP" "$(echo "$HO" | js 'd.project.epId')"
 chk "ЭП закрыт (Готово) и знает свой РП" "Готово/true" "$(call OWN GET /pm/projects/$PMEP | js 'd.project.status+"/"+(d.project.rpId===d.rp.id)')"
 chk "повторная передача 400" 400 "$(code OWN POST /pm/projects/$PMEP/handover '{}')"
-HC=$(call OWN POST /pm/projects/$CNID/handover '{"pmId":"dev-pm"}')
-chk "концепция передана в ЭП" ep "$(echo "$HC" | js 'd.project.track')"
-chk "у ЭП ссылка на концепцию" "$CNID" "$(echo "$HC" | js 'd.project.conceptId')"
+HC=$(call OWN POST /pm/projects/$CNID/handover '{"gipId":"dev-gip"}')
+chk "ЭП, созданный из «Концепции», передаётся в РП" rp "$(echo "$HC" | js 'd.project.track')"
+chk "у РП ссылка на этот ЭП" "$CNID" "$(echo "$HC" | js 'd.project.epId')"
 
 echo "== импорт =="
 IMP='{"mode":"skip","since":"2026-07-13","projects":[{"name":"Импорт А","track":"rp","status":"Ждём заказчика","start":"2026-04-01","due":"2027-02-15","stageName":"3. Этап 1. Схема КЖ","projectId":"нет-такого","tasks":[{"title":"Карточка Trello","stage":"3. Этап 1. Схема КЖ","status":"В работе","due":"2026-05-29"},{"title":"Сделано","status":"Готово"}],"blockers":[{"what":"ИРД","holder":"Заказчик","status":"Открыт"}],"budget":{"contract":168040000,"marginTarget":0.3,"gipSum":12180000,"sections":[{"name":"АР","sum":30180000,"executor":"Внутренние"},{"name":"КЖ","sum":25500000,"executor":"Субподряд"}]}},{"name":"Импорт Б","track":"rp","status":"Готово","start":"2025-08-01","due":"2026-06-30","stageName":"8. Этап 6. Экспертиза"}]}'
@@ -125,7 +127,7 @@ chk "повторный импорт пропускает" 2 "$(call OWN POST /p
 chk "импорт replace пересоздаёт" 2 "$(call OWN POST /pm/import "${IMP/\"mode\":\"skip\"/\"mode\":\"replace\"}" | js 'd.replaced.length')"
 chk "импорт accountant 403" 403 "$(code ACC POST /pm/import "$IMP")"
 chk "импорт gip 403" 403 "$(code GIP POST /pm/import "$IMP")"
-chk "сводка: воронка РП из 9 этапов, есть все 4 стадии" true "$(call OWN GET /pm/overview | js 'd.byTrack.rp.n>=3 && d.byTrack.rp.funnel.length===9 && !!d.byTrack.concept && !!d.byTrack.an')"
+chk "сводка: воронки РП и ЭП по 9 этапов, АН в строках нет" true "$(call OWN GET /pm/overview | js 'd.byTrack.rp.n>=3 && d.byTrack.rp.funnel.length===9 && d.byTrack.ep.funnel.length===9 && !d.rows.some(r=>r.track==="an")')"
 
 echo "== Метод Пульса: устав, две оценки, буфер, ретро =="
 chk "карточка: зона буфера и режим по договору" true "$(call OWN GET /pm/projects/$RPID | js '["blue","green","yellow","red","black"].includes(d.health.zone) && typeof d.health.consumption==="number" && d.health.mode==="contract"')"
