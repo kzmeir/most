@@ -118,15 +118,29 @@ if ($DryRun) {
   Copy-Item (Join-Path $Source 'server.js') (Join-Path $Target 'server.js') -Force
   if (Test-Path (Join-Path $Source 'package.json')) { Copy-Item (Join-Path $Source 'package.json') (Join-Path $Target 'package.json') -Force }
 }
+# /NFL /NDL (без построчного списка файлов) только в реальном прогоне - в -DryRun список нужен, иначе
+# Select-String ниже не увидит ни одной строки и всегда покажет «0 изменений», даже при реальных отличиях.
+$quietFlags = if ($DryRun) { @() } else { @('/NFL', '/NDL') }
 foreach ($dir in 'lib', 'public', 'modules') {
   $srcDir = Join-Path $Source $dir
   if (-not (Test-Path $srcDir)) { continue }
   $dstDir = Join-Path $Target $dir
-  $rcOut = & robocopy $srcDir $dstDir $robocopyFlag /NFL /NDL /NJH /NP
+  $rcOut = & robocopy $srcDir $dstDir $robocopyFlag @quietFlags /NJH /NP
   if ($LASTEXITCODE -ge 8) { Fail "robocopy $dir завершился с ошибкой (код $LASTEXITCODE)" }
   if ($DryRun) { Log "[DryRun] $dir - изменений: $(($rcOut | Select-String '^\s+(Newer|New File|\*EXTRA)').Count)" }
 }
-if ($DryRun) { Log "[DryRun] копирование не выполнялось (только просмотр)" } else { Log "код скопирован: server.js, package.json (если был), lib\, public\, modules\" }
+# tools\ - отдельно и без /MIR: на сервере могут лежать свои файлы (например cloudflared.exe), их не удаляем,
+# только докладываем/обновляем. tests и *.md внутри tools (если появятся) в выкладку не нужны.
+$toolsSrc = Join-Path $Source 'tools'
+if (Test-Path $toolsSrc) {
+  $toolsDst = Join-Path $Target 'tools'
+  $toolsFlag = if ($DryRun) { '/L' } else { '/E' }
+  $rcOut = & robocopy $toolsSrc $toolsDst $toolsFlag /XD tests /XF *.md @quietFlags /NJH /NP
+  if ($LASTEXITCODE -ge 8) { Fail "robocopy tools завершился с ошибкой (код $LASTEXITCODE)" }
+  if ($DryRun) { Log "[DryRun] tools - изменений: $(($rcOut | Select-String '^\s+(Newer|New File|\*EXTRA)').Count)" }
+}
+if ($DryRun) { Log "[DryRun] копирование не выполнялось (только просмотр)" } else { Log "код скопирован: server.js, package.json (если был), lib\, public\, modules\, tools\" }
+Log "Внимание: tools\serve-local.js обновился на диске, но уже запущенная обёртка держит старый код в памяти - новая версия начнёт работать только после перезапуска задачи автозапуска (или перезагрузки ПК), сама она не подхватится."
 
 # файл VERSION в корне целевой папки - экран "Сервис" в интерфейсе читает его для owner/partner
 $gitHash = (& git -C $Source rev-parse HEAD 2>&1).Trim()
