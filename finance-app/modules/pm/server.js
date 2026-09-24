@@ -3,7 +3,8 @@
 // всё нужное из финансов (список проектов для связи, факт бюджета, подрядчики для подсказок) отдаётся отсюда с проверкой прав.
 const PM = require('./domain');
 
-const FIELDS = ['name', 'no', 'client', 'address', 'area', 'status', 'risk', 'gipId', 'pmId', 'start', 'due', 'forecast', 'comment', 'projectId', 'members', 'miroUrl', 'folder'];
+const CONTRACT_FIELDS = ['contractNo', 'contractDate', 'contractTerm', 'contractTermUnit', 'contractStartRule', 'dueNote'];
+const FIELDS = ['name', 'no', 'client', 'address', 'area', 'status', 'risk', 'gipId', 'pmId', 'start', 'due', 'forecast', 'comment', 'projectId', 'members', 'miroUrl', 'folder'].concat(CONTRACT_FIELDS);
 const ITEM_FIELDS_ANY = ['done', 'na', 'due', 'note', 'assigneeId', 'contractor', 'doneNote'];
 const ITEM_FIELDS_MGR = ['title', 'role', 'weeks', 'weeksMax', 'crit', 'stage'];
 const RETRO_FIELDS = ['interpret', 'change', 'sprint'];
@@ -14,6 +15,17 @@ const TRACKS = Object.keys(PM.TRACKS);
 
 // общие операции — их вызывают и другие модули через ctx.modules.pm (например, коммерция при подписании договора)
 function addItems(ctx, list) { for (const it of list) { it.id = ctx.store.id(); ctx.db.pmItems.push(it); } return list; }
+// поля договора: срок — число, единица — из списка; dueFromTerm — пересчитать дату по договору из срока
+function cleanContract(patch, body, p) {
+  if ('contractTerm' in patch) patch.contractTerm = Math.max(0, Math.round(Number(patch.contractTerm) || 0));
+  if ('contractTermUnit' in patch && !PM.TERM_UNITS.includes(patch.contractTermUnit)) patch.contractTermUnit = 'рабочих';
+  for (const k of ['contractNo', 'contractStartRule', 'dueNote']) if (k in patch) patch[k] = String(patch[k] || '').trim().slice(0, 500);
+  if (body && (body.dueFromTerm === true || body.dueFromTerm === '1' || body.dueFromTerm === 1)) {
+    const start = patch.start || (p && p.start) || '', term = 'contractTerm' in patch ? patch.contractTerm : (p && p.contractTerm), unit = patch.contractTermUnit || (p && p.contractTermUnit) || 'рабочих';
+    const due = PM.termEnd(start, term, unit); if (due) patch.due = due;
+  }
+  return patch;
+}
 function applyPlan(ctx, p, start, fit) { const its = ctx.db.pmItems.filter(i => i.pid === p.id); const r = PM.plan(its, start, fit ? p.due : ''); for (const it of its) if (!it.done && r.due[it.id]) it.due = r.due[it.id]; return r; }
 // бюджет: только известные поля, разделы — название/сумма/исполнитель
 function cleanBudget(b) {
@@ -103,6 +115,7 @@ function handle(ctx) {
       if (('gipId' in patch || 'pmId' in patch || 'projectId' in patch) && !PM.isLeader(user)) { delete patch.gipId; delete patch.pmId; delete patch.projectId; }
       if ('status' in patch && !PM.STATUS.includes(patch.status)) delete patch.status; if ('risk' in patch && !PM.RISK.includes(patch.risk)) delete patch.risk;
       if ('name' in patch) { patch.name = String(patch.name).trim(); if (!patch.name) delete patch.name; }
+      cleanContract(patch, body, p);
       Object.assign(p, patch, { updatedAt: now(), updatedBy: user.id }); store.save(); store.audit(user.id, 'update', 'pmProjects', p.id); return ok(card(p));
     }
     if (p && !c && method === 'DELETE') {
@@ -170,6 +183,20 @@ function handle(ctx) {
     if (method === 'DELETE') { db.pmBlockers = db.pmBlockers.filter(z => z.id !== x.id); store.save(); store.audit(user.id, 'delete', 'pmBlockers', x.id); return ok({ ok: true }); }
   }
   // импорт из реестра (JSON от modules/pm/tools/import_pm.py): проекты + пункты прошлых этапов отмечены, задачи Trello, блокеры, бюджеты
+  // массовое обновление дат и реквизитов договоров (руководитель): rows [{id|name, start, due, contractNo, contractDate, contractTerm, contractTermUnit, contractStartRule, dueNote, dueFromTerm}]
+  if (a === 'contract-dates' && method === 'POST') {
+    if (!PM.isLeader(user)) return err(403, 'Только руководитель');
+    const rows = Array.isArray(body.rows) ? body.rows : []; const normName = x => String(x || '').toLowerCase().replace(/[\s\u00A0\u2014\u2013-]+/g, ' ').trim();
+    const applied = [], missed = [];
+    for (const r of rows) {
+      const p = (r.id && findP(r.id)) || db.pmProjects.find(x => normName(x.name) === normName(r.name) && (!r.track || x.track === r.track));
+      if (!p) { missed.push(r.name || r.id || '?'); continue; }
+      const patch = cleanContract(pick(r, ['start', 'due'].concat(CONTRACT_FIELDS)), r, p);
+      Object.assign(p, patch, { updatedAt: now(), updatedBy: user.id }); store.audit(user.id, 'update', 'pmProjects', p.id); applied.push({ id: p.id, name: p.name, start: p.start, due: p.due, contractNo: p.contractNo || '' });
+    }
+    if (applied.length) store.save();
+    return ok({ applied, missed });
+  }
   if (a === 'import' && method === 'POST') {
     if (!PM.isLeader(user)) return err(403, 'Импорт доступен только руководителю');
     const list = Array.isArray(body.projects) ? body.projects : []; if (!list.length) return err(400, 'В файле нет проектов');
@@ -182,7 +209,7 @@ function handle(ctx) {
         if (mode !== 'replace') { rep.skipped.push(name); continue; }
         db.pmItems = db.pmItems.filter(i => i.pid !== ex.id); db.pmBlockers = db.pmBlockers.filter(x => x.pid !== ex.id); db.pmProjects = db.pmProjects.filter(x => x.id !== ex.id); rep.replaced.push(name);
       } else rep.created.push(name);
-      const f = pick(src, ['name', 'no', 'client', 'address', 'area', 'status', 'risk', 'gipId', 'pmId', 'start', 'due', 'forecast', 'comment', 'projectId', 'miroUrl', 'folder']); f.track = track; f.fit = !!f.due; f.budget = src.budget || null;
+      const f = pick(src, ['name', 'no', 'client', 'address', 'area', 'status', 'risk', 'gipId', 'pmId', 'start', 'due', 'forecast', 'comment', 'projectId', 'miroUrl', 'folder'].concat(CONTRACT_FIELDS)); cleanContract(f, src, null); f.track = track; f.fit = !!f.due; f.budget = src.budget || null;
       if (f.projectId && !db.projects.some(x => x.id === f.projectId)) { rep.unlinked.push(`${name} → ${f.projectId}`); f.projectId = ''; }
       if (f.gipId && !db.users.some(u => u.id === f.gipId)) f.gipId = ''; if (f.pmId && !db.users.some(u => u.id === f.pmId)) f.pmId = '';
       const p = createProject(ctx, f, user.id); if (f.budget) rep.budgets++;

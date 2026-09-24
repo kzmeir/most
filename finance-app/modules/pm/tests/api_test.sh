@@ -144,6 +144,15 @@ chk "ретро удаляется" 0 "$(call OWN DELETE /pm/projects/$RPID/retr
 chk "сводка: health у строк, Проход только с бюджетом" true "$(call OWN GET /pm/overview | js 'd.rows.every(r=>r.health && r.health.zone) && d.rows.some(r=>r.throughput)')"
 chk "сводка gip: Проход скрыт у чужих" true "$(call GIP GET /pm/overview | js 'd.rows.filter(r=>r.gipId!=="dev-gip").every(r=>r.throughput===undefined)')"
 
+echo "== даты по договору =="
+chk "договор: 120 раб. дн. от 01.06.2026 → 18.11.2026 (календарь РК)" 2026-11-18 "$(call OWN PUT /pm/projects/$RPID '{"contractNo":"123-26-РП","contractDate":"2026-05-29","contractTerm":120,"contractTermUnit":"рабочих","contractStartRule":"аванс+ТЗ+ИРД","start":"2026-06-01","dueFromTerm":"1"}' | js 'd.project.due')"
+chk "договор: реквизиты в карточке" "123-26-РП|120|рабочих|2026-05-29" "$(call OWN GET /pm/projects/$RPID | js '[d.project.contractNo,d.project.contractTerm,d.project.contractTermUnit,d.project.contractDate].join("|")')"
+chk "договор: неизвестная единица → рабочих, дата не трогается без dueFromTerm" "рабочих|2026-11-18" "$(call OWN PUT /pm/projects/$RPID '{"contractTermUnit":"лет","contractTerm":10}' | js 'd.project.contractTermUnit+"|"+d.project.due')"
+chk "договор: gip чужого проекта 403" 403 "$(code GIP PUT /pm/projects/$PMEP '{"contractNo":"x"}')"
+chk "массовые даты: gip 403" 403 "$(code GIP POST /pm/contract-dates '{"rows":[]}')"
+chk "массовые даты: по id, 60 кал. дн. от 09.12.2025 → 07.02.2026; чужое имя — missed" "2026-02-07|1" "$(call OWN POST /pm/contract-dates "{\"rows\":[{\"id\":\"$RPID\",\"contractTerm\":60,\"contractTermUnit\":\"календарных\",\"start\":\"2025-12-09\",\"dueFromTerm\":true},{\"name\":\"Нет такого объекта\"}]}" | js 'd.applied[0].due+"|"+d.missed.length')"
+chk "календарь: 1 рабочий день после 31.12.2026 → 05.01.2027" 2027-01-05 "$(node -e "console.log(require('./modules/pm/domain.js').addWorkDays('2027-01-01',1))")"
+
 echo "== удаление =="
 chk "owner удаляет проект" 200 "$(code OWN DELETE /pm/projects/$GID)"
 chk "удалённый не найден" 404 "$(code OWN GET /pm/projects/$GID)"
