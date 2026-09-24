@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title MOST Финансы — автозапуск
-cd /d "%~dp0"
+pushd "%~dp0"
 echo  Регистрирую задачу Windows: при входе пользователя в систему запускать сервер и туннель в свёрнутом окне.
 schtasks /Create /F /SC ONLOGON /RL HIGHEST /TN "MOST Финансы" /TR "cmd /c start /min \"MOST Финансы\" \"%~dp0start-internet.bat\""
 if errorlevel 1 (

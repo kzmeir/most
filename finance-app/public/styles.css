@@ -50,7 +50,7 @@ tr.row-transfer td{color:var(--ink-faint)}tr.row-untagged td:first-child{box-sha
 .filters .fl{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--ink-soft)}.filters .fl input{width:auto}
 th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--ink)}th.sorted{color:var(--accent)}
 .cp-link{color:inherit;text-decoration:none}.cp-link:hover{text-decoration:underline}
-.crit-text{color:var(--crit)}
+.crit-text{color:var(--crit)}.warn-text{color:var(--warn)}
 .tabs{display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--line)}.tabs a{padding:8px 14px;text-decoration:none;color:var(--ink-soft);border-bottom:2px solid transparent;margin-bottom:-1px;font-weight:600}.tabs a.active{color:var(--accent);border-bottom-color:var(--accent)}
 tr.row-click{cursor:pointer}tr.row-detail td{background:var(--panel-2);padding:12px 14px}tr.row-detail:hover td{background:var(--panel-2)}.detail .tbl{box-shadow:none}
 .tbl-inner table{min-width:0}

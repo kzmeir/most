@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title MOST Финансы — сервер и доступ из интернета
-cd /d "%~dp0"
+pushd "%~dp0"
 where node >nul 2>nul
 if errorlevel 1 (
   echo  Не найден Node.js. Установите с https://nodejs.org (LTS) и запустите снова.

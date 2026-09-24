@@ -54,7 +54,7 @@ function currentUser(req) {
   if (!s || s.exp < Date.now()) return null;
   const u = db.users.find(x => x.id === s.userId && x.active !== false);
   if (!u) return null;
-  return { id: u.id, login: u.login, name: u.name, role: u.role, token };
+  return { id: u.id, login: u.login, name: u.name, role: u.role, section: u.section || '', seeBudget: !!u.seeBudget, token };
 }
 
 // лимит попыток входа: 10 за 15 минут с одного IP
@@ -67,6 +67,6 @@ function loginAllowed(ip) {
 }
 function noteFailedLogin(ip) { (attempts.get(ip) || (attempts.set(ip, []), attempts.get(ip))).push(Date.now()); }
 
-function publicUser(u) { return { id: u.id, login: u.login, name: u.name, role: u.role, active: u.active !== false, createdAt: u.createdAt }; }
+function publicUser(u) { return { id: u.id, login: u.login, name: u.name, role: u.role, section: u.section || '', seeBudget: !!u.seeBudget, active: u.active !== false, createdAt: u.createdAt }; }
 
 module.exports = { hashPassword, verifyPassword, parseCookies, createSession, destroySession, sessionCookie, clearCookie, currentUser, loginAllowed, noteFailedLogin, publicUser, COOKIE };

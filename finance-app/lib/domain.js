@@ -6,21 +6,25 @@
   else root.MostDomain = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  const COLLECTIONS = ['users', 'docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'counterparties', 'stages', 'ops', 'accounts', 'categories', 'payroll', 'employees', 'vacations', 'obligations', 'cash', 'audit'];
+  const COLLECTIONS = ['users', 'docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'proposals', 'counterparties', 'stages', 'ops', 'accounts', 'categories', 'payroll', 'employees', 'vacations', 'obligations', 'cash', 'audit', 'pmProjects', 'pmItems', 'pmBlockers'];
   const PM_READ = ['docs', 'invoices', 'projects', 'contracts', 'subcontracts', 'counterparties', 'stages'];
-  const ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm'];
+  const ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm', 'gip', 'lead'];
   const ADMIN = ['owner', 'partner', 'accountant', 'secretary']; // полный доступ; секретарю закрыт только дашборд
   const canDashboard = r => ADMIN.includes(r) && r !== 'secretary';
-  const ROLE_LABEL = { owner: 'Владелец', partner: 'Партнёр', accountant: 'Бухгалтер', secretary: 'Секретарь', pm: 'Проджект-менеджер' };
+  const ROLE_LABEL = { owner: 'Владелец', partner: 'Партнёр', accountant: 'Бухгалтер', secretary: 'Секретарь', pm: 'Проектный менеджер', gip: 'ГИП', lead: 'Руководитель раздела' };
   const KINDS = { expense: 'Расход', income: 'Доход', transfer: 'Перевод между своими счетами', tax: 'Налоги', payroll: 'Зарплата', owner: 'Вывод учредителям' };
-  const DEFAULT_SETTINGS = { companies: ['MOST Project', 'MOST Architects'], vatRate: 0.16, payrollTax: 0.45, usdRate: 525, defaultAccounts: { 'MOST Project': 'PROJECT осн', 'MOST Architects': 'MOST' } };
+  // ставки налогов РК 2026 по умолчанию — сверить с бухгалтером (меняются в «Налоги → Ставки»)
+  const DEFAULT_TAX = { mrp: 4325, mzp: 85000, ipn: 0.10, ipnDeductMrp: 30, opv: 0.10, opvCapMzp: 50, vosms: 0.02, vosmsCapMzp: 20, opvr: 0.025, opvrCapMzp: 50, so: 0.05, soCapMzp: 7, oosms: 0.03, oosmsCapMzp: 40, sn: 0.06 };
+  const DEFAULT_SETTINGS = { companies: ['MOST Project', 'MOST Architects', 'ИП MOST Design', 'ИП PANA Design'], vatRate: 0.16, vatPayers: ['MOST Project', 'MOST Architects'], payrollTax: 0.45, usdRate: 525, paymentTermDays: 10, payDay: 10, tax: DEFAULT_TAX, defaultAccounts: { 'MOST Project': 'PROJECT осн', 'MOST Architects': 'MOST', 'ИП MOST Design': 'Most Design', 'ИП PANA Design': 'PANA' } };
+  const settingsOf = s => { const o = Object.assign({}, DEFAULT_SETTINGS, s || {}); o.tax = Object.assign({}, DEFAULT_TAX, (s && s.tax) || {}); return o; };
 
   function can(role, collection, action) {
     if (!ROLES.includes(role)) return false;
     if (collection === 'users') return role === 'owner';
+    if (/^pm[A-Z]/.test(collection)) return false; // управление проектами — только через /api/pm (свои права)
     if (collection === 'settings') return action === 'read' ? ADMIN.includes(role) : role === 'owner';
     if (ADMIN.includes(role)) return true;
-    return PM_READ.includes(collection) && action === 'read';
+    return role === 'pm' && PM_READ.includes(collection) && action === 'read'; // ГИП и руководители разделов финансы не видят
   }
   const isAdmin = r => ADMIN.includes(r);
   const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
@@ -168,7 +172,7 @@
     const untaggedAll = db.ops.filter(o => !o.category || !o.project || o.auto || o.autoProject).length;
     const cash = (db.cash || []).map(c => ({ id: c.id, company: c.company, balance: num(c.balance), asOf: c.asOf }));
     const pay = [...(db.payroll || [])].sort((a, b) => (b.id > a.id ? 1 : -1))[0]; const payrollNet = pay ? num(pay.project) + num(pay.architects) : 0;
-    const payrollGross = Math.round(payrollNet * (1 + num(settings.payrollTax || 0.45))); const oblig = (db.obligations || []).reduce((s, o) => s + num(o.monthly), 0);
+    const payrollGross = pay && (pay.lines || []).length ? Math.round(payrollMonthTaxes(pay, settings).total.employerCost) : Math.round(payrollNet * (1 + num(settings.payrollTax || 0.45))); const oblig = (db.obligations || []).reduce((s, o) => s + num(o.monthly), 0);
     const openInv = (db.invoices || []).filter(i => i.status === 'open'), heldInv = (db.invoices || []).filter(i => i.status === 'held');
     const queue = (db.docs || []).filter(d => d.status !== 'done').map(d => decorateDoc(d, () => ''));
     const contracts = db.contracts || []; const active = contracts.filter(c => !c.closed);
@@ -285,7 +289,7 @@
   // ---- остатки по счетам: опорный остаток (из выписки / введён вручную) + операции после него ----
   function cashAnchor(cashRows, acc) {
     const tail = acc.iban ? String(acc.iban).slice(-4) : '';
-    const list = (cashRows || []).filter(c => c.account === acc.id || c.id === 'acc-' + acc.id || (tail && c.account && String(c.account).includes(tail)));
+    const list = (cashRows || []).filter(c => c.account === acc.id || c.account === acc.name || c.id === 'acc-' + acc.id || (tail && c.account && String(c.account).includes(tail)));
     return list.sort((a, b) => String(b.asOf || '').localeCompare(String(a.asOf || '')))[0] || null;
   }
   function accountBalances(ops, cashRows, accounts, asOf) {
@@ -474,13 +478,108 @@
   // ---- коммерческое предложение: расчёт ----
   function kpCalc(kp) {
     kp = kp || {}; const areas = (kp.areas || []).map(a => Object.assign({}, a, { m2: num(a.m2) })); const area = num(kp.areaTotal) || areas.reduce((s, a) => s + a.m2, 0);
-    const rate = num(kp.rate); const vat = num(kp.vatRate); const vatIncluded = kp.vatIncluded !== false;
+    const rate = num(kp.rate); const vat = num(kp.vatRate) >= 1 ? num(kp.vatRate) / 100 : num(kp.vatRate); const vatIncluded = kp.vatIncluded !== false; // НДС в шаблонах — в процентах (16), в старых КП — долей (0.16)
     const stages = (kp.stages || []).map(s => { const share = num(s.share) / 100; const r = kp.fixed ? 0 : Math.round(rate * share * 100) / 100; const sum = kp.fixed ? num(s.sum) : Math.round(area * rate * share); return Object.assign({}, s, { shareNum: share, rateStage: r, sum }); });
     const itemsSum = (kp.items || []).reduce((s, i) => s + num(i.qty) * num(i.price), 0);
     const total = kp.fixed ? (stages.length ? stages.reduce((s, x) => s + x.sum, 0) : itemsSum) : (kp.mode === 'fixed' ? itemsSum : Math.round(area * rate));
     const noVat = vatIncluded ? total / (1 + vat) : total, vatSum = vatIncluded ? total - noVat : total * vat, withVat = vatIncluded ? total : total + vatSum;
     const weeks = stages.reduce((s, x) => s + num(x.weeks), 0);
     return { area, rate, stages, total, noVat: Math.round(noVat * 100) / 100, vatSum: Math.round(vatSum * 100) / 100, withVat: Math.round(withVat * 100) / 100, weeks, vatIncluded, vatRate: vat };
+  }
+
+  // ---- договор без проекта: подобрать проект по номеру договора (ДС к тому же договору) или названию ----
+  function contractProjectGuess(c, projects, contracts) {
+    projects = projects || []; contracts = contracts || [];
+    const key = (String(c.title || '').match(/(\d{2,3}-\d{2})(?!\d)/) || [])[1];
+    if (key) for (const d of contracts) { if (d === c || d.id === c.id || !String(d.title || '').includes(key)) continue; const p = contractProject(d, projects); if (p) return { project: p, reason: `тот же договор № ${key}` }; }
+    const cn = ' ' + cpNorm(`${c.name || ''} ${c.code || ''}`) + ' '; let best = null;
+    for (const p of projects) { const pn = cpNorm(p.name); if (pn.length < 4 || /^проект \d+$/.test(pn)) continue; if (cn.includes(' ' + pn + ' ') && (!best || pn.length > best.n)) best = { p, n: pn.length }; }
+    return best ? { project: best.p, reason: 'название проекта в названии договора' } : null;
+  }
+
+  // ---- налоги с ЗП (РК): оклад «на руки» → начисленная ЗП, удержания и налоги работодателя ----
+  function payrollTaxes(net, settings) {
+    const t = settingsOf(settings).tax; net = num(net); const cap = (v, k) => Math.min(v, num(t[k]) * num(t.mzp) || v);
+    const calc = G => { const opv = num(t.opv) * cap(G, 'opvCapMzp'), vosms = num(t.vosms) * cap(G, 'vosmsCapMzp'); const ipn = num(t.ipn) * Math.max(0, G - opv - vosms - num(t.ipnDeductMrp) * num(t.mrp)); return { G, opv, vosms, ipn, net: G - opv - vosms - ipn }; };
+    let lo = net, hi = net * 2 + 1, r = calc(net);
+    for (let i = 0; i < 60 && net > 0; i++) { const mid = (lo + hi) / 2; r = calc(mid); if (Math.abs(r.net - net) < 0.01) break; if (r.net < net) lo = mid; else hi = mid; }
+    const G = net > 0 ? r.G : 0; const opvr = num(t.opvr) * cap(G, 'opvrCapMzp'), so = num(t.so) * cap(Math.max(0, G - r.opv), 'soCapMzp'), oosms = num(t.oosms) * cap(G, 'oosmsCapMzp'), sn = num(t.sn) * Math.max(0, G - r.opv - r.vosms);
+    const rnd = v => Math.round(v);
+    const out = { net: rnd(net), gross: rnd(G), opv: rnd(r.opv), vosms: rnd(r.vosms), ipn: rnd(r.ipn), opvr: rnd(opvr), so: rnd(so), oosms: rnd(oosms), sn: rnd(sn) };
+    out.employer = out.opvr + out.so + out.oosms + out.sn; out.withheld = out.opv + out.vosms + out.ipn; out.toBudget = out.withheld + out.employer; out.employerCost = out.gross + out.employer;
+    return out;
+  }
+  const TAX_KEYS = ['net', 'gross', 'opv', 'vosms', 'ipn', 'opvr', 'so', 'oosms', 'sn', 'employer', 'withheld', 'toBudget', 'employerCost'];
+  function payrollMonthTaxes(month, settings) {
+    const zero = () => Object.fromEntries(TAX_KEYS.map(k => [k, 0])); const total = zero(), byCompany = {};
+    const lines = (month && month.lines || []).map(l => Object.assign({ employeeId: l.employeeId, name: l.name, company: l.company || '' }, payrollTaxes(l.amount, settings)));
+    for (const l of lines) { const c = byCompany[l.company] || (byCompany[l.company] = zero()); for (const k of TAX_KEYS) { total[k] += l[k]; c[k] += l[k]; } }
+    return { id: month ? month.id : '', lines, total, byCompany };
+  }
+
+  // ---- налоговый календарь РК (основные сроки; перенос с выходных не учтён) ----
+  function taxCalendar(fromIso, months, settings) {
+    const s = settingsOf(settings); const out = []; const [y0, m0] = String(fromIso || todayStr()).split('-').map(Number);
+    const qName = (y, m) => { const q = Math.floor((m - 1) / 3) + 1; return `${q} кв. ${y}`; };
+    const prevQ = (y, m) => { const pm = m - 3 <= 0 ? m + 9 : m - 3, py = m - 3 <= 0 ? y - 1 : y; return qName(py, pm); };
+    for (let i = 0; i < (months || 3); i++) {
+      const y = y0 + Math.floor((m0 - 1 + i) / 12), m = (m0 - 1 + i) % 12 + 1, ym = `${y}-${String(m).padStart(2, '0')}`;
+      const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y, prev = `${MONTHS_RU[pm - 1]} ${py}`;
+      out.push({ date: `${ym}-25`, kind: 'pay', title: `Налоги и взносы с ЗП за ${prev}`, note: 'ИПН, СН, ОПВ, ОПВР, СО, ВОСМС, ООСМС — по каждой компании со штатом' });
+      if ([2, 5, 8, 11].includes(m)) {
+        out.push({ date: `${ym}-15`, kind: 'report', title: `ФНО 200.00 за ${prevQ(y, m)}`, note: 'ИПН и СН, взносы — по всем ТОО и ИП с работниками' });
+        if ((s.vatPayers || []).length) { out.push({ date: `${ym}-15`, kind: 'report', title: `ФНО 300.00 (НДС) за ${prevQ(y, m)}`, note: s.vatPayers.join(', ') }); out.push({ date: `${ym}-25`, kind: 'pay', title: `Уплата НДС за ${prevQ(y, m)}`, note: s.vatPayers.join(', ') }); }
+      }
+      if (m === 2 || m === 8) { out.push({ date: `${ym}-15`, kind: 'report', title: `ФНО 910.00 (упрощёнка ИП) за ${m === 2 ? '2-е полугодие ' + (y - 1) : '1-е полугодие ' + y}`, note: 'ИП MOST Design, ИП PANA Design' }); out.push({ date: `${ym}-25`, kind: 'pay', title: 'Уплата налогов ИП по ФНО 910.00', note: 'ИП MOST Design, ИП PANA Design' }); }
+      if (m === 3) out.push({ date: `${ym}-31`, kind: 'report', title: `ФНО 100.00 (КПН) за ${y - 1}`, note: 'ТОО' });
+      if (m === 4) out.push({ date: `${ym}-10`, kind: 'pay', title: `Уплата КПН за ${y - 1}`, note: 'ТОО' });
+    }
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // ---- дебиторка: неоплаченные акты по срокам + договоры «на оплату» ----
+  const AGE_BUCKETS = [[0, 30, '0–30 дн.'], [31, 60, '31–60'], [61, 90, '61–90'], [91, 180, '91–180'], [181, 1e9, 'больше 180']];
+  function receivables(db, today) {
+    today = today || todayStr();
+    const acts = (db.docs || []).filter(d => !d.paid && num(d.amount) > 0 && (d.status === 'done' || d.actDate)).map(d => { const from = d.actDate || String(d.createdAt || '').slice(0, 10) || today; return Object.assign({}, d, { from, age: daysBetween(from, today) }); }).sort((a, b) => b.age - a.age);
+    const buckets = AGE_BUCKETS.map(([a, b, label]) => { const l = acts.filter(x => x.age >= a && x.age <= b); return { label, from: a, to: b, n: l.length, sum: l.reduce((s, x) => s + num(x.amount), 0) }; });
+    const by = new Map();
+    for (const d of acts) { const k = cpNorm(d.client) || '—'; const r = by.get(k) || { client: d.client || '—', n: 0, sum: 0, maxAge: 0, over90: 0 }; r.n++; r.sum += num(d.amount); r.maxAge = Math.max(r.maxAge, d.age); if (d.age > 90) r.over90 += num(d.amount); by.set(k, r); }
+    const active = (db.contracts || []).filter(c => !c.closed);
+    const toPay = active.filter(c => num(c.toPay) > 0).sort((a, b) => num(b.toPay) - num(a.toPay));
+    return { today, acts, buckets, byClient: [...by.values()].sort((a, b) => b.sum - a.sum), contractsToPay: toPay, totals: { acts: acts.reduce((s, d) => s + num(d.amount), 0), actsN: acts.length, over90: acts.filter(d => d.age > 90).reduce((s, d) => s + num(d.amount), 0), toPay: toPay.reduce((s, c) => s + num(c.toPay), 0), remaining: active.reduce((s, c) => s + num(c.remaining), 0) } };
+  }
+
+  // ---- прогноз денег по неделям: остаток + ожидаемые поступления − счета, ЗП, налоги, обязательные ----
+  function cashForecast(db, opts) {
+    opts = opts || {}; const s = settingsOf(db.settings); const today = opts.today || todayStr(); const weeks = opts.weeks || 8; const maxAge = opts.maxAge || 180;
+    const d0 = new Date(today + 'T00:00:00Z'); const monday = new Date(d0.getTime() - ((d0.getUTCDay() + 6) % 7) * 864e5);
+    const iso = x => x.toISOString().slice(0, 10); const addDays = (a, n) => iso(new Date(new Date(a + 'T00:00:00Z').getTime() + n * 864e5));
+    const W = Array.from({ length: weeks }, (_, i) => ({ from: iso(new Date(monday.getTime() + i * 7 * 864e5)), to: iso(new Date(monday.getTime() + (i * 7 + 6) * 864e5)), inflow: 0, outflow: 0, items: [] }));
+    const end = W[W.length - 1].to; const items = [];
+    const put = (date, amount, kind, label, extra) => { if (!amount) return; const late = date < today; const dt = late ? today : date; if (dt > end) return; items.push(Object.assign({ date: dt, planned: date, late, amount, kind, label }, extra || {})); };
+    const rec = receivables(db, today); const withActs = new Set();
+    for (const d of rec.acts) { if (d.age > maxAge) continue; if (d.contractId) withActs.add(d.contractId); put(addDays(d.from, num(s.paymentTermDays) || 10), num(d.amount), 'in', `${d.client || '—'} · акт ${d.number || ''}`.trim(), { ref: d.id }); }
+    for (const c of (db.contracts || []).filter(c => !c.closed && c.expectedDate && num(c.toPay) > 0 && !withActs.has(c.id))) put(c.expectedDate, num(c.toPay), 'in', `${c.clientShort || c.client || ''} · ${c.name || c.code}`, { ref: c.id });
+    for (const i of (db.invoices || []).filter(i => i.status === 'open')) put(i.dueDate || today, -num(i.amount), 'invoice', `${i.contractor} · ${i.purpose || ''}`.slice(0, 90), { ref: i.id, approved: !!i.approved, nodate: !i.dueDate });
+    const pay = [...(db.payroll || [])].sort((a, b) => String(b.id).localeCompare(String(a.id)))[0];
+    const net = pay ? (num(pay.project) + num(pay.architects)) || (pay.lines || []).reduce((x, l) => x + num(l.amount), 0) : (db.employees || []).filter(e => e.status !== 'resigned').reduce((x, e) => x + num(e.salary), 0);
+    const tb = pay && (pay.lines || []).length ? payrollMonthTaxes(pay, s).total.toBudget : Math.round(net * num(s.payrollTax));
+    const [ty, tm] = today.split('-').map(Number);
+    for (let i = 0; i < Math.ceil(weeks / 4) + 2; i++) {
+      const y = ty + Math.floor((tm - 1 + i) / 12), m = (tm - 1 + i) % 12 + 1, ym = `${y}-${String(m).padStart(2, '0')}`, days = new Date(Date.UTC(y, m, 0)).getUTCDate(); const day = n => `${ym}-${String(Math.min(days, Math.max(1, n))).padStart(2, '0')}`;
+      if (day(num(s.payDay) || 10) >= today) put(day(num(s.payDay) || 10), -net, 'payroll', `ЗП на руки (по ${pay ? MONTHS_RU[Number(String(pay.id).slice(5, 7)) - 1] || pay.id : 'окладам'})`);
+      if (day(25) >= today) put(day(25), -tb, 'tax', 'Налоги и взносы с ЗП');
+      for (const o of db.obligations || []) {
+        if (!num(o.monthly) || (db.invoices || []).some(x => x.obligationId === o.id && x.obligationYm === ym)) continue;
+        if (o.monthsLeft !== null && o.monthsLeft !== undefined && o.monthsLeft !== '' && i >= num(o.monthsLeft)) continue;
+        if (day(num(o.dueDay) || 10) >= today) put(day(num(o.dueDay) || 10), -num(o.monthly), 'obligation', o.name);
+      }
+    }
+    let bal = num(opts.startBalance);
+    for (const w of W) { w.items = items.filter(x => x.date >= w.from && x.date <= w.to).sort((a, b) => a.date.localeCompare(b.date) || a.amount - b.amount); w.inflow = w.items.filter(x => x.amount > 0).reduce((a, x) => a + x.amount, 0); w.outflow = -w.items.filter(x => x.amount < 0).reduce((a, x) => a + x.amount, 0); w.net = w.inflow - w.outflow; bal += w.net; w.balance = bal; }
+    const doubtful = rec.acts.filter(d => d.age > maxAge);
+    return { today, start: num(opts.startBalance), weeks: W, min: Math.min(...W.map(w => w.balance)), end: bal, inflow: W.reduce((a, w) => a + w.inflow, 0), outflow: W.reduce((a, w) => a + w.outflow, 0), payrollNet: net, payrollTaxes: tb, doubtful: { n: doubtful.length, sum: doubtful.reduce((a, d) => a + num(d.amount), 0) } };
   }
 
   // ---- восстановление из JSON-бэкапа: какие коллекции есть в файле ----
@@ -491,5 +590,5 @@
     return cols;
   }
 
-  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc };
+  return { COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, receivables, cashForecast };
 });
