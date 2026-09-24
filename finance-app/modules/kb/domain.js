@@ -120,7 +120,7 @@
     }).filter(Boolean).sort((x, y) => y.rank - x.rank);
   }
   function snippet(text, q, n = 160) {
-    const s = String(text || '').replace(/\s+/g, ' '); const w = norm(q).split(/\s+/).filter(Boolean)[0];
+    const s = String(text || '').replace(/\*\*|^#+\s*|^\s*[-•]\s+|\|/gm, ' ').replace(/\s+/g, ' ').trim(); /* без символов разметки */ const w = norm(q).split(/\s+/).filter(Boolean)[0];
     const i = w ? norm(s).indexOf(w) : -1; const from = Math.max(0, i - 50);
     return (from ? '…' : '') + s.slice(from, from + n) + (s.length > from + n ? '…' : '');
   }

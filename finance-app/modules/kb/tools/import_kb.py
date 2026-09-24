@@ -5,7 +5,8 @@ python modules/kb/tools/import_kb.py "\\MostServer\Материалы для п�
 
 Результат загружается в «Знания → База знаний → Импорт» (или POST /api/kb/import {articles}).
 Статьи сопоставляются по пути файла (source): повторный импорт обновляет текст, а не плодит копии.
-XMind-карты разворачиваются в список. PDF/картинки текстом не читаются — прикрепляются ссылками к документу своей папки
+XMind-карты разворачиваются в список. Отредактированные статьи бюро из modules/kb/content/*.md
+заменяют сырой текст своих исходных файлов и добавляются к импорту. PDF/картинки текстом не читаются — прикрепляются ссылками к документу своей папки
 (или отдельной статьёй-ссылкой).
 """
 import json, os, re, sys, zipfile
@@ -72,6 +73,44 @@ def xmind_text(path):
     return chr(10).join(lines)
 
 
+CONTENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'content')
+
+
+def read_md(path):
+    """Статья бюро в markdown: шапка между '---' (section, title, tags, source, skip, links; строки-продолжения с отступом), дальше текст."""
+    NL = chr(10)
+    raw = open(path, encoding='utf-8').read().replace(chr(13), '')
+    meta, body = {}, raw
+    if raw.startswith('---' + NL):
+        head, _, body = raw[4:].partition(NL + '---' + NL); key = None
+        for line in head.split(NL):
+            if line[:1].isspace() and key: meta[key] += NL + line.strip(); continue
+            key, _, val = line.partition(':'); key = key.strip(); meta[key] = val.strip()
+    lines = [l for l in meta.get('links', '').split(NL) if l.strip()]
+    links = []
+    for l in lines:
+        t, _, u = l.partition('|'); links.append({'title': t.strip(), 'url': (u or t).strip()})
+    return {'section': meta.get('section', 'Регламенты'), 'title': meta['title'], 'tags': [x.strip() for x in meta.get('tags', '').split(',') if x.strip()],
+            'text': body.strip(), 'links': links, 'src': meta.get('source', ''), 'skip': [x.strip() for x in meta.get('skip', '').split(',') if x.strip()]}
+
+
+def apply_content(arts, content_dir):
+    """Отредактированные статьи (content/*.md) заменяют сырой текст файла-источника (по имени файла) и добавляются как новые.
+    Ссылки на исходные файлы сохраняются; skip: убирает дубли (их файлы — ссылками к этой статье)."""
+    if not os.path.isdir(content_dir): return arts
+    base = lambda a: os.path.basename(a.get('source') or '')
+    for f in sorted(os.listdir(content_dir)):
+        if not f.endswith('.md'): continue
+        m = read_md(os.path.join(content_dir, f)); extra_links = []
+        for name in m['skip']:
+            for a in [x for x in arts if base(x) == name]: extra_links += a['links']; arts.remove(a)
+        raw = next((a for a in arts if m['src'] and base(a) == m['src']), None)
+        art = {'section': m['section'], 'title': m['title'], 'text': m['text'], 'tags': m['tags'], 'links': m['links'] + (raw['links'] if raw else []) + extra_links, 'source': raw['source'] if raw else ''}
+        if raw: arts[arts.index(raw)] = art
+        else: arts.append(art)
+    return arts
+
+
 def main():
     if len(sys.argv) < 2: print(__doc__); sys.exit(1)
     src = sys.argv[1]; out = sys.argv[2] if len(sys.argv) > 2 else 'kb-import.json'
@@ -81,7 +120,7 @@ def main():
         files = sorted(f for f in files if not f.startswith('~$') and f.lower() != 'thumbs.db')
         here, extra = [], []
         for f in files:
-            full = os.path.join(dirpath, f); ext = os.path.splitext(f)[1].lower(); text = ''
+            full = os.path.normpath(os.path.join(dirpath, f)); ext = os.path.splitext(f)[1].lower(); text = ''
             try:
                 if ext == '.docx': text = docx_text(full)
                 elif ext == '.xmind': text = xmind_text(full)
@@ -98,6 +137,7 @@ def main():
             for x in extra:
                 arts.append({'section': 'Регламенты', 'title': title_of(os.path.basename(x)), 'text': 'Документ в файле на сервере (текст не импортируется) — откройте по ссылке ниже.', 'tags': [tag], 'source': x, 'links': [{'title': os.path.basename(x), 'url': x}]})
     for a in arts: a.pop('mtime', None)
+    arts = apply_content(arts, CONTENT_DIR)
     with open(out, 'w', encoding='utf-8') as fh: json.dump({'articles': arts}, fh, ensure_ascii=False, indent=1)
     print(f'{len(arts)} статей -> {out}')
 

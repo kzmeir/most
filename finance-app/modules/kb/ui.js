@@ -19,7 +19,7 @@
 
     document.head.insertAdjacentHTML('beforeend', `<style>
 .kb-feed{display:grid;gap:12px;max-width:860px}.kb-news.unread{border-left:3px solid var(--accent)}.kb-news h3{margin:0 0 4px;font-size:16px}.kb-meta{font-size:12px;color:var(--ink-faint);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.kb-text{line-height:1.55;margin-top:8px;overflow-wrap:anywhere}.kb-text p{margin:6px 0}.kb-text h3{font-size:16px;margin:14px 0 6px}.kb-text h4{font-size:14px;margin:12px 0 4px}.kb-text ul{margin:4px 0;padding-left:20px}.kb-text li{margin:2px 0}.kb-text table{border-collapse:collapse;margin:8px 0;font-size:13px}.kb-text td{border:1px solid var(--line);padding:4px 8px;vertical-align:top}
+.kb-text{line-height:1.55;margin-top:8px;overflow-wrap:anywhere}.kb-text p{margin:6px 0}.kb-text h3{font-size:16px;margin:14px 0 6px}.kb-text h4{font-size:14px;margin:12px 0 4px}.kb-text ul{margin:4px 0;padding-left:20px}.kb-text li{margin:2px 0}.kb-text table{border-collapse:collapse;margin:8px 0;font-size:13px}.kb-text td,.kb-text th{border:1px solid var(--line);padding:4px 8px;vertical-align:top;text-align:left}.kb-text th{background:var(--panel-2);font-weight:600}.kb-text table{max-width:100%;display:block;overflow-x:auto}
 .kb-path{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--panel-2);padding:1px 6px;border-radius:4px;cursor:pointer;word-break:break-all}
 .kb-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.kb-bar input[type=search]{flex:1;min-width:200px}.kb-bar .grow{flex:1}
 .kb-list{display:grid;gap:8px;max-width:960px}.kb-item{display:block;text-decoration:none;color:inherit}.kb-item:hover{border-color:var(--accent)}.kb-item b{font-size:14.5px}.kb-snip{font-size:12.5px;color:var(--ink-soft);margin-top:4px}
@@ -55,7 +55,7 @@
         const h = line.match(/^(#{1,3})\s+(.*)$/); if (h) { close(); const tg = h[1].length === 1 ? 'h3' : 'h4'; out.push(`<${tg}>${inline(h[2])}</${tg}>`); continue; }
         const li = line.match(/^(\s*)[-•*]\s+(.*)$/);
         if (li) { if (table) { out.push('</table>'); table = false; } const lvl = Math.floor(li[1].replace(/\t/g, '  ').length / 2) + 1; while (list < lvl) { out.push('<ul>'); list++; } while (list > lvl) { out.push('</ul>'); list--; } out.push(`<li>${inline(li[2])}</li>`); continue; }
-        if (/^\|/.test(line)) { closeList(); if (!table) { out.push('<table>'); table = true; } out.push('<tr>' + line.replace(/^\|\s*/, '').split('|').map(c => `<td>${inline(c.trim())}</td>`).join('') + '</tr>'); continue; }
+        if (/^\|/.test(line)) { closeList(); const first = !table; if (first) { out.push('<table>'); table = true; } const tg = first ? 'th' : 'td'; out.push('<tr>' + line.replace(/^\|\s*/, '').split('|').map(c => `<${tg}>${inline(c.trim())}</${tg}>`).join('') + '</tr>'); continue; } // первая строка таблицы — заголовок
         close(); out.push(`<p>${inline(line)}</p>`);
       }
       close(); return `<div class="kb-text">${out.join('')}</div>`;
