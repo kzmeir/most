@@ -176,7 +176,7 @@
     ui.SECTIONS.pmp = async main => {
       const id = params().get('id'); if (!id) { location.hash = '#/pmrp'; return; }
       const c = await api('/pm/projects/' + encodeURIComponent(id)); const p = c.project, s = c.summary, h = c.health; ctxData = { leader: c.leader, financeProjects: c.financeProjects || [] };
-      const tabs = [['stages', 'Этапы'], ['charter', `Устав${c.charterOk ? '' : ' ⚠'}`], ['blockers', `Блокеры${c.blockers.filter(b => b.status !== 'closed').length ? ' ' + c.blockers.filter(b => b.status !== 'closed').length : ''}`], ...(c.canBudget ? [['budget', 'Бюджет']] : []), ['retro', `Ретро${(c.retros || []).length ? ' ' + c.retros.length : ''}`], ...(p.track === 'ep' || p.track === 'concept' || p.miroUrl ? [['miro', 'Миро']] : []), ['info', 'О проекте']];
+      const tabs = [['stages', 'Этапы'], ['charter', `Устав${c.charterOk ? '' : ' ⚠'}`], ['blockers', `Блокеры${c.blockers.filter(b => b.status !== 'closed').length ? ' ' + c.blockers.filter(b => b.status !== 'closed').length : ''}`], ...(c.canBudget ? [['budget', 'Бюджет']] : []), ['retro', `Ретро${(c.retros || []).length ? ' ' + c.retros.length : ''}`], ...(window.MostBoard && window.MostBoard.embed && ['ep', 'rp', 'concept'].includes(p.track) ? [['board', 'Доска']] : []), ...(p.track === 'ep' || p.track === 'concept' || p.miroUrl ? [['miro', 'Миро']] : []), ['info', 'О проекте']];
       const tab = tabs.some(t => t[0] === params().get('tab')) ? params().get('tab') : 'stages';
       const link = t => `#/pmp?id=${encodeURIComponent(p.id)}&tab=${t}`;
       const next = PM.NEXT_TRACK[p.track];
@@ -191,7 +191,9 @@
           <div class="card ${s.overdueN ? 'crit' : ''}"><div class="label">Просрочено пунктов</div><div class="val">${s.overdueN}</div><div class="foot">блокеров ${s.blockersN}${s.blockerMaxDays ? ` · висит до ${s.blockerMaxDays} дн.` : ''}</div></div>
         </div>` +
         `<div class="tabs pm-tabs">${tabs.map(t => `<a href="${link(t[0])}" class="${t[0] === tab ? 'active' : ''}">${esc(t[1])}</a>`).join('')}</div>` +
-        (tab === 'stages' ? stagesHtml(c) : tab === 'charter' ? charterHtml(c) : tab === 'retro' ? retroHtml(c) : tab === 'blockers' ? blockersHtml(c) : tab === 'budget' ? budgetHtml(c) : tab === 'miro' ? miroHtml(c) : infoHtml(c));
+        (tab === 'stages' ? stagesHtml(c) : tab === 'charter' ? charterHtml(c) : tab === 'retro' ? retroHtml(c) : tab === 'blockers' ? blockersHtml(c) : tab === 'budget' ? budgetHtml(c) : tab === 'board' ? '<div id="pm-board"></div>' : tab === 'miro' ? miroHtml(c) : infoHtml(c));
+      // доска проекта (модуль board): встраивается после отрисовки, сам показывает доски проекта, «+ Доска» по правам и «На весь экран»
+      if (tab === 'board' && window.MostBoard && window.MostBoard.embed) window.MostBoard.embed(document.getElementById('pm-board'), { pmProjectId: p.id, height: '72vh' });
       // действия карточки
       const canEditAny = c.canEdit;
       ui.ACT.pmEdit = () => modal('Проект', formHtml(projFields(p, { leader: c.leader, financeProjects: c.financeProjects }), p), async v => { await api('/pm/projects/' + p.id, { method: 'PUT', body: v }); toast('Сохранено'); rerender(); });
