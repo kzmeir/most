@@ -1,8 +1,24 @@
 'use strict';
 // Модуль «Знания»: /api/kb/*. Поток D. Контракт модулей — docs/ARCHITECTURE.md, задачи — modules/kb/README.md.
 // Новости, база знаний, документы на ознакомление, тесты, программы обучения новичков.
+const fs = require('fs');
+const path = require('path');
 const K = require('./domain');
 const SEED = require('./seed');
+const CONTENT_DIR = path.join(__dirname, 'content');
+
+// статьи бюро content/*.md: шапка между '---' (section, title, tags, source, skip, links; строки-продолжения с отступом), дальше текст
+function readContent() {
+  if (!fs.existsSync(CONTENT_DIR)) return [];
+  return fs.readdirSync(CONTENT_DIR).filter(f => f.endsWith('.md')).sort().map(f => {
+    const raw = fs.readFileSync(path.join(CONTENT_DIR, f), 'utf8').replace(/\r/g, '');
+    const m = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/); const meta = {}; let key = null;
+    for (const line of (m ? m[1] : '').split('\n')) { if (/^\s/.test(line) && key) { meta[key] += '\n' + line.trim(); continue; } const i = line.indexOf(':'); key = line.slice(0, i).trim(); meta[key] = line.slice(i + 1).trim(); }
+    const list = v => String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+    return { section: meta.section || 'Регламенты', title: meta.title || f, tags: list(meta.tags), links: meta.links || '', source: meta.source || '', skip: list(meta.skip), text: (m ? m[2] : raw).trim() };
+  });
+}
+const baseName = p => String(p || '').split(/[\\/]/).pop();
 
 const SIGN_SECTION = 'Документы для подписи';
 const isSign = a => !!a && (a.sign === true || a.section === SIGN_SECTION);
@@ -102,7 +118,7 @@ function handle(ctx) {
     let added = 0, updated = 0;
     for (const raw of list.slice(0, 2000)) {
       const f = artFields(raw); if (!f.title) continue; const source = str(raw.source, 1000);
-      const ex = db.kbArticles.find(z => (source && z.source === source) || (!source && z.section === f.section && z.title === f.title));
+      const ex = db.kbArticles.find(z => source && z.source === source) || db.kbArticles.find(z => z.section === f.section && z.title === f.title);
       if (ex) { Object.assign(ex, f, { source: source || ex.source, updatedAt: now(), updatedBy: user.id }); updated++; }
       else { db.kbArticles.push(Object.assign(f, { id: store.id(), source, authorId: user.id, createdAt: now(), imported: true })); added++; }
     }
@@ -221,7 +237,15 @@ function handle(ctx) {
   // ---------- стартовое наполнение (идемпотентно: существующее с тем же названием не трогает) ----------
   if (a === 'seed' && method === 'POST') {
     if (!K.isLeader(user)) return err(403, 'Стартовое наполнение загружает руководитель');
-    const r = { articles: 0, tests: 0, courses: 0, news: 0 };
+    const r = { articles: 0, updated: 0, tests: 0, courses: 0, news: 0 };
+    // статьи бюро: заменяют сырой импорт того же файла-источника (или статью с тем же разделом и названием), дубли skip — убираются
+    for (const c of readContent()) {
+      for (const s of c.skip) db.kbArticles = db.kbArticles.filter(z => !(z.imported && baseName(z.source) === s));
+      const ex = db.kbArticles.find(z => (c.source && baseName(z.source) === c.source) || (z.section === c.section && z.title === c.title));
+      const f = artFields(c); f.links = [...f.links, ...(ex ? (ex.links || []).filter(l => !f.links.some(k => k.url === l.url)) : [])];
+      if (ex) { Object.assign(ex, f, { updatedAt: now(), updatedBy: user.id, content: true }); r.updated++; }
+      else { db.kbArticles.push(Object.assign(f, { id: store.id(), source: '', authorId: user.id, createdAt: now(), content: true })); r.articles++; }
+    }
     for (const x of SEED.articles) if (!db.kbArticles.some(z => z.title === x.title)) { db.kbArticles.push(Object.assign(artFields(x), { id: store.id(), authorId: user.id, createdAt: now(), seed: true })); r.articles++; }
     for (const x of SEED.tests) if (!db.kbTests.some(z => z.title === x.title)) { const { f } = testFields(x); const art = K.resolveRef(db.kbArticles, x.article || ''); db.kbTests.push(Object.assign(f, { id: store.id(), articleId: art ? art.id : '', authorId: user.id, createdAt: now(), seed: true })); r.tests++; }
     for (const x of SEED.courses) if (!db.kbCourses.some(z => z.title === x.title)) { const { f } = courseFields(x); db.kbCourses.push(Object.assign(f, { id: store.id(), authorId: user.id, createdAt: now(), seed: true })); r.courses++; }

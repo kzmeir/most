@@ -11,6 +11,59 @@
   ],
   routes: ['kbarticle', 'kbtest', 'kbattempt', 'kbenroll'], // карточки: #/kbarticle?id=…
   canOpen: u => !!u,
+  // инструкция модуля (раздел «Инструкция» и кнопка «?» в шапке раздела): [заголовок, html, id раздела меню]
+  help: [
+    ['Что такое «Знания»', `
+<p>Здесь всё, что нужно знать о работе в бюро: новости, регламенты и гайды, программа обучения новичков, тесты и документы, с которыми нужно ознакомиться.</p>
+<p>Уведомлений на почту и в мессенджеры нет — всё, что ждёт вас, видно здесь:</p>
+<ul>
+<li><b>цифры в меню</b> — непрочитанные новости, программа обучения, тесты к сдаче, документы на ознакомление;</li>
+<li><b>блок «Ждёт вас»</b> наверху раздела «Новости» — конкретные дела со ссылками: что прочитать, что сдать, какой следующий шаг обучения.</li>
+</ul>
+<p>Заходите хотя бы раз в день и доводите цифры в меню до нуля.</p>`],
+    ['Новости', `
+<ol>
+<li>Откройте «Новости». Непрочитанные отмечены оранжевой полосой слева.</li>
+<li>Прочитайте и нажмите <b>«Прочитал»</b> — руководители видят, дошла ли информация.</li>
+<li>Закреплённые (📌) всегда сверху — это важное надолго.</li>
+</ol>
+<p><b>Кто публикует:</b> владелец, партнёр и секретарь — кнопка «+ Новость». Им же видно «прочитали N из M» (наведите мышь — будут имена), и они могут изменить (✎) или удалить (✕) новость. Текст можно размечать: строка с <code>#</code> — заголовок, с <code>-</code> — пункт списка.</p>`, 'kbnews'],
+    ['База знаний', `
+<ol>
+<li>Выберите раздел вверху: Регламенты, Гайды, Стандарты Revit ADSK, Нормы, Документы для подписи. Цифра рядом — сколько статей.</li>
+<li>Или наберите слово в поиске и нажмите Enter: ищет по названию, тегам и тексту («топосъемка» найдёт и «топосъёмку»).</li>
+<li>Откройте статью. Открытая статья считается прочитанной — это засчитывается в программе обучения.</li>
+<li>Внизу статьи — <b>файлы и ссылки</b>. Щелчок по сетевому пути (<code>\\\\MostServer\\…</code>, <code>Y:\\…</code>) копирует его: вставьте в адресную строку Проводника. Браузер сам сетевые файлы не открывает.</li>
+<li>Если к статье есть тест — кнопка «Проверить себя».</li>
+</ol>
+<p><b>Кто пишет статьи:</b> владелец, партнёр и секретарь («+ Статья», ✎ в статье). «Импорт регламентов» загружает файл, который готовит скрипт <code>modules/kb/tools/import_kb.py</code> из папки «Регламенты» на сервере. «Стартовое наполнение» (владелец и партнёр) загружает статьи бюро, документы для подписи, тесты и программу стажировки; повторное нажатие ничего не дублирует.</p>`, 'kbbase'],
+    ['Обучение', `
+<p><b>Новичку.</b> Вверху — «Моё обучение»: программа, наставник и процент. Откройте её:</p>
+<ol>
+<li>Программа разбита по неделям. Идите по шагам сверху вниз.</li>
+<li>Шаг «📄 статья» засчитывается сам, когда вы откроете статью; «✔ тест» — когда сдадите тест; «✍ подпись» — когда нажмёте «Ознакомлен» в документе.</li>
+<li>Обычные задания (например, «получить доступы с наставником») отмечайте галочкой сами, когда сделали. Наставник тоже может отметить.</li>
+<li>На 100 % программа сама становится «завершено».</li>
+</ol>
+<p><b>Наставнику и руководителю.</b> В таблице «Новички» — все, кого вы ведёте, с прогрессом. Руководитель раздела видит новичков своего раздела, владелец и партнёр — всех. В карточке новичка можно отмечать шаги, сменить наставника, поставить паузу, оставить заметку.</p>
+<p><b>Кто назначает обучение и пишет программы:</b> владелец, партнёр и руководитель раздела (только в своём разделе) — кнопки «Назначить обучение» и «+ Программа». Программа пишется текстом: <code># Неделя 1</code> — неделя, <code>- шаг</code> — шаг; после шага через <code>|</code> можно указать <code>статья: …</code>, <code>тест: …</code> или <code>подпись: …</code>.</p>`, 'kbcourses'],
+    ['Тесты', `
+<ol>
+<li>Откройте «Тесты» и нажмите <b>«Пройти»</b>. Рядом видно число вопросов, проходной балл и сколько попыток осталось.</li>
+<li>Отметьте ответы. Где написано «несколько ответов» — выберите все верные.</li>
+<li>Нажмите «Завершить и проверить». Сразу увидите балл и разбор: зелёным — правильные ответы, красным — ваши ошибки.</li>
+<li>Не сдали — перечитайте «материал для подготовки» и нажмите «Пересдать». Когда попытки кончатся, обратитесь к руководителю.</li>
+</ol>
+<p>Вкладка «Мои попытки» — история с разбором каждой попытки. Руководители видят там результаты сотрудников (руководитель раздела — своего раздела).</p>
+<p><b>Кто составляет тесты:</b> владелец, партнёр и руководители разделов («+ Тест»). Вопросы пишутся текстом: <code>?</code> вопрос, <code>+</code> верный вариант, <code>-</code> неверный; несколько <code>+</code> — вопрос с несколькими ответами. Балл — доля вопросов, отвеченных полностью верно.</p>`, 'kbtests'],
+    ['Ознакомление с документами', `
+<ol>
+<li>В разделе — документы, с которыми нужно ознакомиться: соглашение о неразглашении, авторское право, материальная ответственность и другие.</li>
+<li>Нажмите «Открыть», прочитайте документ полностью и нажмите <b>«Ознакомлен»</b>. Отметка сохраняется с датой.</li>
+<li>Бумажный подписанный экземпляр передайте секретарю — отметка в системе его не заменяет.</li>
+</ol>
+<p>Владелец, партнёр и секретарь видят сводную таблицу «сотрудник × документ», руководитель раздела — по своему разделу. Новый документ — статья в разделе «Документы для подписи» базы знаний.</p>`, 'kbsign'],
+  ],
   init(ui) {
     const { api, esc, fdate, head, tbl, empty, chip, modal, formHtml, toast, bind, params, route, ACT, SECTIONS, $ } = ui;
     const K = window.MostKb;
@@ -19,7 +72,7 @@
 
     document.head.insertAdjacentHTML('beforeend', `<style>
 .kb-feed{display:grid;gap:12px;max-width:860px}.kb-news.unread{border-left:3px solid var(--accent)}.kb-news h3{margin:0 0 4px;font-size:16px}.kb-meta{font-size:12px;color:var(--ink-faint);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.kb-text{line-height:1.55;margin-top:8px;overflow-wrap:anywhere}.kb-text p{margin:6px 0}.kb-text h3{font-size:16px;margin:14px 0 6px}.kb-text h4{font-size:14px;margin:12px 0 4px}.kb-text ul{margin:4px 0;padding-left:20px}.kb-text li{margin:2px 0}.kb-text table{border-collapse:collapse;margin:8px 0;font-size:13px}.kb-text td{border:1px solid var(--line);padding:4px 8px;vertical-align:top}
+.kb-text{line-height:1.55;margin-top:8px;overflow-wrap:anywhere}.kb-text p{margin:6px 0}.kb-text h3{font-size:16px;margin:14px 0 6px}.kb-text h4{font-size:14px;margin:12px 0 4px}.kb-text ul{margin:4px 0;padding-left:20px}.kb-text li{margin:2px 0}.kb-text table{border-collapse:collapse;margin:8px 0;font-size:13px}.kb-text td,.kb-text th{border:1px solid var(--line);padding:4px 8px;vertical-align:top;text-align:left}.kb-text th{background:var(--panel-2);font-weight:600}.kb-text table{max-width:100%;display:block;overflow-x:auto}
 .kb-path{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--panel-2);padding:1px 6px;border-radius:4px;cursor:pointer;word-break:break-all}
 .kb-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.kb-bar input[type=search]{flex:1;min-width:200px}.kb-bar .grow{flex:1}
 .kb-list{display:grid;gap:8px;max-width:960px}.kb-item{display:block;text-decoration:none;color:inherit}.kb-item:hover{border-color:var(--accent)}.kb-item b{font-size:14.5px}.kb-snip{font-size:12.5px;color:var(--ink-soft);margin-top:4px}
@@ -55,7 +108,7 @@
         const h = line.match(/^(#{1,3})\s+(.*)$/); if (h) { close(); const tg = h[1].length === 1 ? 'h3' : 'h4'; out.push(`<${tg}>${inline(h[2])}</${tg}>`); continue; }
         const li = line.match(/^(\s*)[-•*]\s+(.*)$/);
         if (li) { if (table) { out.push('</table>'); table = false; } const lvl = Math.floor(li[1].replace(/\t/g, '  ').length / 2) + 1; while (list < lvl) { out.push('<ul>'); list++; } while (list > lvl) { out.push('</ul>'); list--; } out.push(`<li>${inline(li[2])}</li>`); continue; }
-        if (/^\|/.test(line)) { closeList(); if (!table) { out.push('<table>'); table = true; } out.push('<tr>' + line.replace(/^\|\s*/, '').split('|').map(c => `<td>${inline(c.trim())}</td>`).join('') + '</tr>'); continue; }
+        if (/^\|/.test(line)) { closeList(); const first = !table; if (first) { out.push('<table>'); table = true; } const tg = first ? 'th' : 'td'; out.push('<tr>' + line.replace(/^\|\s*/, '').split('|').map(c => `<${tg}>${inline(c.trim())}</${tg}>`).join('') + '</tr>'); continue; } // первая строка таблицы — заголовок
         close(); out.push(`<p>${inline(line)}</p>`);
       }
       close(); return `<div class="kb-text">${out.join('')}</div>`;
