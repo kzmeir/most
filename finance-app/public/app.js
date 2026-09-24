@@ -157,6 +157,8 @@ async function route() {
   drawNav(id);
   const main = $('#main'); main.innerHTML = '<div class="boot">Загрузка…</div>';
   try { await (SECTIONS[id] || SECTIONS.help)(main); } catch (e) { main.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  // кнопка «?» — инструкция к этому разделу, если она есть
+  if (id !== 'help' && helpOf(modOf(id)).some(x => x[2] === id)) { const h = main.querySelector('.head'); if (h) h.insertAdjacentHTML('beforeend', `<a class="btn sm" href="#/help?s=${esc(id)}" title="Инструкция к разделу">?</a>`); }
 }
 const params = () => new URLSearchParams((location.hash.split('?')[1]) || '');
 const SECTIONS = {};
@@ -910,9 +912,14 @@ function kpEditor(r, kp, onSave) {
 }
 
 // ---- help: инструкция ----
+// инструкция: у «Финансов» — lib/help.js, у модулей — поле help в ui.js ([заголовок, html, id раздела меню]); показываются только доступные разделы
+const helpOf = m => (!m || m.id === 'fin' ? ((window.MostHelp && window.MostHelp.sections) || []) : (m.help || []));
 SECTIONS.help = async main => {
-  const secs = (window.MostHelp && window.MostHelp.sections) || [];
-  main.innerHTML = head('Инструкция', 'Как пользоваться системой: вход, разделы, типовые задачи. Разделы, к которым у вас нет доступа, в меню не показываются.') + `<div class="help">${secs.map(([t, h], i) => `<details class="card"${i < 2 ? ' open' : ''}><summary><b>${esc(t)}</b></summary><div class="help-body">${h}</div></details>`).join('')}</div>`;
+  const cur = CUR_MOD || visibleMods()[0] || null; const visible = new Set(navAll().map(n => n.id));
+  const secs = helpOf(cur).filter(([, , nav]) => !nav || visible.has(nav)); const want = params().get('s');
+  main.innerHTML = head(cur ? `Инструкция · ${cur.title}` : 'Инструкция', 'Только разделы, которые вам доступны. Инструкция к другому модулю — переключитесь на него в меню.') +
+    (secs.length ? `<div class="help">${secs.map(([t, h, nav], i) => `<details class="card" id="help-${esc(nav || 'g' + i)}"${(want ? nav === want : i < 2) ? ' open' : ''}><summary><b>${esc(t)}</b></summary><div class="help-body">${h}</div></details>`).join('')}</div>` : empty('Инструкция к этому модулю готовится.'));
+  if (want) { const el = document.getElementById('help-' + want); if (el) el.scrollIntoView(); }
 };
 
 // ---- settings ----
