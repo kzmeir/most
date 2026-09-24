@@ -31,13 +31,17 @@ function moneyBlock(ctx, t, opts) {
   const fc = D.cashForecast(db, { today: t, startBalance: balances.total, weeks: 13, expected });
   const gapW = fc.weeks.find(w => w.balance < 0);
   const forecast = { start: balances.total, min: fc.min, end: fc.end, inflow: fc.inflow, outflow: fc.outflow, fromSchedules: expected.reduce((s, e) => s + num(e.amount), 0), weeks: fc.weeks.map(w => ({ from: w.from, to: w.to, inflow: w.inflow, outflow: w.outflow, balance: w.balance })), gap: gapW ? { from: gapW.from, to: gapW.to, balance: gapW.balance } : null };
-  // выручка и расходы по месяцам за 12 мес. (без переводов между счетами)
-  const ym0 = addMonths(t.slice(0, 7), -11); const months = Array.from({ length: 12 }, (_, i) => ({ ym: addMonths(ym0, i), income: 0, expense: 0 }));
-  const mi = new Map(months.map((m, i) => [m.ym, i]));
-  for (const o of db.ops || []) { const i = mi.get(String(o.date || '').slice(0, 7)); if (i === undefined || kind(o.category) === 'transfer') continue; months[i].income += num(o.credit); months[i].expense += num(o.debit); }
+  // выручка и расходы за выбранный период (без переводов между счетами): по месяцам, для «месяца» — по неделям
+  const P = AN.periodRange(opts && opts.period, t); const byWeek = P.period === 'month';
+  const series = [];
+  if (byWeek) { let d = P.from; while (d <= t) { const dow = (new Date(d + 'T00:00:00Z').getUTCDay() + 6) % 7; const end = addDays(d, 6 - dow); series.push({ key: d, from: d, to: end > t ? t : end, income: 0, expense: 0 }); d = addDays(end, 1); } }
+  else { for (let ym = P.from.slice(0, 7); ym <= t.slice(0, 7); ym = addMonths(ym, 1)) series.push({ key: ym, ym, from: ym + '-01', to: addDays(addMonths(ym, 1) + '-01', -1), income: 0, expense: 0 }); }
+  for (const o of db.ops || []) { const dt = String(o.date || '').slice(0, 10); if (dt < P.from || dt > t || kind(o.category) === 'transfer') continue; const b = series.find(x => dt >= x.from && dt <= x.to); if (!b) continue; b.income += num(o.credit); b.expense += num(o.debit); }
+  const period = Object.assign({}, P, { unit: byWeek ? 'week' : 'month', income: series.reduce((a, x) => a + x.income, 0), expense: series.reduce((a, x) => a + x.expense, 0) }); period.net = period.income - period.expense;
+  const months = byWeek ? [] : series;
   // налоги и платежи в бюджет на 30 дней
   let taxes = []; try { taxes = (D.taxCalendar(t, 2, db.settings) || []).filter(x => x.date >= t && x.date <= addDays(t, 30)).map(x => ({ date: x.date, title: x.title, kind: x.kind || '', note: x.note || '' })); } catch (e) { taxes = []; }
-  return { balances, receivables, forecast, months, taxes, margin: marginBlock(ctx, opts) };
+  return { balances, receivables, forecast, period, series, months, taxes, margin: marginBlock(ctx, opts) };
 }
 // субподряд ↔ финансовый проект: subcontracts.project — свободный текст старой таблицы; привязан, если совпал с projects.id или projects.name (как в ядре)
 function subLinks(db) {
@@ -115,15 +119,15 @@ function projectsBlock(ctx, t) {
 }
 
 // ---- продажи: воронка crm ----
-function salesBlock(ctx, t) {
+function salesBlock(ctx, t, opts) {
   const { db } = ctx; const C = ctx.modules.crm.domain; const leads = db.crmLeads || [];
   const vat = (ctx.D.settingsOf ? ctx.D.settingsOf(db.settings) : db.settings || {}).vatRate;
-  const f = C.funnel(leads, { vatRate: vat }); const fy = C.funnel(leads, { vatRate: vat, from: t.slice(0, 4) + '-01-01' });
+  const P = AN.periodRange(opts && opts.period, t); const f = C.funnel(leads, { vatRate: vat, from: P.from }); const fy = C.funnel(leads, { vatRate: vat, from: t.slice(0, 4) + '-01-01' });
   const inWork = leads.filter(l => ['КП отправлено', 'Торг'].includes(l.status));
   const lastTouch = l => { const h = (l.history || []).map(x => String(x.at || '').slice(0, 10)).sort().pop(); return [l.kpAt, h, String(l.updatedAt || '').slice(0, 10)].filter(Boolean).sort().pop() || String(l.createdAt || '').slice(0, 10); };
   const noAnswer = leads.filter(l => l.status === 'КП отправлено').map(l => ({ id: l.id, client: l.client || '', object: l.object || '', sum: C.leadCalc(l, vat).noVat, days: daysBetween(lastTouch(l), t), next: l.nextDate || '' }))
     .filter(x => x.days > AN.LIMITS.kpNoAnswerDays && !(x.next && x.next > t)).sort((a, b) => b.sum - a.sum);
-  return { funnel: { byStatus: f.byStatus, open: f.open, openSum: f.openSum, won: f.won, wonSum: f.wonSum, lost: f.lost, conversion: f.conversion, conversionAll: f.conversionAll, reasons: f.reasons }, year: { won: fy.won, wonSum: fy.wonSum, conversion: fy.conversion, total: fy.total },
+  return { period: P, funnel: { total: f.total, byStatus: f.byStatus, open: f.open, openSum: f.openSum, won: f.won, wonSum: f.wonSum, lost: f.lost, conversion: f.conversion, conversionAll: f.conversionAll, reasons: f.reasons }, year: { won: fy.won, wonSum: fy.wonSum, conversion: fy.conversion, total: fy.total },
     kp: { n: inWork.length, sum: inWork.reduce((s, l) => s + C.leadCalc(l, vat).noVat, 0) }, rates: f.rates, noAnswer };
 }
 
@@ -147,14 +151,25 @@ function peopleBlock(ctx, t) {
 
 // ---- сборка панели. Каждый блок — отдельно: ошибка одного не роняет панель ----
 function overview(ctx, opts) {
-  const t = (opts && opts.today) || ctx.today(); const out = { today: t, erpPort: erpPort(), modules: { pm: moduleOn(ctx, 'pm'), crm: moduleOn(ctx, 'crm'), hr: moduleOn(ctx, 'hr') }, errors: {} };
+  opts = opts || {}; const t = opts.today || ctx.today(); const out = { today: t, erpPort: erpPort(), modules: { pm: moduleOn(ctx, 'pm'), crm: moduleOn(ctx, 'crm'), hr: moduleOn(ctx, 'hr') }, errors: {} };
   const safe = (k, f) => { try { out[k] = f(); } catch (e) { out[k] = null; out.errors[k] = e.message; console.error(`[analytics] ${k}:`, e.message); } };
   safe('money', () => moneyBlock(ctx, t, opts));
   safe('projects', () => out.modules.pm ? projectsBlock(ctx, t) : null);
-  safe('sales', () => out.modules.crm ? salesBlock(ctx, t) : null);
+  safe('sales', () => out.modules.crm ? salesBlock(ctx, t, opts) : null);
   safe('people', () => out.modules.hr ? peopleBlock(ctx, t) : null);
-  out.signals = AN.signals(out);
+  out.period = AN.periodRange(opts && opts.period, t); out.allSignals = AN.allSignals(out); out.signals = out.allSignals.slice(0, AN.LIMITS.maxSignals);
   return out;
+}
+
+// снимок сигналов текущей недели (обновляется при каждом открытии панели руководителем) и сравнение с прошлой неделей
+function snapshot(ctx, out) {
+  const { db, store, user } = ctx; const week = AN.isoWeek(out.today);
+  const cur = out.allSignals.map(x => ({ key: x.key, level: x.level, title: x.title, text: x.text }));
+  let doc = db.analyticsSnapshots.find(x => x.week === week); const sig = JSON.stringify(cur);
+  if (!doc) { doc = { id: week, week, createdAt: new Date().toISOString(), signals: [] }; db.analyticsSnapshots.push(doc); }
+  if (JSON.stringify(doc.signals) !== sig) { Object.assign(doc, { signals: cur, updatedAt: new Date().toISOString(), updatedBy: user.id }); store.save(); store.audit(user.id, 'snapshot', 'analyticsSnapshots', week, { n: cur.length }); }
+  const prev = db.analyticsSnapshots.filter(x => x.week < week).sort((a, b) => b.week.localeCompare(a.week))[0] || null;
+  return { week, prevWeek: prev ? prev.week : '', weeks: db.analyticsSnapshots.length, diff: prev ? AN.diffSignals(prev.signals, cur) : null };
 }
 
 function handle(ctx) {
@@ -162,10 +177,12 @@ function handle(ctx) {
   if (!user) return err(401, 'Не авторизован');
   if (!AN.canOpen(user)) return err(403, 'Панель директора — только для руководителей');
   if (ctx.site && ctx.site === 'erp') return err(404, 'Панель директора — на сайте «Финансы»');
-  if (a === 'overview' && method === 'GET') return ok(overview(ctx, {}));
+  if (a === 'overview' && method === 'GET') { const out = overview(ctx, { period: ctx.qs && ctx.qs.period }); out.history = snapshot(ctx, out); delete out.allSignals; return ok(out); }
+  // история сигналов: снимки по неделям
+  if (a === 'history' && method === 'GET') return ok(ctx.db.analyticsSnapshots.slice().sort((x, y) => y.week.localeCompare(x.week)).slice(0, 26).map(x => ({ week: x.week, updatedAt: x.updatedAt, n: x.signals.length, crit: x.signals.filter(g => g.level === 'crit').length, warn: x.signals.filter(g => g.level === 'warn').length, signals: x.signals })));
   // предложения привязки субподрядов к проектам — для интерфейса привязки в «Финансах» (сами привязки пишет ядро)
   if (a === 'sub-links' && method === 'GET') return ok(subLinkSuggestions(ctx.db));
   return err(404, 'Нет такого раздела аналитики');
 }
 
-module.exports = { id: 'analytics', api: 'analytics', site: 'fin', collections: [], handle, overview, subLinkSuggestions, domain: AN };
+module.exports = { id: 'analytics', api: 'analytics', site: 'fin', collections: ['analyticsSnapshots'], handle, overview, subLinkSuggestions, domain: AN };

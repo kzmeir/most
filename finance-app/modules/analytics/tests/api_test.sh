@@ -24,6 +24,11 @@ chk "только чтение: POST — 404" 404 "$(curl -s -o /dev/null -w '%{
 chk "sub-links: owner 200" 200 "$(code owner $B/analytics/sub-links)"
 chk "sub-links: бухгалтеру 403" 403 "$(code accountant $B/analytics/sub-links)"
 chk "sub-links: пустая база" "0/0/0" "$(curl -s -b devrole=owner "${H[@]}" $B/analytics/sub-links | js 'd.summary.n+"/"+d.items.length+"/"+d.twins.length')"
+chk "период: квартал" "quarter" "$(curl -s -b devrole=owner "${H[@]}" "$B/analytics/overview?period=quarter" | js 'd.period.period')"
+chk "история: снимок недели создан" 1 "$(curl -s -b devrole=owner "${H[@]}" $B/analytics/history | js 'd.length')"
+chk "история: бухгалтеру 403" 403 "$(code accountant $B/analytics/history)"
+chk "коллекция analyticsSnapshots через общий API закрыта" 404 "$(code owner $B/analyticsSnapshots)"
+chk "печатная версия: стили печати в ui.js" 1 "$(grep -c '@page{size:A4 landscape' modules/analytics/ui.js)"
 chk "неизвестный раздел — 404" 404 "$(code owner $B/analytics/nope)"
 kill $SP 2>/dev/null; wait $SP 2>/dev/null
 
