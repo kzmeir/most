@@ -4,11 +4,12 @@
 // 24.09.2026) — модуль отдаёт только статус сервера для экрана владельца/партнёра «Состояние системы». Только чтение.
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFile } = require('child_process');
 
 const APP_VERSION = '2.0';
 const STALE_BACKUP_HOURS = 36;
 const BACKUP_TASK_NAME = 'MOST Финансы - бэкап';
+const TASK_CACHE_MS = 90 * 1000; // 60-120 с (координатор): execFileSync блокировал весь процесс на GET /api/sys/status
 
 function tunnelUrl(dataDir) {
   try {
@@ -30,18 +31,28 @@ function lastBackupInfo(backupDir, name) {
   } catch { return null; }
 }
 
-// Get-ScheduledTaskInfo - только чтение, задачу не запускает. Любая проблема (нет прав, задачи нет, не Windows) -> null.
-function scheduledTaskInfo(name) {
-  try {
-    const ps = `try { $t = Get-ScheduledTaskInfo -TaskName '${name.replace(/'/g, "''")}' -ErrorAction Stop; ` +
-      `[PSCustomObject]@{ lastRunTime = $t.LastRunTime.ToString('o'); lastTaskResult = $t.LastTaskResult } | ConvertTo-Json -Compress } catch { '{}' }`;
-    const out = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 5000, windowsHide: true }).toString('utf8').trim();
-    if (!out) return null;
-    const obj = JSON.parse(out);
-    if (!obj || !obj.lastRunTime) return null;
-    return { lastRunTime: obj.lastRunTime, lastTaskResult: obj.lastTaskResult };
-  } catch { return null; }
+// Get-ScheduledTaskInfo - только чтение, задачу не запускает. execFileSync блокировал бы весь процесс (в том
+// числе сайт «Финансы») до 5 с на каждый GET /api/sys/status - вместо этого фоновое обновление раз в
+// TASK_CACHE_MS через асинхронный execFile, запрос всегда читает уже готовый кэш, ничего не ждёт.
+let taskCache = { status: 'checking' };
+let taskFetching = false;
+function refreshScheduledTaskInfo(name) {
+  if (taskFetching) return;
+  taskFetching = true;
+  const ps = `try { $t = Get-ScheduledTaskInfo -TaskName '${name.replace(/'/g, "''")}' -ErrorAction Stop; ` +
+    `[PSCustomObject]@{ lastRunTime = $t.LastRunTime.ToString('o'); lastTaskResult = $t.LastTaskResult } | ConvertTo-Json -Compress } catch { '{}' }`;
+  execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 5000, windowsHide: true }, (error, stdout) => {
+    taskFetching = false;
+    if (error) { taskCache = { status: 'unavailable' }; return; }
+    try {
+      const out = String(stdout).trim();
+      const obj = out ? JSON.parse(out) : null;
+      taskCache = obj && obj.lastRunTime ? { status: 'ok', lastRunTime: obj.lastRunTime, lastTaskResult: obj.lastTaskResult } : { status: 'unavailable' };
+    } catch { taskCache = { status: 'unavailable' }; }
+  });
 }
+refreshScheduledTaskInfo(BACKUP_TASK_NAME); // первое обновление сразу при старте сервера, фоном
+setInterval(() => refreshScheduledTaskInfo(BACKUP_TASK_NAME), TASK_CACHE_MS).unref();
 
 // PowerShell (Set-Content/Add-Content -Encoding utf8) пишет файлы с BOM - Node его не снимает сам
 const stripBOM = s => s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
@@ -101,7 +112,7 @@ function handle(ctx) {
       backupsDir: st.BACKUP_DIR,
       backupsCount: backups.length,
       lastBackup,
-      backupTask: scheduledTaskInfo(BACKUP_TASK_NAME),
+      backupTask: taskCache,
       lastDeploy: deployLogTail(st.DATA_DIR, 20),
       uptimeSeconds: Math.round(process.uptime()),
       tunnelUrl: tunnelUrl(st.DATA_DIR),
