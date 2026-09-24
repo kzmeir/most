@@ -86,6 +86,17 @@
   // объекты, целиком лежащие в рамке (двигаются вместе с ней)
   const insideFrame = (frame, items) => items.filter(it => it.id !== frame.id && it.type !== 'frame' && it.type !== 'arrow' && contains(rectOf(frame), rectOf(it)));
   const maxZ = items => items.reduce((m, it) => Math.max(m, num(it.z)), 0);
+  // стрелки, привязанные к удаляемым объектам, отвязываются и остаются на месте (концы — в последних точках привязки)
+  function detachArrows(items, deletedIds) {
+    const del = new Set(deletedIds); const get = id => items.find(i => i.id === id) || null; const out = [];
+    for (const it of items) {
+      if (it.type !== 'arrow' || del.has(it.id) || !(del.has(it.props.from) || del.has(it.props.to))) continue;
+      const { p1, p2 } = arrowEnds(it, get); const c = JSON.parse(JSON.stringify(it));
+      if (del.has(c.props.from)) { c.props.from = ''; c.x = p1.x; c.y = p1.y; } if (del.has(c.props.to)) { c.props.to = ''; c.props.x2 = p2.x; c.props.y2 = p2.y; }
+      out.push(c);
+    }
+    return out;
+  }
 
   // ---- шаблон доски для ЭП: рамки разделов ----
   const EP_FRAMES = [
@@ -103,9 +114,15 @@
       out.push({ id: newId(), boardId, type: 'frame', x, y, w: W, h: H, z: z++, rot: 0, props: { title, color } });
       out.push({ id: newId(), boardId, type: 'sticky', x: x + 40, y: y + 80, w: 220, h: 160, z: 100 + z++, rot: 0, props: { text: hint, color: 'gray', size: 14 } });
     });
-    if (o.title) out.push({ id: newId(), boardId, type: 'text', x: 0, y: -120, w: 1400, h: 60, z: 1000, rot: 0, props: { text: o.title, size: 48, color: '' } });
+    if (o.title) out.push({ id: newId(), boardId, type: 'text', x: 0, y: -220, w: 1400, h: 70, z: 1000, rot: 0, props: { text: o.title, size: 48, color: '' } });
     return out;
   }
 
-  return { TYPES, COLORS, COLOR_KEYS, SIZES, DEFAULTS, FILE_TYPES, MAX_FILE, MAX_TEXT, MAX_TITLE, KEY_RE, newId, canView, canEdit, canManage, canCreateProjectBoard, cleanItem, rectOf, center, intersects, contains, bbox, arrowBox, anchor, arrowEnds, insideFrame, maxZ, EP_FRAMES, epTemplate, num };
+  // стрелки, чьи концы ссылаются на несуществующие объекты, отвязываются (координаты остаются последними известными)
+  function repairArrows(items) {
+    const ids = new Set(items.map(i => i.id)); const out = [];
+    for (const it of items) { if (it.type !== 'arrow') continue; const bad = (it.props.from && !ids.has(it.props.from)) || (it.props.to && !ids.has(it.props.to)); if (!bad) continue; const c = JSON.parse(JSON.stringify(it)); if (c.props.from && !ids.has(c.props.from)) c.props.from = ''; if (c.props.to && !ids.has(c.props.to)) c.props.to = ''; out.push(c); }
+    return out;
+  }
+  return { TYPES, COLORS, COLOR_KEYS, SIZES, DEFAULTS, FILE_TYPES, MAX_FILE, MAX_TEXT, MAX_TITLE, KEY_RE, newId, canView, canEdit, canManage, canCreateProjectBoard, cleanItem, rectOf, center, intersects, contains, bbox, arrowBox, anchor, arrowEnds, insideFrame, maxZ, detachArrows, repairArrows, EP_FRAMES, epTemplate, num };
 });

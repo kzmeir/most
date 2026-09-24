@@ -50,7 +50,7 @@
 .bd-sticky{box-shadow:0 2px 6px rgba(0,0,0,.18);border-radius:4px}.bd-sticky .bd-txt{display:flex;align-items:flex-start}
 .bd-text .bd-txt{padding:4px 6px;color:var(--ink)}.bd-text{background:transparent}.bd-text.empty{outline:1px dashed var(--line-strong)}
 .bd-rect{border:2px solid rgba(0,0,0,.25);border-radius:8px}.bd-rect .bd-txt{display:grid;place-items:center;text-align:center}
-.bd-frame{border:2px solid rgba(0,0,0,.18);border-radius:6px;background:rgba(0,0,0,.02)}.bd-ftitle{position:absolute;left:0;top:0;transform:translateY(-100%);padding:2px 10px;font-weight:700;font-size:18px;color:var(--ink);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;background:inherit;border-radius:6px 6px 0 0}
+.bd-frame{border:2px solid rgba(0,0,0,.18);border-radius:6px;background:rgba(0,0,0,.02)}.bd-ftitle{position:absolute;left:0;top:0;transform:translateY(-100%);padding:2px 10px;font-weight:700;font-size:max(18px,calc(13px / var(--z,1)));line-height:1.3;color:#111;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;border-radius:6px 6px 0 0}
 .bd-img{background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18)}.bd-img img{width:100%;height:100%;object-fit:fill;display:block;pointer-events:none}.bd-badge{position:absolute;left:6px;bottom:6px;font-size:11px;background:rgba(0,0,0,.6);color:#fff;padding:1px 6px;border-radius:999px}
 .bd-it.sel{outline:calc(2px / var(--z,1)) solid var(--accent);outline-offset:calc(1px / var(--z,1))}.bd-it.locked{opacity:.85}
 .bd-svg{position:absolute;left:0;top:0;overflow:visible;width:1px;height:1px}.bd-svg path.line{fill:none;stroke:#37474f;stroke-width:3;stroke-linecap:round}.bd-svg path.line.sel{stroke:var(--accent)}.bd-svg path.hit{fill:none;stroke:transparent;stroke-width:16;cursor:pointer}.bd-svg text{font-size:14px;fill:#37474f;paint-order:stroke;stroke:var(--paper);stroke-width:4px}
@@ -143,9 +143,9 @@
         const sig = JSON.stringify([it.type, it.props, it.w, it.h]);
         if (el._sig !== sig) {
           el._sig = sig; el.className = `bd-it bd-${it.type === 'pdf' ? 'img' : it.type}${it.props.locked ? ' locked' : ''}`; el.style.background = ''; el.style.borderColor = '';
-          if (it.type === 'sticky' || it.type === 'rect') { el.style.background = fill(it.props.color); el.innerHTML = '<div class="bd-txt"></div>'; const t = el.firstChild; t.textContent = it.props.text; t.style.fontSize = it.props.size + 'px'; }
-          else if (it.type === 'text') { el.innerHTML = '<div class="bd-txt"></div>'; const t = el.firstChild; t.textContent = it.props.text; t.style.fontSize = it.props.size + 'px'; if (it.props.color) t.style.color = fill(it.props.color); el.classList.toggle('empty', !it.props.text); }
-          else if (it.type === 'frame') { el.style.background = fill(it.props.color) + '55'; el.style.borderColor = fill(it.props.color); el.innerHTML = '<div class="bd-ftitle"></div>'; el.firstChild.textContent = it.props.title; el.firstChild.style.background = fill(it.props.color); }
+          if (it.type === 'sticky' || it.type === 'rect') { el.style.background = fill(it.props.color); el.innerHTML = '<div class="bd-txt"></div>'; const t = el.firstChild; t.textContent = it.props.text; t.style.fontSize = `max(${it.props.size}px, calc(11px / var(--z, 1)))`; }
+          else if (it.type === 'text') { el.innerHTML = '<div class="bd-txt"></div>'; const t = el.firstChild; t.textContent = it.props.text; t.style.fontSize = `max(${it.props.size}px, calc(11px / var(--z, 1)))`; if (it.props.color) t.style.color = fill(it.props.color); el.classList.toggle('empty', !it.props.text); }
+          else if (it.type === 'frame') { el.style.background = fill(it.props.color) + '1f'; el.style.borderColor = fill(it.props.color); el.innerHTML = '<div class="bd-ftitle"></div>'; el.firstChild.textContent = it.props.title; el.firstChild.style.background = fill(it.props.color); }
           else { el.innerHTML = `<img alt="" draggable="false">${it.type === 'pdf' ? `<span class="bd-badge">PDF · стр. ${it.props.page}${it.props.pages > 1 ? ' из ' + it.props.pages : ''}</span>` : ''}`; const img = el.firstChild; if (it.props.src) img.src = fileUrl(this.boardId, it.props.src); else { img.remove(); el.textContent = 'файл не найден'; } }
         }
         el.style.transform = `translate(${it.x}px, ${it.y}px)${it.rot ? ` rotate(${it.rot}deg)` : ''}`; el.style.width = it.w + 'px'; el.style.height = it.h + 'px'; el.style.zIndex = String(Math.round(it.z || 0) + 100000);
@@ -247,8 +247,7 @@
       redo() { const h = this.redoS.pop(); if (!h) return; this.undoS.push(h); const afterIds = new Set(h.after.map(s => s.id)); const rm = [...h.before.map(s => s.id).filter(id => !afterIds.has(id)), ...h.removed]; this.apply(h.after, rm); this.send(h.after, rm); this.sel = new Set(h.after.map(s => s.id)); this.renderSel(); }
       deleteSel() {
         const ids = [...this.sel].filter(id => !(this.items.get(id) || {}).props.locked); if (!ids.length) return; const before = this.snap(ids);
-        // стрелки, привязанные к удаляемым объектам, отвязываются (остаются на месте)
-        const fix = []; for (const it of this.items.values()) if (it.type === 'arrow' && !ids.includes(it.id) && (ids.includes(it.props.from) || ids.includes(it.props.to))) { const { p1, p2 } = BD.arrowEnds(it, id => this.items.get(id) || null); const c = clone(it); if (ids.includes(c.props.from)) { c.props.from = ''; c.x = p1.x; c.y = p1.y; } if (ids.includes(c.props.to)) { c.props.to = ''; c.props.x2 = p2.x; c.props.y2 = p2.y; } fix.push(c); }
+        const fix = BD.detachArrows([...this.items.values()], ids); // стрелки, привязанные к удаляемым объектам, отвязываются (остаются на месте)
         const beforeFix = this.snap(fix.map(f => f.id)); this.apply(fix, ids); this.sel.clear(); this.renderSel(); this.commit(before.concat(beforeFix), fix, ids);
       }
       newItem(type, x, y, extra) { const d = BD.DEFAULTS[type]; return Object.assign({ id: BD.newId(), boardId: this.boardId, type, x, y, w: d.w, h: d.h, z: BD.maxZ([...this.items.values()]) + 1, rot: 0, props: Object.assign(clone(d.props), (extra && extra.props) || {}) }, extra && extra.geom ? extra.geom : {}); }
@@ -280,6 +279,9 @@
         if (/^arrow(up|down|left|right)$/.test(k) && this.sel.size) { e.preventDefault(); const s = e.shiftKey ? 10 : 1; const dx = k === 'arrowleft' ? -s : k === 'arrowright' ? s : 0, dy = k === 'arrowup' ? -s : k === 'arrowdown' ? s : 0; const before = this.snap(this.sel); const after = before.map(x => this.shifted(x, dx, dy)); this.apply(after); return this.commit(before, after); }
         if (!mod && KEY_TOOL[k]) { e.preventDefault(); this.setTool(KEY_TOOL[k]); }
       }
+      // стрелки, привязанные к объектам ids (сами не в ids); freshArrows — их снимки с текущими точками привязки, чтобы на сервере координаты концов не устаревали
+      attachedArrows(ids) { const set = ids instanceof Set ? ids : new Set(ids); return [...this.items.values()].filter(a => a.type === 'arrow' && !set.has(a.id) && ((a.props.from && set.has(a.props.from)) || (a.props.to && set.has(a.props.to)))).map(a => a.id); }
+      freshArrows(ids) { const get = id => this.items.get(id) || null; return this.attachedArrows(ids).map(id => { const a = clone(this.items.get(id)); const { p1, p2 } = BD.arrowEnds(a, get); a.x = p1.x; a.y = p1.y; a.props.x2 = p2.x; a.props.y2 = p2.y; return a; }); }
       shifted(s, dx, dy) { const c = clone(s); c.x += dx; c.y += dy; if (c.type === 'arrow') { c.props.x2 += dx; c.props.y2 += dy; } return c; }
       // ---- указатель ----
       hitId(e, live) { // live — во время перетаскивания события приходят на захвативший элемент, ищем по координатам
@@ -294,8 +296,8 @@
         const pan = this.space || this.tool === 'hand' || e.button === 1 || e.button === 2 || (e.pointerType === 'touch' && !id && this.tool === 'select');
         if (pan) { this.drag = { mode: 'pan', sx: e.clientX, sy: e.clientY, v0: Object.assign({}, this.view) }; this.vp.classList.add('panning'); return; }
         if (!this.canEdit) { if (id) { this.sel = new Set([id]); this.renderSel(); } return; }
-        if (handle) { const it = this.selItems()[0]; this.drag = { mode: 'resize', h: handle.dataset.h, it0: clone(it), w0: w, ids: new Set([it.id]) }; return; }
-        if (['sticky', 'text', 'frame', 'rect'].includes(this.tool)) { const d = BD.DEFAULTS[this.tool]; const it = this.create(this.tool, w.x - (this.tool === 'frame' ? 0 : d.w / 2), w.y - (this.tool === 'frame' ? 0 : d.h / 2)); this.setTool('select'); this.startEdit(it); return; }
+        if (handle) { const it = this.selItems()[0]; this.drag = { mode: 'resize', h: handle.dataset.h, it0: clone(it), w0: w, ids: new Set([it.id]), arrowsBefore: this.snap(this.attachedArrows([it.id])) }; return; }
+        if (['sticky', 'text', 'frame', 'rect'].includes(this.tool)) { e.preventDefault(); const d = BD.DEFAULTS[this.tool]; const it = this.create(this.tool, w.x - (this.tool === 'frame' ? 0 : d.w / 2), w.y - (this.tool === 'frame' ? 0 : d.h / 2)); this.setTool('select'); this.pointers.delete(e.pointerId); try { this.vp.releasePointerCapture(e.pointerId); } catch { } this.startEdit(it); return; }
         if (this.tool === 'arrow') { const from = id && this.items.get(id) && this.items.get(id).type !== 'arrow' ? id : ''; const it = this.newItem('arrow', w.x, w.y, { props: { from, x2: w.x, y2: w.y } }); this.items.set(it.id, it); this.drawArrows(); this.drag = { mode: 'arrow', it, ids: new Set([it.id]) }; return; }
         if (id) {
           const it = this.items.get(id); if (e.shiftKey) { if (this.sel.has(id)) this.sel.delete(id); else this.sel.add(id); } else if (!this.sel.has(id)) this.sel = new Set([id]);
@@ -303,7 +305,7 @@
           const ids = new Set([...this.sel].filter(x => !(this.items.get(x) || {}).props.locked)); const all = [...this.items.values()];
           for (const fid of [...ids]) { const f = this.items.get(fid); if (f && f.type === 'frame') for (const ch of BD.insideFrame(f, all)) if (!ch.props.locked) ids.add(ch.id); }
           for (const a of all) if (a.type === 'arrow' && !ids.has(a.id) && a.props.from && a.props.to && ids.has(a.props.from) && ids.has(a.props.to)) ids.add(a.id);
-          this.drag = { mode: 'move', w0: w, ids, before: this.snap(ids), moved: false, pointerType: e.pointerType }; return;
+          this.drag = { mode: 'move', w0: w, ids, before: this.snap(ids), arrowsBefore: this.snap(this.attachedArrows(ids)), moved: false, pointerType: e.pointerType }; return;
         }
         if (!e.shiftKey) { this.sel.clear(); this.renderSel(); }
         this.drag = { mode: 'band', sx: e.clientX, sy: e.clientY, add: e.shiftKey ? new Set(this.sel) : new Set() };
@@ -323,19 +325,19 @@
         if (d.mode === 'pinch') { if (!this.pointers.size) this.drag = null; return; }
         this.drag = null; this.vp.classList.remove('panning');
         if (d.mode === 'band') { this.band.hidden = true; const a = this.toWorld(d.sx, d.sy), b = this.toWorld(e.clientX, e.clientY); const r = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) }; if (r.w > 3 || r.h > 3) { this.sel = new Set(d.add); for (const it of this.items.values()) { const box = it.type === 'arrow' ? BD.arrowBox(it) : it; if (it.type === 'frame' ? BD.contains(r, box) : BD.intersects(r, box)) this.sel.add(it.id); } this.expandGroups(); } this.renderSel(); return; }
-        if (d.mode === 'move' || d.mode === 'resize') { if (!d.moved) return; const after = this.snap(d.ids); const before = d.mode === 'move' ? d.before : [d.it0]; this.commit(before, after); return; }
+        if (d.mode === 'move' || d.mode === 'resize') { if (!d.moved) return; const before = (d.mode === 'move' ? d.before : [d.it0]).concat(d.arrowsBefore || []); const after = this.snap(d.ids).concat(this.freshArrows(d.ids)); this.commit(before, after); return; }
         if (d.mode === 'arrow') { const it = d.it; const len = Math.hypot(it.props.x2 - it.x, it.props.y2 - it.y); if (!d.moved || (len < 12 && !it.props.to)) { this.items.delete(it.id); this.drawArrows(); this.setTool('select'); return; } if (!it.props.from && !it.props.to && len < 12) { this.items.delete(it.id); this.drawArrows(); return; } this.apply([it]); this.sel = new Set([it.id]); this.renderSel(); this.commit([], [it]); this.setTool('select'); }
       }
       dbl(e) { if (!this.canEdit) return; const id = this.hitId(e); const it = id && this.items.get(id); if (it && (isTextual(it) || it.type === 'frame')) { this.startEdit(it); return; } if (!id && this.tool === 'select') { const w = this.toWorld(e.clientX, e.clientY); const s = this.create('sticky', w.x - 100, w.y - 100); this.startEdit(s); } }
       // ---- редактирование текста ----
       startEdit(it) {
         if (this.editing) this.endEdit(true); if (it.props.locked) return; this.editing = it.id; const isTitle = it.type === 'frame';
-        const ta = document.createElement('textarea'); ta.className = 'bd-edit' + (it.type === 'text' ? ' text' : isTitle ? ' title' : ''); ta.value = isTitle ? it.props.title : it.props.text; ta.style.fontSize = (isTitle ? 18 : it.props.size) + 'px';
+        const ta = document.createElement('textarea'); ta.className = 'bd-edit' + (it.type === 'text' ? ' text' : isTitle ? ' title' : ''); ta.value = isTitle ? it.props.title : it.props.text; ta.style.fontSize = isTitle ? 'max(18px, calc(13px / var(--z, 1)))' : `max(${it.props.size}px, calc(11px / var(--z, 1)))`;
         const place = () => { const cur = this.items.get(it.id) || it; if (isTitle) { ta.style.transform = `translate(${cur.x}px, ${cur.y - 30}px)`; ta.style.width = cur.w + 'px'; ta.style.height = '30px'; } else { ta.style.transform = `translate(${cur.x}px, ${cur.y}px)`; ta.style.width = cur.w + 'px'; ta.style.height = cur.h + 'px'; if (it.type === 'sticky' || it.type === 'rect') ta.style.background = fill(cur.props.color); if (it.type === 'text' && it.props.color) ta.style.color = fill(it.props.color); if (it.type === 'rect') ta.style.textAlign = 'center'; } };
         place(); ta.style.zIndex = '999999'; this.world.appendChild(ta); const el = this.elOf(it.id); if (el && !isTitle) el.style.visibility = 'hidden'; this.ta = ta;
         ta.oninput = () => { if (it.type === 'text') { ta.style.height = 'auto'; const h = Math.max(BD.DEFAULTS.text.h, ta.scrollHeight); ta.style.height = h + 'px'; } };
         ta.addEventListener('pointerdown', ev => ev.stopPropagation()); ta.addEventListener('wheel', ev => ev.stopPropagation()); ta.onblur = () => { if (this.editing === it.id) this.endEdit(true); };
-        setTimeout(() => { ta.focus(); ta.select(); }, 10);
+        ta.focus({ preventScroll: true }); ta.select(); requestAnimationFrame(() => { if (this.ta === ta && document.activeElement !== ta) { ta.focus({ preventScroll: true }); ta.select(); } });
       }
       endEdit(save) {
         const id = this.editing; const ta = this.ta; if (!id || !ta) return; this.editing = null; this.ta = null; const it = this.items.get(id); const el = this.elOf(id); if (el) el.style.visibility = '';
@@ -384,7 +386,11 @@
       const f = $('#modal form'); if (f && b.project && !d.projects.some(p => p.id === b.pmProjectId)) f.pmProjectId.disabled = true; // нет прав менять привязку
     }
     function createBoard(preset, after) {
-      api('/board/boards').then(d => { modal(preset && preset.template === 'ep' ? 'Доска из шаблона ЭП' : 'Новая доска', boardForm(null, d.projects), async v => { const r = await api('/board/boards', { method: 'POST', body: formBody(v) }); toast('Доска создана'); if (after) after(r); else location.hash = `#/board?id=${encodeURIComponent(r.board.id)}`; }); const f = $('#modal form'); if (f && preset) { if (preset.template) f.template.value = preset.template; if (preset.pmProjectId) { f.pmProjectId.value = preset.pmProjectId; const p = d.projects.find(x => x.id === preset.pmProjectId); if (p && !f.title.value) f.title.value = `${p.name} · ${preset.template === 'ep' ? 'ЭП' : 'доска'}`; } } }).catch(e => toast(e.message, 4000));
+      api('/board/boards').then(d => { modal(preset && preset.template === 'ep' ? 'Доска из шаблона ЭП' : 'Новая доска', boardForm(null, d.projects), async v => { const r = await api('/board/boards', { method: 'POST', body: formBody(v) }); toast('Доска создана'); if (after) after(r); else location.hash = `#/board?id=${encodeURIComponent(r.board.id)}`; }); const f = $('#modal form'); if (!f) return;
+        const trackOf = id => { const p = d.projects.find(x => x.id === id); return p ? p.track : (preset && preset.pmProjectId === id ? preset.track || '' : ''); };
+        const syncTpl = () => { const pid = f.pmProjectId.value; const ok = !pid || trackOf(pid) === 'ep'; f.template.disabled = !ok; if (!ok) f.template.value = ''; f.template.title = ok ? '' : 'Шаблон ЭП — только для эскизного проекта'; }; // шаблон ЭП — только для ЭП
+        if (preset) { if (preset.template) f.template.value = preset.template; if (preset.pmProjectId) { f.pmProjectId.value = preset.pmProjectId; const p = d.projects.find(x => x.id === preset.pmProjectId); if (p && !f.title.value) f.title.value = `${p.name} · ${preset.template === 'ep' ? 'ЭП' : 'доска'}`; } }
+        f.pmProjectId.onchange = syncTpl; syncTpl(); }).catch(e => toast(e.message, 4000));
     }
 
     // ---- экран «Доски» ----
@@ -413,9 +419,10 @@
       const draw = async () => {
         if (ed) { ed.destroy(); ed = null; } let d; try { d = await api('/board/by-project/' + encodeURIComponent(o.pmProjectId)); } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
         const cur = o.boardId && d.boards.some(b => b.id === o.boardId) ? o.boardId : (d.boards[0] || {}).id;
-        el.innerHTML = `<div class="head" style="margin-bottom:8px"><div class="grow">${d.boards.length > 1 ? `<select id="bd-emb-sel">${d.boards.map(b => `<option value="${esc(b.id)}"${b.id === cur ? ' selected' : ''}>${esc(b.title)}</option>`).join('')}</select>` : d.boards.length ? `<b>${esc(d.boards[0].title)}</b>` : '<span class="faint">У проекта ещё нет доски.</span>'}</div>${d.canCreate ? '<button class="btn" id="bd-emb-new">+ Доска ЭП</button>' : ''}${cur ? `<a class="btn primary" href="#/board?id=${encodeURIComponent(cur)}">На весь экран ⤢</a>` : ''}</div><div id="bd-emb-root"></div>`;
+        const isEp = d.project.track === 'ep'; // шаблон ЭП и подпись «Доска ЭП» — только для эскизного проекта
+        el.innerHTML = `<div class="head" style="margin-bottom:8px"><div class="grow">${d.boards.length > 1 ? `<select id="bd-emb-sel">${d.boards.map(b => `<option value="${esc(b.id)}"${b.id === cur ? ' selected' : ''}>${esc(b.title)}</option>`).join('')}</select>` : d.boards.length ? `<b>${esc(d.boards[0].title)}</b>` : '<span class="faint">У проекта ещё нет доски.</span>'}</div>${d.canCreate ? `<button class="btn" id="bd-emb-new">${isEp ? '+ Доска ЭП' : '+ Доска'}</button>` : ''}${cur ? `<a class="btn primary" href="#/board?id=${encodeURIComponent(cur)}">На весь экран ⤢</a>` : ''}</div><div id="bd-emb-root"></div>`;
         const s = el.querySelector('#bd-emb-sel'); if (s) s.onchange = () => { o.boardId = s.value; draw(); };
-        const nb = el.querySelector('#bd-emb-new'); if (nb) nb.onclick = () => createBoard({ template: 'ep', pmProjectId: o.pmProjectId }, r => { o.boardId = r.board.id; draw(); });
+        const nb = el.querySelector('#bd-emb-new'); if (nb) nb.onclick = () => createBoard({ template: isEp ? 'ep' : '', pmProjectId: o.pmProjectId, track: d.project.track }, r => { o.boardId = r.board.id; draw(); });
         if (cur) { const root = el.querySelector('#bd-emb-root'); if (o.height) root.style.height = o.height; ed = new Editor(root, cur, { full: false }); }
       };
       await draw(); return { destroy: () => { if (ed) ed.destroy(); }, refresh: draw };

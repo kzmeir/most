@@ -44,10 +44,15 @@ function applyOps(ctx, b, ops) {
   b.rev = (b.rev || 0) + 1; const rev = b.rev; const t = now(); const applied = [];
   for (const op of (Array.isArray(ops) ? ops : []).slice(0, 500)) {
     if (!op || typeof op !== 'object') continue;
-    if (op.op === 'delete') { const it = byId.get(String(op.id || '')); if (!it || it.deleted) continue; Object.assign(it, { deleted: true, rev, ver: (it.ver || 0) + 1, updatedAt: t, updatedBy: user.id, props: {} }); applied.push(itemOut(it)); continue; }
+    if (op.op === 'delete') {
+      const it = byId.get(String(op.id || '')); if (!it || it.deleted) continue;
+      for (const fix of BD.detachArrows([...byId.values()].filter(i => !i.deleted), [it.id])) { const ar = byId.get(fix.id); Object.assign(ar, { x: fix.x, y: fix.y, props: fix.props, rev, ver: (ar.ver || 0) + 1, updatedAt: t, updatedBy: user.id }); applied.push(ar); }
+      Object.assign(it, { deleted: true, rev, ver: (it.ver || 0) + 1, updatedAt: t, updatedBy: user.id, props: {} }); applied.push(itemOut(it)); continue;
+    }
     if (op.op !== 'upsert') continue;
     const clean = BD.cleanItem(op.item, b.id); if (!clean) continue;
     if (clean.props.src && !fileExists(ctx, b.id, clean.props.src)) clean.props.src = ''; if (clean.props.pdf && !fileExists(ctx, b.id, clean.props.pdf)) clean.props.pdf = '';
+    if (clean.type === 'arrow') { const live = id => { const x = byId.get(id); return x && !x.deleted; }; if (clean.props.from && !live(clean.props.from)) clean.props.from = ''; if (clean.props.to && !live(clean.props.to)) clean.props.to = ''; }
     const cur = byId.get(clean.id);
     if (cur) { Object.assign(cur, clean, { deleted: false, rev, ver: (cur.ver || 0) + 1, updatedAt: t, updatedBy: user.id }); applied.push(cur); }
     else { const it = Object.assign(clean, { rev, ver: 1, createdAt: t, createdBy: user.id, updatedAt: t, updatedBy: user.id }); db.boardItems.push(it); byId.set(it.id, it); applied.push(it); }
@@ -92,13 +97,18 @@ function handle(ctx) {
     if (pid) { p = db.pmProjects.find(x => x.id === pid); if (!p) return err(404, 'Проект не найден'); if (!BD.canCreateProjectBoard(user, p, PM)) return err(403, 'Доску проекта создаёт ПМ/ГИП проекта или руководитель'); }
     const title = String(body.title || '').trim().slice(0, BD.MAX_TITLE) || (p ? `${p.name} · доска` : 'Новая доска');
     const bd = { id: store.id(), title, pmProjectId: pid, ownerId: user.id, members: cleanMembers(body.members), template: '', rev: 0, createdAt: now(), createdBy: user.id, updatedAt: now(), updatedBy: user.id };
-    db.boards.push(bd); const n = addTemplate(ctx, bd, body.template === 'ep' ? 'ep' : '', body.template === 'ep' ? title : '');
+    const tpl = body.template === 'ep' && (!p || p.track === 'ep') ? 'ep' : ''; // шаблон ЭП — только для эскизного проекта или свободной доски
+    db.boards.push(bd); const n = addTemplate(ctx, bd, tpl, tpl ? title : '');
     store.save(); audit('create', 'boards', bd.id, { pmProjectId: pid, template: n }); return ok({ board: boardOut(ctx, bd, rights(ctx, bd)), items: liveItems(db, bd.id), rev: bd.rev });
   }
   const bd = db.boards.find(x => x.id === b); if (!bd) return err(404, 'Доска не найдена');
   const r = rights(ctx, bd); if (!r.view) return err(403, 'Нет доступа к этой доске');
 
-  if (!c && method === 'GET') { touch(ctx, bd.id, qs.client); return ok({ board: boardOut(ctx, bd, r), items: liveItems(db, bd.id), rev: bd.rev || 0, presence: presence(bd.id), me: user.id, colors: BD.COLORS, maxFile: BD.MAX_FILE }); }
+  if (!c && method === 'GET') {
+    touch(ctx, bd.id, qs.client); const live = liveItems(db, bd.id); const fixes = BD.repairArrows(live); // старые стрелки с оборванными привязками
+    if (fixes.length) { bd.rev = (bd.rev || 0) + 1; for (const f of fixes) { const ar = live.find(i => i.id === f.id); Object.assign(ar, { props: f.props, rev: bd.rev, ver: (ar.ver || 0) + 1, updatedAt: now() }); } scheduleSave(store); }
+    return ok({ board: boardOut(ctx, bd, r), items: live, rev: bd.rev || 0, presence: presence(bd.id), me: user.id, colors: BD.COLORS, maxFile: BD.MAX_FILE });
+  }
   if (!c && method === 'PUT') {
     if (!r.manage) return err(403, 'Настройки доски меняет её владелец, ПМ/ГИП проекта или руководитель');
     const patch = {}; if ('title' in body) { patch.title = String(body.title || '').trim().slice(0, BD.MAX_TITLE); if (!patch.title) delete patch.title; }
@@ -123,7 +133,7 @@ function handle(ctx) {
     touch(ctx, bd.id, body.client); return ok(applyOps(ctx, bd, body.ops));
   }
   if (c === 'template' && method === 'POST') {
-    if (!r.edit) return err(403, 'У вас только просмотр этой доски');
+    if (!r.edit) return err(403, 'У вас только просмотр этой доски'); if (r.project && r.project.track !== 'ep') return err(400, 'Шаблон ЭП — только для эскизного проекта');
     const n = addTemplate(ctx, bd, body.template === 'ep' ? 'ep' : '', ''); if (!n) return err(400, 'Неизвестный шаблон'); store.save(); audit('template', 'boards', bd.id, { items: n });
     return ok({ rev: bd.rev, added: n });
   }
