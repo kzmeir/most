@@ -29,6 +29,7 @@ ap.add_argument('--budget', default=r'G:\Мой диск\Финансы\Бюдж
 ap.add_argument('--db', default=str(APP / 'data-dev' / 'pm' / 'db.json'))
 ap.add_argument('--out', default=str(APP / 'data-dev' / 'pm' / 'pm-import.json'))
 ap.add_argument('--since', default='', help='дата, с которой висят блокеры без даты (по умолчанию — дата файла реестра)')
+ap.add_argument('--contracts', default=str(APP / 'data-dev' / 'pm' / 'contract_dates.json'), help='JSON с датами и реквизитами договоров (поверх оценок реестра; реальные данные — вне git, формат в tools/contract_dates.example.json); пусто — не применять')
 args = ap.parse_args()
 
 # объект реестра → код финансового проекта (db.projects.id, как в операциях). Пусто — не привязывать.
@@ -290,6 +291,25 @@ if bpath.exists():
         budgets[sn] = p['name']
 else:
     notes.append(f'Файл бюджета не найден: {bpath} — бюджеты не импортированы')
+
+# --- даты и реквизиты договоров поверх оценок реестра (tools/contract_dates.json) ---
+CONTRACT_KEYS = ['contractNo', 'contractDate', 'contractTerm', 'contractTermUnit', 'contractStartRule', 'dueNote', 'start', 'due', 'dueFromTerm']
+cpath = pathlib.Path(args.contracts) if args.contracts else None
+if cpath and cpath.exists():
+    crows = json.loads(cpath.read_text(encoding='utf-8')).get('rows', [])
+    hit = 0
+    for r in crows:
+        p = projects.get(norm(r.get('name', '')))
+        if not p:
+            notes.append(f'Договоры: объект «{r.get("name")}» из {cpath.name} в реестре не найден')
+            continue
+        for k in CONTRACT_KEYS:
+            if k in r and r[k] not in (None, ''):
+                p[k] = r[k]
+        hit += 1
+    notes.append(f'Договоры: реквизиты и даты применены к {hit} из {len(crows)} объектов ({cpath.name}); dueFromTerm сервер считает при импорте')
+elif cpath:
+    notes.append(f'Файл договоров не найден: {cpath} — даты остаются оценкой реестра')
 
 # --- проверка кодов финансовых проектов ---
 dbp = pathlib.Path(args.db)

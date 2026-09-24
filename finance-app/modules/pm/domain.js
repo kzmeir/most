@@ -178,6 +178,29 @@
   const addMonths = (m, n) => { const [y, mo] = String(m).split('-').map(Number); return new Date(Date.UTC(y, mo - 1 + n, 1)).toISOString().slice(0, 7); };
   const monthsDiff = (a, b) => { const [ay, am] = a.split('-').map(Number), [by, bm] = b.split('-').map(Number); return (by - ay) * 12 + (bm - am); };
   const mname = m => { const p = String(m || '').split('-'); return p[1] ? `${MONTHS_RU[Number(p[1]) - 1]} ${p[0]}` : String(m || ''); };
+  // ---- рабочий календарь РК (для сроков «N рабочих дней» по договорам) ----
+  const KZ_FIXED = ['01-01', '01-02', '01-07', '03-08', '03-21', '03-22', '03-23', '05-01', '05-07', '05-09', '07-06', '08-30', '10-25', '12-16'];
+  const KZ_KURBAN = { 2022: '07-09', 2023: '06-28', 2024: '06-16', 2025: '06-06', 2026: '05-27', 2027: '05-16', 2028: '05-05' };
+  const holidayCache = {};
+  const holidaysOf = year => {
+    if (holidayCache[year]) return holidayCache[year];
+    const base = KZ_FIXED.concat(KZ_KURBAN[year] ? [KZ_KURBAN[year]] : []).map(md => `${year}-${md}`);
+    const set = new Set(base);
+    for (const d of base) { // выпал на выходной — переносится на следующий рабочий день
+      const wd = new Date(d + 'T00:00:00Z').getUTCDay();
+      if (wd === 0 || wd === 6) { let n = addDays(d, wd === 6 ? 2 : 1); while (set.has(n) || [0, 6].includes(new Date(n + 'T00:00:00Z').getUTCDay())) n = addDays(n, 1); set.add(n); }
+    }
+    return (holidayCache[year] = set);
+  };
+  const isWorkDay = d => { const wd = new Date(d + 'T00:00:00Z').getUTCDay(); return wd !== 0 && wd !== 6 && !holidaysOf(Number(d.slice(0, 4))).has(d); };
+  const nextWorkDay = d => { let x = d; while (!isWorkDay(x)) x = addDays(x, 1); return x; };
+  // n-й рабочий день, считая стартовый рабочий день первым (срок «120 рабочих дней» → последний день срока)
+  const addWorkDays = (start, n) => { let d = nextWorkDay(start), k = 1; const N = Math.max(1, Math.round(n)); while (k < N) { d = addDays(d, 1); if (isWorkDay(d)) k++; } return d; };
+  const workDaysBetween = (a, b) => { let d = a, k = 0; while (d <= b) { if (isWorkDay(d)) k++; d = addDays(d, 1); } return k; };
+  const TERM_UNITS = ['рабочих', 'календарных', 'месяцев'];
+  // конец срока по договору: старт (первый день отсчёта) + срок в единицах договора
+  const termEnd = (start, n, unit) => { if (!start || !(Number(n) > 0)) return ''; const N = Number(n); if (unit === 'календарных') return addDays(start, N); if (unit === 'месяцев') { const [y, m, d] = start.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1 + Math.round(N), Math.min(d, 28))); return iso(t); } return addWorkDays(start, N); };
+  const contractLabel = p => p && (p.contractNo || p.contractDate || p.contractTerm) ? [p.contractNo ? `Договор № ${p.contractNo}` : 'Договор', p.contractDate ? `от ${p.contractDate.split('-').reverse().join('.')}` : '', p.contractTerm ? `· срок ${p.contractTerm} ${p.contractTermUnit || 'рабочих'} дн.` : ''].filter(Boolean).join(' ') : '';
 
   // пункты проекта из шаблона. opts: { start, due, months } — для АН (этап на каждый месяц; по умолчанию 6 месяцев или до даты по договору)
   function itemsFromTemplate(track, pid, opts) {
@@ -316,6 +339,6 @@
   // снимок показателей для ретроспективы
   const retroSnapshot = (h, blockers) => ({ progress: h.progress, zone: h.zone, consumption: h.consumption, curV: h.curV, avgV: h.avgV, addedW: h.addedW, remain: h.remain, forecast: h.forecast, returns: h.returns, blockers: (blockers || []).filter(b => b.status !== 'closed').length });
 
-  return { TRACKS, TRACK_SHORT, TRACK_ORDER, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today,
+  return { TRACKS, TRACK_SHORT, TRACK_ORDER, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
     W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot };
 });
