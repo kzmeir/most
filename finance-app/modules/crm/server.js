@@ -3,6 +3,8 @@
 // Лиды и воронка (crmLeads), график платежей по договору (crmPayments), шаблоны документов (crmTemplates).
 // КП и договоры ядра (db.proposals, db.contracts) только читаем и отдаём отсюда по правам модуля — на сайте ERP финансовых API нет.
 const C = require('./domain');
+const KP = require('./kp');
+const KPDOCX = require('./kpdocx');
 
 const LEAD_FIELDS = ['client', 'bin', 'contact', 'phone', 'object', 'address', 'objectType', 'track', 'area', 'rate', 'sum', 'vatIncluded', 'source', 'respId', 'nextDate', 'nextStep', 'note', 'proposalId', 'contractId', 'company', 'contractNo', 'contractDate', 'reason', 'reasonNote'];
 const PAY_FIELDS = ['name', 'share', 'sum', 'stage', 'due', 'status', 'actDate', 'paidDate', 'note'];
@@ -69,7 +71,7 @@ function handle(ctx) {
   const payOut = p => Object.assign({}, p, C.paymentState(p, resolve(p)));
   const leadOut = l => {
     const o = Object.assign({}, l, { track: C.normTrack(l.track), calc: C.leadCalc(l, vat), overdue: C.leadOverdue(l, t), respName: ctx.userName ? ctx.userName(l.respId) : '', pm: pmBrief(l.pmProjectId), canEdit: editor });
-    delete o.history;
+    delete o.history; delete o.kp; o.kpVersions = (l.kpVersions || []).map(kpBrief);
     const kp = l.proposalId && db.proposals.find(x => x.id === l.proposalId); if (kp) o.proposal = { id: kp.id, title: kp.title, sum: kp.sum, status: kp.status };
     const ct = l.contractId && db.contracts.find(x => x.id === l.contractId); if (ct) o.contract = { id: ct.id, name: ct.name || ct.code, title: ct.title || '', sum: ct.sum, company: ct.company || '' };
     if (leader && (l.status === 'Договор' || paysOf(l.id).length)) { const ps = paysOf(l.id).map(payOut); o.pay = { n: ps.length, sum: ps.reduce((s, p) => s + C.num(p.sum), 0), paid: ps.filter(p => p.status === 'Оплачен').reduce((s, p) => s + C.num(p.sum), 0), ready: ps.filter(p => p.ready).length, late: ps.filter(p => p.late).length }; }
@@ -77,6 +79,7 @@ function handle(ctx) {
   };
   const history = (l, status, note) => { (l.history = l.history || []).push({ at: now(), by: user.id, status, note: note || '' }); };
   const saveAudit = (action, col, id, extra) => { store.save(); store.audit(user.id, action, col, id, extra); };
+  const kpBrief = x => x ? { v: x.v, no: x.no, date: x.date, at: x.at, byName: ctx.userName ? ctx.userName(x.by) : '', area: x.area, rate: x.rate, vatIncluded: x.vatIncluded, cost: x.cost, net: x.net, vat: x.vat, gross: x.gross } : null;
   const nextNo = () => db.crmLeads.reduce((m, x) => Math.max(m, C.num(x.no)), 0) + 1;
 
   // ---- счётчики в меню ----
@@ -174,6 +177,35 @@ function handle(ctx) {
       if (!C.leadCalc(l, vat).sum) return err(400, 'У сделки нет суммы договора');
       for (const p of old) db.crmPayments.splice(db.crmPayments.indexOf(p), 1);
       const made = makeSchedule(ctx, l, rows, user.id); saveAudit('schedule', 'crmLeads', l.id, { rows: made.length }); return ok(paysOf(l.id).map(payOut));
+    }
+    // ---- КП в Word по шаблону MOST: параметры, «Пересчитать», версия (номер и дата — в лид), скачивание ----
+    if (l && c === 'kp') {
+      const d = parts[4], v = parts[5];
+      if (!d && method === 'GET') { const p = KP.kpParams(l); return ok({ params: p, calc: KP.kpCalc(p), companies: Object.keys(KP.COMPANIES), versions: (l.kpVersions || []).map(kpBrief), no: l.kpNo || '' }); }
+      if (d === 'calc' && method === 'POST') { if (!editor) return err(403, 'КП готовят руководители и секретарь'); const p = KP.kpParams(l, body.params); return ok({ params: p, calc: KP.kpCalc(p) }); }
+      if (!d && method === 'POST') {
+        if (!editor) return err(403, 'КП готовят руководители и секретарь');
+        if (!body.params || (body.params.vatIncluded !== true && body.params.vatIncluded !== false && body.params.vatIncluded !== 'true' && body.params.vatIncluded !== 'false')) return err(400, 'Укажите явно: ставка с НДС или без НДС');
+        const p = KP.kpParams(l, body.params); const calc = KP.kpCalc(p); if (calc.problems.length) return err(400, 'Нельзя сформировать КП: ' + calc.problems.join('; '));
+        const vs = l.kpVersions = l.kpVersions || []; const last = vs[vs.length - 1]; const same = last && JSON.stringify(last.params) === JSON.stringify(p);
+        let ver = last;
+        if (!same) {
+          if (!l.kpNo) l.kpNo = KP.nextKpNo(db.crmLeads, t);
+          ver = { v: vs.length + 1, no: l.kpNo, date: t, at: now(), by: user.id, params: p, area: calc.area, rate: p.rate, vatIncluded: p.vatIncluded, cost: calc.cost, net: calc.net, vat: calc.vat, gross: calc.gross };
+          vs.push(ver); l.kp = p; l.kpDate = t; if (!l.kpAt) l.kpAt = t;
+          Object.assign(l, { area: calc.area, rate: p.rate, sum: calc.cost, vatIncluded: p.vatIncluded, company: l.company || p.company });
+          history(l, l.status, `КП ${l.kpNo} ред. ${ver.v}: ${C.moneyStr(calc.cost)} ₸ ${calc.vatTag}`);
+          saveAudit('kp', 'crmLeads', l.id, { v: ver.v, no: l.kpNo, gross: calc.gross });
+        }
+        return ok(Object.assign(kpBrief(ver), { reused: !!same, lead: leadOut(l) }));
+      }
+      if (d && /^\d+$/.test(d) && v === 'docx' && method === 'GET') {
+        const ver = (l.kpVersions || []).find(x => x.v === Number(d)); if (!ver) return err(404, 'Нет такой редакции КП');
+        const buf = KPDOCX.build(ver.params, KP.kpCalc(ver.params), { no: ver.no, date: ver.date, version: ver.v });
+        const name = `${ver.no} ${l.client || ''} ${l.object || ''}`.replace(/[\\/:*?"<>|\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) + (ver.v > 1 ? ` ред.${ver.v}` : '') + '.docx';
+        store.audit(user.id, 'kp-docx', 'crmLeads', l.id, { v: ver.v });
+        return ctx.send(200, buf, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'Content-Disposition': `attachment; filename="kp.docx"; filename*=UTF-8''${encodeURIComponent(name)}`, 'Cache-Control': 'no-store' });
+      }
     }
     // привязать сделку к проекту pm (платежи получают этапы проекта)
     if (l && c === 'project' && method === 'PUT') {

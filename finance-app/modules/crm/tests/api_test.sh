@@ -138,6 +138,39 @@ chk "поле подставлено, неизвестное оставлено"
 chk "сброс шаблона" "Договор на проектирование" "$(call OWN DELETE /crm/templates/tpl-contract > /dev/null; call OWN GET /crm/templates | js 'd.find(x=>x.id==="tpl-contract").title')"
 chk "HTML в данных экранируется" 0 "$(call SEC PUT /crm/leads/$L1ID '{"client":"<script>x</script>"}' > /dev/null; call SEC POST /crm/docs/render "{\"templateId\":\"tpl-contract\",\"leadId\":\"$L1ID\"}" | js '+d.html.includes("<script>x")')"
 
+echo "== КП в Word =="
+LK=$(call SEC POST /crm/leads '{"client":"ТОО Эверест","object":"ЖК на участке 7,5 га","objectType":"ЖК","track":"ep","area":90000,"rate":500}' | js 'd.id')
+chk "параметры КП: ЭП — концепт 20 % / ЭП 80 %" "20/80" "$(call SEC GET /crm/leads/$LK/kp | js 'd.params.stages.map(s=>s.share).join("/")')"
+chk "параметры КП: компания ЭП по умолчанию" "ТОО MOST Architects" "$(call SEC GET /crm/leads/$LK/kp | js 'd.params.company')"
+chk "без явного НДС — 400" 400 "$(code SEC POST /crm/leads/$LK/kp '{"params":{"rate":500}}')"
+chk "пересчитать: 90 000 м² × 500 с НДС = 45 млн, этап 1 — 9 млн" "45000000/9000000/38793103" "$(call SEC POST /crm/leads/$LK/kp/calc '{"params":{"vatIncluded":true}}' | js 'd.calc.gross+"/"+d.calc.stages[0].gross+"/"+d.calc.net')"
+chk "пересчитать без НДС: НДС сверху" "52200000" "$(call SEC POST /crm/leads/$LK/kp/calc '{"params":{"vatIncluded":false}}' | js 'd.calc.gross')"
+chk "пересчитать не пишет в лид" 0 "$(call OWN GET /crm/leads/$LK | js '(d.kpVersions||[]).length')"
+chk "доли не 100 % — 400" 400 "$(code SEC POST /crm/leads/$LK/kp '{"params":{"vatIncluded":true,"stages":[{"name":"А","share":50}]}}')"
+K1=$(call SEC POST /crm/leads/$LK/kp '{"params":{"vatIncluded":true}}')
+YY=$(date +%y)
+chk "редакция 1 и номер КП" "1/КП-$YY-001" "$(echo "$K1" | js 'd.v+"/"+d.no')"
+chk "в лид: номер, дата, сумма с НДС, отметка КП" "КП-$YY-001/$T/45000000/true/$T" "$(call OWN GET /crm/leads/$LK | js 'd.kpNo+"/"+d.kpDate+"/"+d.sum+"/"+d.vatIncluded+"/"+d.kpAt')"
+chk "те же параметры — редакция не множится" "true/1" "$(call SEC POST /crm/leads/$LK/kp '{"params":{"vatIncluded":true}}' | js 'd.reused+"/"+d.v')"
+K2=$(call SEC POST /crm/leads/$LK/kp '{"params":{"vatIncluded":true,"rate":600}}')
+chk "новая ставка — редакция 2, номер тот же" "2/КП-$YY-001/54000000" "$(echo "$K2" | js 'd.v+"/"+d.no+"/"+d.gross')"
+chk "история версий в лиде" "1:45000000,2:54000000" "$(call OWN GET /crm/leads/$LK | js 'd.kpVersions.map(v=>v.v+":"+v.gross).join(",")')"
+chk "в истории лида — запись о КП" 1 "$(call OWN GET /crm/leads/$LK | js '+d.history.some(h=>/КП КП-/.test(h.note))')"
+chk "второй лид — следующий номер" "КП-$YY-002" "$(call SEC POST /crm/leads/$L1ID/kp '{"params":{"vatIncluded":false}}' | js 'd.no')"
+curl -s "${SEC[@]}" -D "$DATA_DIR/kph.txt" -o "$DATA_DIR/kp1.docx" "$B/crm/leads/$LK/kp/1/docx"
+chk "скачать редакцию 1: тип Word" 1 "$(grep -ci 'wordprocessingml' "$DATA_DIR/kph.txt")"
+chk "имя файла с номером КП" 1 "$(grep -c "filename\*=UTF-8''%D0%9A%D0%9F-$YY-001" "$DATA_DIR/kph.txt")"
+chk "docx: ZIP и XML корректны, логотип — единственная картинка, «М.П.», сумма редакции 1" ok "$(python -c "
+import zipfile,sys;from xml.dom import minidom;z=zipfile.ZipFile(sys.argv[1]);assert z.testzip() is None
+[minidom.parseString(z.read(n)) for n in z.namelist() if n.endswith(('.xml','.rels'))]
+media=[n for n in z.namelist() if n.startswith('word/media/')];assert media==['word/media/logo.png'],media
+d=z.read('word/document.xml').decode();assert 'КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ' in d and 'М.П.' in d and '45 000 000 ₸' in d and 'Концепт-проект' in d and 'с НДС' in d;print('ok')" "$DATA_DIR/kp1.docx" 2>&1 | tail -1)"
+chk "несуществующая редакция — 404" 404 "$(code SEC GET /crm/leads/$LK/kp/9/docx)"
+chk "ПМ: чужой лид — КП не скачать" 404 "$(code PMR GET /crm/leads/$LK/kp/1/docx)"
+chk "ПМ: свой лид — скачать можно" 200 "$(code PMR GET /crm/leads/$L1ID/kp/1/docx)"
+chk "ПМ: сформировать КП нельзя" 403 "$(code PMR POST /crm/leads/$L1ID/kp '{"params":{"vatIncluded":false}}')"
+chk "бухгалтеру — нет доступа" 403 "$(code ACC GET /crm/leads/$LK/kp)"
+
 echo "== удаление =="
 chk "секретарь не удаляет" 403 "$(code SEC DELETE /crm/leads/$L2ID)"
 chk "owner удаляет" 200 "$(code OWN DELETE /crm/leads/$L2ID)"
