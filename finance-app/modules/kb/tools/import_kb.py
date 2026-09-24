@@ -6,7 +6,8 @@ python modules/kb/tools/import_kb.py "\\MostServer\Материалы для п�
 Результат загружается в «Знания → База знаний → Импорт» (или POST /api/kb/import {articles}).
 Статьи сопоставляются по пути файла (source): повторный импорт обновляет текст, а не плодит копии.
 XMind-карты разворачиваются в список. Отредактированные статьи бюро из modules/kb/content/*.md
-заменяют сырой текст своих исходных файлов и добавляются к импорту. PDF/картинки текстом не читаются — прикрепляются ссылками к документу своей папки
+заменяют сырой текст своих исходных файлов и добавляются к импорту. Всё, что взято с сервера напрямую (не из content/*.md), помечается черновиком — сотрудники увидят после проверки.
+PDF/картинки текстом не читаются — прикрепляются ссылками к документу своей папки
 (или отдельной статьёй-ссылкой).
 """
 import json, os, re, sys, zipfile
@@ -126,7 +127,7 @@ def main():
                 elif ext == '.xmind': text = xmind_text(full)
             except Exception as e: print('не прочитан', f, e)
             if not text: extra.append(full); continue
-            a = {'section': 'Регламенты', 'title': title_of(f), 'text': text, 'tags': [tag], 'source': full, 'links': [{'title': f, 'url': full}], 'mtime': os.path.getmtime(full)}
+            a = {'draft': True, 'section': 'Регламенты', 'title': title_of(f), 'text': text, 'tags': [tag], 'source': full, 'links': [{'title': f, 'url': full}], 'mtime': os.path.getmtime(full)}
             old = by_title.get(a['title'])  # дубликаты (две версии одной карты) — берём более свежий файл
             if old and old['mtime'] >= a['mtime']: old['links'].append(a['links'][0]); continue
             if old: a['links'] += old['links']; arts.remove(old); here = [x for x in here if x is not old]
@@ -135,7 +136,9 @@ def main():
             here[0]['links'] += [{'title': os.path.basename(x), 'url': x} for x in extra]
         else:
             for x in extra:
-                arts.append({'section': 'Регламенты', 'title': title_of(os.path.basename(x)), 'text': 'Документ в файле на сервере (текст не импортируется) — откройте по ссылке ниже.', 'tags': [tag], 'source': x, 'links': [{'title': os.path.basename(x), 'url': x}]})
+                same = by_title.get(title_of(os.path.basename(x)))  # PDF-копия документа — ссылкой к его статье
+                if same: same['links'].append({'title': os.path.basename(x), 'url': x}); continue
+                arts.append({'draft': True, 'section': 'Регламенты', 'title': title_of(os.path.basename(x)), 'text': 'Документ в файле на сервере (текст не импортируется) — откройте по ссылке ниже.', 'tags': [tag], 'source': x, 'links': [{'title': os.path.basename(x), 'url': x}]})
     for a in arts: a.pop('mtime', None)
     arts = apply_content(arts, CONTENT_DIR)
     with open(out, 'w', encoding='utf-8') as fh: json.dump({'articles': arts}, fh, ensure_ascii=False, indent=1)
