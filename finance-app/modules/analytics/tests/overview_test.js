@@ -75,6 +75,15 @@ chk('Дзюдо Центр → Дзюдо центр РП (high)', ['ДЗЮДО 
 chk('группа: 2 договора, id и подрядчики', [2, ['s3', 's4'], ['ИП ОВ', 'ИП ВК']], [sl.items[0].n, sl.items[0].subcontractIds, sl.items[0].contractors]);
 chk('Дом министра → Dom Ministr (латиница)', 'Dom Ministr', sl.items.find(i => i.project === 'Дом министра').best.id);
 chk('непохожее — без кандидата', null, sl.items.find(i => i.project === 'Непонятный объект').best);
+const dbT = makeDb([]);
+dbT.projects.push({ id: 'Туркестан РП', name: 'Туркестан РП', status: 'archive', contractNoVat: 0 }, { id: 'prj-t', name: 'Туркестан (гостиница)', status: 'В работе', contractNoVat: 8000000 }, { id: 'Unex RP', name: 'Unex RP', status: 'archive' }, { id: 'prj-x', name: 'Туркестан старый', status: 'archive', contractNoVat: 5000000 });
+dbT.subcontracts.push({ id: 't1', project: 'Туркестан РП', contractor: 'ИП КЖ', sum: 3000000, paid: 0 }, { id: 't2', project: 'Туркестан РП', contractor: 'ИП ОВ', sum: 1000000, paid: 500000 }, { id: 'u1', project: 'Unex RP', contractor: 'ИП А', sum: 9000000, paid: 0 });
+const tw = AN.subLinkSuggestions(dbT);
+chk('двойник: архивный → активный с договором', [['Туркестан РП', 'prj-t']], tw.twins.map(t => [t.archivedProject.id, t.activeCandidate.id]));
+chk('двойник: договоры субподряда и сумма', [2, 4000000, ['t1', 't2']], [tw.twins[0].n, tw.twins[0].sum, tw.twins[0].subcontractIds]);
+chk('двойник: архивные кандидаты не предлагаются', false, tw.twins[0].candidates.some(c => c.status === 'archive'));
+chk('архив без похожего активного — не в списке', false, tw.twins.some(t => t.archivedProject.id === 'Unex RP'));
+chk('сводка двойников', { n: 2, sum: 4000000, projects: 1 }, tw.twinsSummary);
 chk('опечатка: Теректы ↔ Теректи', true, require(path.join(APP, 'modules', 'analytics', 'domain.js')).matchScore('ТЕРЕКТЫ', 'Теректи РП').score >= 0.85);
 chk('разные номера не склеиваются: НОВА-23 / НОВА 24', true, require(path.join(APP, 'modules', 'analytics', 'domain.js')).matchScore('НОВА-23', 'НОВА 24').score < 0.65);
 chk('прогноз: 13 недель от остатка', [13, 3500000], [d.money.forecast.weeks.length, d.money.forecast.start]);

@@ -23,7 +23,7 @@ chk "пустая база: блоки" "true/true" "$(curl -s -b devrole=owner 
 chk "только чтение: POST — 404" 404 "$(curl -s -o /dev/null -w '%{http_code}' -b devrole=owner "${H[@]}" -X POST $B/analytics/overview)"
 chk "sub-links: owner 200" 200 "$(code owner $B/analytics/sub-links)"
 chk "sub-links: бухгалтеру 403" 403 "$(code accountant $B/analytics/sub-links)"
-chk "sub-links: пустая база" "0/0" "$(curl -s -b devrole=owner "${H[@]}" $B/analytics/sub-links | js 'd.summary.n+"/"+d.items.length')"
+chk "sub-links: пустая база" "0/0/0" "$(curl -s -b devrole=owner "${H[@]}" $B/analytics/sub-links | js 'd.summary.n+"/"+d.items.length+"/"+d.twins.length')"
 chk "неизвестный раздел — 404" 404 "$(code owner $B/analytics/nope)"
 kill $SP 2>/dev/null; wait $SP 2>/dev/null
 
