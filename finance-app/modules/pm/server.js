@@ -206,9 +206,11 @@ function handle(ctx) {
     return ok({ pmmy: my.length, pmbl: bl.length, byTrack }); }
   if (false) return ok({ pmmy: myItems().filter(it => it.due && it.due < t).length, pmbl: db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && (!staff || x.ownerId === user.id) && x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE(q.status); }).length });
   if (a === 'overview' && method === 'GET') {
-    const dash = PM.dashboard(db.pmProjects.filter(p => PM.shownTrack(p.track) && visibleP(p) && inTrackQ(p)), db.pmItems, db.pmBlockers, t); // АН скрыт из сводки (данные и карточки по API остаются)
+    const projs = db.pmProjects.filter(p => PM.shownTrack(p.track) && visibleP(p) && inTrackQ(p)); const pset = new Set(projs.map(p => p.id));
+    const blockersIn = db.pmBlockers.filter(x => pset.has(x.pid) && (!staff || x.ownerId === user.id)); // блокеры только проектов сводки (стадия, видимость, staff)
+    const dash = PM.dashboard(projs, db.pmItems, blockersIn, t); // АН скрыт из сводки (данные и карточки по API остаются)
     dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }, PM.canBudget(user, r) ? { throughput: PM.throughput(r, r.health) } : {}));
-    return ok(Object.assign(dash, { blockersList: db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && inTrackQ(q) && visibleP(q) && (!staff || x.ownerId === user.id); }).map(blockerOut), settings: PM.isLeader(user) ? S : undefined, canSettings: ['owner', 'partner'].includes(user.role), staff, canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
+    return ok(Object.assign(dash, { blockersList: blockersIn.map(blockerOut), settings: PM.isLeader(user) ? S : undefined, canSettings: ['owner', 'partner'].includes(user.role), staff, canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
   }
   if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it), waiting: PM.waitingFor(db.pmItems.filter(x => x.pid === it.pid), it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
   if (a === 'finance' && b === 'projects' && method === 'GET') { if (!PM.isLeader(user)) return err(403, 'Только руководитель'); return ok(finProjects()); }
