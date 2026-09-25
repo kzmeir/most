@@ -225,7 +225,8 @@
     const t = String(s || '').toLowerCase();
     if (/project|проджект|прожект/.test(t)) return 'MOST Project';
     if (/architect|архитект|(^|[^а-яё])мост([^а-яё]|$)/.test(t)) return 'MOST Architects';
-    if (/pana/.test(t)) return 'ИП PANA Design';
+    if (/pana|пана/.test(t)) return 'ИП PANA Design';
+    if (/most design|мост дизайн/.test(t)) return 'ИП MOST Design';
     return '';
   }
   const HEAD = { contractor: /контрагент|поставщик|получател|кому|наименование|организац|исполнител/i, amount: /сумма|amount|к оплате/i, purpose: /назнач|описан|за что|коммент|основани|услуг/i, project: /проект|объект/i, company: /^компания$|наша|плательщик|покупател|заказчик/i, date: /дата/i, status: /статус/i, number: /номер|^№/i };
@@ -273,14 +274,19 @@
     let m = t.match(/Сч[её]т(?:[- ]фактура)?\s*(?:на оплату)?\s*№?\s*([\w\-\/]+)\s+от\s+(\d{1,2})\s+([а-яё]+)\s+(\d{4})/i);
     if (m) { out.number = m[1]; const mo = RU_MONTHS[m[3].toLowerCase()]; if (mo) out.invoiceDate = `${m[4]}-${String(mo).padStart(2, '0')}-${m[2].padStart(2, '0')}`; }
     else if ((m = t.match(/Сч[её]т(?:[- ]фактура)?\s*(?:на оплату)?\s*№?\s*([\w\-\/]+)\s+от\s+(\d{2})\.(\d{2})\.(\d{4})/i))) { out.number = m[1]; out.invoiceDate = `${m[4]}-${m[3]}-${m[2]}`; }
+    // поставщик: «Поставщик:», «Бенефициар:» (строкой ниже), «Получатель» (Kaspi: «ТОО "X" Сч. № KZ…»), иначе первая организация в шапке
+    const org = s => { const mm = String(s || '').match(/((?:ТОО|ИП|АО|Товарищество|Индивидуальный предприниматель|Акционерное общество)\s[^\n,]*?)(?=\s+(?:Сч\.|ИИК|БИН|ИИН|KZ\w{18})|,|\n|$)/i); return mm ? mm[1].trim() : ''; };
     if ((m = t.match(/Поставщик:\s*(?:БИН\s*\/?\s*ИИН\s*\d+\s*,?\s*)?([^\n,]+)/i))) out.contractor = m[1].trim();
     else if ((m = t.match(/Бенефициар:[^\n]*\n([^\n]+)/i))) out.contractor = m[1].replace(/\s*KZ\w{18}.*$/, '').trim();
-    if ((m = t.match(/Покупатель:\s*([^\n]+)/i))) out.company = companyOf(m[1]);
-    if ((m = t.match(/Всего к оплате:?\s*([\d\s]+[,.]\d{2})/i)) && money(m[1])) out.amount = money(m[1]);
-    else if ((m = t.match(/на сумму\s*([\d\s]+[,.]\d{2})/i))) out.amount = money(m[1]);
-    else if ((m = t.match(/Итого(?:\s*с\s*НДС)?:?\s*([\d\s]+[,.]\d{2})/i))) out.amount = money(m[1]);
+    else if ((m = t.match(/Получатель:?\s*\n?\s*([^\n]+)/i)) && org(m[1])) out.contractor = org(m[1]);
+    else out.contractor = org(t.slice(0, 400));
+    // наша компания: «Покупатель:», «Плательщик:», «Заказчик:»; название бывает разорвано переносом («"MOST\nArchitects"») — берём две строки
+    if ((m = t.match(/(?:Покупатель|Плательщик|Заказчик):\s*([^\n]*\n?[^\n]*)/i))) out.company = companyOf(m[1].replace(/\n/g, ' '));
+    // сумма: с копейками или без («Итого: 6 756»), «на сумму 6756 тг.»
+    const amt = label => { const mm = t.match(new RegExp(label + '\\s*(\\d{1,3}(?:[ \\u00a0]\\d{3})+(?:[,.]\\d{1,2})?|\\d+(?:[,.]\\d{1,2})?)', 'i')); return mm ? money(mm[1]) : 0; };
+    out.amount = amt('Всего к оплате:?') || amt('Итого(?:\\s*с\\s*НДС)?(?:\\s*к\\s*оплате)?:?') || amt('на сумму');
     const names = []; const body = t.split(/№\s*(?:Код\s*)?Наименование/i)[1];
-    if (body) for (const line of body.split('\n')) { if (/^\s*(Итого|Всего)/i.test(line)) break; const mm = line.match(/^\s*\d+\s+(?:\d{6,}\s+)?(.+?)\s+[\d\s,.]+\s+\S+\s+[\d\s,.]+\s+[\d\s,.]+\s*$/); if (mm) names.push(mm[1].trim()); }
+    if (body) for (const line of body.split('\n')) { if (/^\s*(Итого|Всего)/i.test(line)) break; const mm = line.match(/^\s*\d+\s+(?:\d{6,}\s+)?(.+?)\s+[\d\s,.]+\s+\S+\s+[\d\s,.]+\s+(?:\d+%\s+)?[\d\s,.]+\s*$/); if (mm) names.push(mm[1].trim()); }
     out.purpose = names.join('; ').slice(0, 200);
     if (out.number) out.purpose = `Счёт № ${out.number}${out.purpose ? ': ' + out.purpose : ''}`;
     return out;
