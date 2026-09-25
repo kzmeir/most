@@ -77,14 +77,29 @@
   const PAY_TEMPLATES = {
   // match — часть названия этапа pm: при создании графика номер этапа берётся по названию (шаблоны pm меняются), stage — запасной номер
     rp: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'Этап 2. Финальные планы', share: 30, stage: 4, match: 'Финальные планы' }, { name: 'Комплектация для экспертизы', share: 30, stage: 7, match: 'Комплектация' }, { name: 'Выдача на стройку', share: 10, stage: 9, match: 'Выдача' }],
-    ep: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'Планы согласованы', share: 30, stage: 5, match: 'Планы' }, { name: 'ЭП согласован с заказчиком', share: 30, stage: 7, match: 'согласование ЭП' }, { name: 'Градсовет', share: 10, stage: 8, match: 'Градсовет' }],
+    // ЭП по дорожной карте pm (этапы A–H): привязка по коду этапа, затем по названию, затем по номеру
+    ep: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'D — Планировки', share: 30, stage: 5, code: 'D', match: 'Планировки' }, { name: 'F — Финальный фасад', share: 30, stage: 7, code: 'F', match: 'Финальный фасад' }, { name: 'H — Завершение проекта', share: 10, stage: 9, code: 'H', match: 'Завершение проекта' }],
     an: [{ name: 'Аванс при подписании договора', share: 30, stage: 0 }, { name: 'Платёж 2', share: 30, stage: '' }, { name: 'Платёж 3', share: 30, stage: '' }, { name: 'Окончательный расчёт', share: 10, stage: '' }],
   };
   // суммы по долям: последний платёж добирает округление
   // stageNames — названия этапов проекта pm (если проект уже есть): строка шаблона с match получает номер найденного этапа
   const stageByName = (names, match) => { if (!match || !names || !names.length) return -1; const m = String(match).toLowerCase(); const i = names.findIndex(n => String(n).toLowerCase().includes(m)); return i < 0 ? -1 : i + 1; };
-  function schedule(total, tpl, stageNames) {
-    total = Math.round(num(total)); const rows = (tpl || PAY_TEMPLATES.rp).map((r, i) => { const byName = stageByName(stageNames, r.match); return { n: i + 1, name: r.name, share: num(r.share), stage: byName > 0 ? byName : r.stage === '' || r.stage == null ? '' : num(r.stage), sum: Math.round(total * num(r.share) / 100) }; });
+  // код этапа pm (буква A–H): по кодам пунктов этапа («D5» → D), иначе по названию («5. D — Планировки»). → { D: 5, … }
+  const LAT = s => String(s || '').toUpperCase().replace(/[АВСЕНКМОРТХ]/g, ch => 'ABCEHKMOPTX'['АВСЕНКМОРТХ'.indexOf(ch)]);
+  function stageCodes(items, names) {
+    const out = {};
+    for (const it of items || []) { const m = LAT(it.code).match(/^([A-Z])\d/); if (m && it.stage && !(m[1] in out)) out[m[1]] = it.stage; }
+    (names || []).forEach((n, i) => { const m = LAT(n).match(/^\s*\d+\.\s*([A-Z])\s*[—–-]/); if (m && !(m[1] in out)) out[m[1]] = i + 1; });
+    return out;
+  }
+  // stages — названия этапов проекта (массив) или { names, codes }: строка шаблона получает номер этапа по коду, затем по названию
+  function schedule(total, tpl, stages) {
+    const names = Array.isArray(stages) ? stages : (stages && stages.names) || []; const codes = (stages && !Array.isArray(stages) && stages.codes) || {};
+    total = Math.round(num(total)); const rows = (tpl || PAY_TEMPLATES.rp).map((r, i) => {
+      const byCode = r.code && codes[r.code] ? codes[r.code] : -1; const byName = byCode > 0 ? -1 : stageByName(names, r.match);
+      const stage = byCode > 0 ? byCode : byName > 0 ? byName : r.stage === '' || r.stage == null ? '' : num(r.stage);
+      return { n: i + 1, name: r.name, share: num(r.share), stage, stageName: stage && names[stage - 1] ? names[stage - 1] : '', stageCode: r.code || '', sum: Math.round(total * num(r.share) / 100) };
+    });
     const sh = rows.reduce((a, r) => a + r.share, 0); if (rows.length && sh === 100) rows[rows.length - 1].sum += total - rows.reduce((a, r) => a + r.sum, 0);
     return rows;
   }
@@ -98,7 +113,9 @@
   // платёж по графику: ожидаемая дата и признак «пора выставлять акт». term — дней на оплату после акта (settings.paymentTermDays)
   function paymentState(pay, ctx) {
     ctx = ctx || {}; const t = ctx.today || today(); const term = ctx.term == null ? 10 : num(ctx.term);
-    const st = pay.stage === 0 || pay.stage === '' || pay.stage == null ? null : stageState(ctx.items, num(pay.stage));
+    let st = pay.stage === 0 || pay.stage === '' || pay.stage == null ? null : stageState(ctx.items, num(pay.stage));
+    // этап не найден: у проекта нет такого этапа, код этапа переехал, название не совпадает с сохранённым (шаблон pm поменялся) — привязать заново
+    const stageMissing = stageLost(pay, st, ctx); if (stageMissing) st = null;
     let expected = pay.due || '', basis = pay.due ? 'срок вручную' : '';
     if (!expected && pay.actDate) { expected = addDays(pay.actDate, term); basis = 'акт + ' + term + ' дн.'; }
     if (!expected && pay.stage === 0 && ctx.signDate) { expected = addDays(ctx.signDate, term); basis = 'подписание + ' + term + ' дн.'; }
@@ -106,7 +123,18 @@
     const status = PAY_STATUS.includes(pay.status) ? pay.status : 'Ожидается';
     const ready = status === 'Ожидается' && (pay.stage === 0 ? true : !!(st && st.done));
     const late = status !== 'Оплачен' && !!expected && expected < t;
-    return { expected, basis, ready, late, stageInfo: st, status };
+    return { expected, basis, ready, late, stageInfo: st, status, stageMissing };
+  }
+  // старые графики ЭП (до шаблона A–H) хранили только номер этапа: ищем по ключевому слову прежнего названия платежа
+  const LEGACY_STAGE = { 'Планы согласованы': 'планы', 'ЭП согласован с заказчиком': 'согласование эп', 'Градсовет': 'градсовет' };
+  const normName = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+  function stageLost(pay, st, ctx) {
+    const s = pay.stage; if (s === 0 || s === '' || s == null) return false;
+    if (!(ctx.items || []).length) return false; // проект не привязан — этапов не видно, это не ошибка привязки
+    if (!st) return true;
+    if (pay.stageCode && ctx.codes && ctx.codes[pay.stageCode] && ctx.codes[pay.stageCode] !== num(s)) return true;
+    if (pay.stageName) return normName(pay.stageName) !== normName(st.name);
+    const kw = LEGACY_STAGE[pay.name]; return !!kw && !normName(st.name).includes(kw);
   }
 
   // ---- ожидаемые поступления для прогноза денег: неоплаченные платежи графика с датой в [from, to]; просроченные — на from (late) ----
@@ -205,7 +233,7 @@
   }
   const row1c = (kind, d) => ({ 'Вид': kind, 'Дата': d['дата'], 'Организация': d['компания'], 'Контрагент': d['заказчик'], 'БИН': d['бин'], 'Договор': d['номер_договора'], 'Дата договора': d['дата_договора'], 'Содержание': `Проектные работы, ${d['стадия']}, ${d['этап']} (${d['доля']} %), ${d['объект']}`, 'Сумма': d['сумма_этапа'].replace(/\s/g, ''), 'НДС': d['ндс_этапа'].replace(/\s/g, ''), 'Сумма без НДС': d['сумма_этапа_без_ндс'].replace(/\s/g, '') });
 
-  return { STATUSES, OPEN, KP_STAGE, TRACKS, normTrack, trackName, SOURCES, OBJECT_TYPES, REASONS, PAY_STATUS, COMPANIES, PAY_TEMPLATES, FIELDS, DEFAULT_TEMPLATES, KP_STATUS,
+  return { stageCodes, STATUSES, OPEN, KP_STAGE, TRACKS, normTrack, trackName, SOURCES, OBJECT_TYPES, REASONS, PAY_STATUS, COMPANIES, PAY_TEMPLATES, FIELDS, DEFAULT_TEMPLATES, KP_STATUS,
     isLeader, canOpen, canEditLeads, canPayments, canDocs, canEditTemplates, canSign, canSeeLead, ownLead,
     stageByName, leadCalc, funnel, leadOverdue, leadFromProposal, schedule, stageState, paymentState, expected, words, inWords, moneyStr, fdate, docData, fill, docPage, csv1c, row1c, num, today, addDays, days };
 });

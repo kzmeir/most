@@ -24,7 +24,8 @@ const termOf = ctx => { const t = settingsOf(ctx).paymentTermDays; return t == n
 function payResolver(ctx) {
   const leads = new Map((ctx.db.crmLeads || []).map(l => [l.id, l])); const items = new Map(); const term = termOf(ctx); const t = ctx.today();
   const itemsOf = pid => { if (!pid) return []; if (!items.has(pid)) items.set(pid, (ctx.db.pmItems || []).filter(i => i.pid === pid)); return items.get(pid); };
-  return p => { const l = leads.get(p.leadId) || {}; return { items: itemsOf(p.pmProjectId || l.pmProjectId), signDate: l.contractDate || '', term, today: t, client: l.client || '', object: l.object || '' }; };
+  const codes = new Map(); const codesOf = pid => { if (!codes.has(pid)) codes.set(pid, C.stageCodes(itemsOf(pid))); return codes.get(pid); };
+  return p => { const l = leads.get(p.leadId) || {}; const pid = p.pmProjectId || l.pmProjectId; return { items: itemsOf(pid), codes: pid ? codesOf(pid) : {}, signDate: l.contractDate || '', term, today: t, client: l.client || '', object: l.object || '' }; };
 }
 // ожидаемые поступления по графикам платежей (для прогноза денег в ядре). Сигнатуру не менять.
 // from/to — ISO-даты; просроченные неоплаченные переносятся на from (late: true), opts.late === false — не включать.
@@ -41,8 +42,8 @@ function contractMeta(c) {
 function makeSchedule(ctx, l, rows, byUserId, append) {
   const total = C.leadCalc(l, vatOf(ctx)).sum; const base = append ? ctx.db.crmPayments.filter(p => p.leadId === l.id).reduce((m, p) => Math.max(m, C.num(p.n)), 0) : 0;
   const pm = ctx.modules.pm && ctx.modules.pm.domain; const pp = l.pmProjectId && (ctx.db.pmProjects || []).find(p => p.id === l.pmProjectId);
-  const names = pm && pp ? pm.stageNamesOf((ctx.db.pmItems || []).filter(i => i.pid === pp.id), pp.track) : [];
-  const made = C.schedule(total, rows, names).map((r, i) => Object.assign(r, { id: ctx.store.id(), n: base + i + 1, leadId: l.id, contractId: l.contractId || '', pmProjectId: l.pmProjectId || '', vatIncluded: !!l.vatIncluded, due: rows[i].due || '', status: 'Ожидается', actDate: '', paidDate: '', note: '', createdAt: new Date().toISOString(), createdBy: byUserId || '' }));
+  const its = pp ? (ctx.db.pmItems || []).filter(i => i.pid === pp.id) : []; const names = pm && pp ? pm.stageNamesOf(its, pp.track) : [];
+  const made = C.schedule(total, rows, { names, codes: C.stageCodes(its, names) }).map((r, i) => Object.assign(r, { id: ctx.store.id(), n: base + i + 1, leadId: l.id, contractId: l.contractId || '', pmProjectId: l.pmProjectId || '', vatIncluded: !!l.vatIncluded, due: rows[i].due || '', status: 'Ожидается', actDate: '', paidDate: '', note: '', createdAt: new Date().toISOString(), createdBy: byUserId || '' }));
   ctx.db.crmPayments.push(...made); return made;
 }
 // этап проекта закрыт в pm → у платежей по этому этапу отметка readyAt («пора выставлять акт»; сам признак считается и на лету)
@@ -257,7 +258,9 @@ function handle(ctx) {
     const p = b && findPay(b); if (b && !p) return err(404, 'Платёж не найден');
     if (p && method === 'PUT') {
       const patch = pick(body, PAY_FIELDS); for (const k of ['share', 'sum']) if (k in patch) patch[k] = C.num(patch[k]);
-      if ('stage' in patch) patch.stage = patch.stage === '' || patch.stage == null ? '' : C.num(patch.stage);
+      if ('stage' in patch) { patch.stage = patch.stage === '' || patch.stage == null ? '' : C.num(patch.stage); // заново привязан — запоминаем название и код этапа
+        const l0 = findL(p.leadId) || {}; const pid = p.pmProjectId || l0.pmProjectId; const its = pid ? (db.pmItems || []).filter(i => i.pid === pid) : []; const names = pid ? stageNamesOf(pid) : []; const codes = C.stageCodes(its, names);
+        patch.stageName = patch.stage && names[patch.stage - 1] ? names[patch.stage - 1] : ''; patch.stageCode = Object.keys(codes).find(k => codes[k] === patch.stage) || ''; }
       if ('status' in patch && !C.PAY_STATUS.includes(patch.status)) return err(400, 'Неизвестный статус');
       if (patch.status === 'Акт выставлен' && !p.actDate && !patch.actDate) patch.actDate = t;
       if (patch.status === 'Оплачен' && !p.paidDate && !patch.paidDate) patch.paidDate = t;
