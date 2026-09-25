@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Перенос досок Miro</title>
+<style>
+  body { font: 14px/1.45 system-ui, "Segoe UI", Arial, sans-serif; margin: 24px; color: #222; max-width: 1200px; }
+  h1 { font-size: 20px; margin: 0 0 8px; } h2 { font-size: 16px; margin: 24px 0 8px; }
+  table { border-collapse: collapse; width: 100%; } th, td { border-bottom: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; } th { background: #f5f5f5; font-weight: 600; }
+  .num { text-align: right; white-space: nowrap; } .ok { color: #1a7f37; } .err { color: #b3261e; } .muted { color: #777; }
+  progress { width: 100%; height: 14px; } button { padding: 6px 14px; font: inherit; } select { font: inherit; max-width: 280px; } code { background: #f3f3f3; padding: 0 3px; }
+</style>
+</head>
+<body>
+<h1>Перенос досок Miro → «Доска»</h1>
+<p class="muted">Выберите JSON-файлы, собранные <code>modules/board/tools/miro_build.js</code> (data-dev/board/miro/&lt;доска&gt;.json). Проект подбирается по полю <code>pmProjectName</code> через <code>/api/pm/projects</code> — проверьте столбец «Проект» (можно поправить), затем нажмите «Загрузить». Доски создаются частями через <code>POST /api/board/import</code> (только владелец и партнёр); картинки едут внутри объектов.</p>
+<p><input type="file" id="files" multiple accept=".json,application/json"> <label><input type="checkbox" id="skipDone" checked> пропускать доски, уже перенесённые с той же ссылки Miro</label></p>
+<div id="status" class="muted"></div>
+<table id="tbl"><thead><tr><th>Файл</th><th>Доска</th><th>Проект</th><th class="num">Объектов</th><th class="num">Заглушек</th><th class="num">Картинок</th><th class="num">Размер</th><th>Состояние</th></tr></thead><tbody></tbody></table>
+<p><button id="go" disabled>Загрузить</button> <span id="total" class="muted"></span></p>
+<progress id="bar" value="0" max="1" hidden></progress>
+<h2>Отчёт</h2>
+<div id="report" class="muted">Пока пусто.</div>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const mb = n => (n / 1048576).toFixed(n < 1048576 ? 2 : 1) + ' МБ';
+const api = async (path, opt) => { const r = await fetch('/api/' + path, Object.assign({ credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' } }, opt || {})); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status)); return d; };
+const CHUNK_ITEMS = 200, CHUNK_BYTES = 18 * 1048576; // лимит тела ядра 32 МБ, картинки в base64
+let projects = [], existing = [], rows = [];
+const norm = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+const listOf = (d, keys) => Array.isArray(d) ? d : (keys.map(k => d && d[k]).find(Array.isArray) || []);
+function findProject(name) { const n = norm(name); if (!n) return null; return projects.find(p => norm(p.name) === n) || projects.find(p => norm(p.name).includes(n) || n.includes(norm(p.name))) || null; }
+async function init() {
+  try { projects = listOf(await api('pm/projects'), ['items', 'projects']); } catch (e) { $('#status').innerHTML = `<span class="err">Не удалось получить проекты (/api/pm/projects): ${esc(e.message)}. Откройте страницу на рабочем ERP под владельцем или партнёром.</span>`; return; }
+  try { existing = listOf(await api('board/boards'), ['items', 'boards']); } catch (e) { existing = []; }
+  $('#status').textContent = `Проектов в ERP: ${projects.length}; досок уже есть: ${existing.length}.`;
+}
+const projectOptions = sel => `<option value="">— свободная доска —</option>` + projects.map(p => `<option value="${esc(p.id)}"${p.id === sel ? ' selected' : ''}>${esc(p.name)}${p.track ? ' (' + esc(p.track) + ')' : ''}</option>`).join('');
+function render() {
+  $('#tbl tbody').innerHTML = rows.map((r, i) => r.error ? `<tr><td>${esc(r.file)}</td><td colspan="7" class="err">${esc(r.error)}</td></tr>` :
+    `<tr><td>${esc(r.file)}</td><td>${esc(r.json.title)}${r.json.sourceUrl ? ` <a href="${esc(r.json.sourceUrl)}" target="_blank" rel="noopener">Miro ↗</a>` : ''}</td>
+     <td><select data-i="${i}">${projectOptions(r.pmProjectId)}</select>${r.json.pmProjectName && !r.pmProjectId ? `<div class="err">не найден: ${esc(r.json.pmProjectName)}</div>` : r.json.pmProjectName && !r.exact ? `<div class="muted">по похожему имени: ${esc(r.json.pmProjectName)}</div>` : ''}</td>
+     <td class="num">${r.s.objects}</td><td class="num">${r.s.placeholders}</td><td class="num">${r.s.images}</td><td class="num">${mb(r.s.bytes)}</td>
+     <td>${r.done ? '<span class="muted">уже перенесена</span> ' : ''}<span id="st${i}">${esc(r.state || '')}</span></td></tr>`).join('');
+  document.querySelectorAll('#tbl select').forEach(sel => { sel.onchange = () => { rows[sel.dataset.i].pmProjectId = sel.value; }; });
+  const ready = rows.filter(r => !r.error); $('#go').disabled = !ready.length;
+  $('#total').textContent = ready.length ? `К загрузке: досок ${ready.length}, объектов ${ready.reduce((s, r) => s + r.s.objects, 0)}, ${mb(ready.reduce((s, r) => s + r.s.bytes, 0))}` : '';
+}
+$('#files').onchange = async () => {
+  rows = []; const groups = new Map(); // большие доски конвертер режет на <slug>.partN.json с общим part.key — собираем их в одну строку таблицы
+  for (const f of $('#files').files) {
+    try {
+      const json = JSON.parse(await f.text()); if (!json || !Array.isArray(json.items)) throw new Error('нет массива items');
+      const key = json.part && json.part.key ? 'part:' + json.part.key : 'file:' + f.name;
+      if (!groups.has(key)) groups.set(key, { files: [], parts: [], size: 0 }); const g = groups.get(key); g.files.push(f.name); g.parts.push(json); g.size += f.size;
+    } catch (e) { rows.push({ file: f.name, error: 'не удалось прочитать JSON: ' + e.message }); }
+  }
+  for (const g of groups.values()) {
+    g.parts.sort((a, b) => ((a.part || {}).index || 1) - ((b.part || {}).index || 1)); const json = g.parts[0]; const count = (json.part || {}).count || 1; const file = g.files.join(', ');
+    if (g.parts.length !== count || g.parts.some((p, i) => ((p.part || {}).index || 1) !== i + 1)) { rows.push({ file, error: `доска разбита на ${count} частей, выбрано ${g.parts.length} — добавьте все файлы .partN.json` }); continue; }
+    const s = json.summary || { objects: g.parts.reduce((n, p) => n + p.items.length, 0), placeholders: 0, images: g.parts.reduce((n, p) => n + p.items.filter(i => i.file).length, 0), bytes: g.size };
+    const exact = projects.find(p => norm(p.name) === norm(json.pmProjectName)) || null; const p = exact || findProject(json.pmProjectName);
+    const done = !!(json.sourceUrl && existing.some(b => b.source && b.source.url === json.sourceUrl));
+    rows.push({ file, json, parts: g.parts, s, pmProjectId: p ? p.id : '', exact: !!exact, done });
+  }
+  render();
+};
+function chunks(items) { const out = []; let cur = [], bytes = 0; for (const it of items) { const n = JSON.stringify(it).length; if (cur.length && (cur.length >= CHUNK_ITEMS || bytes + n > CHUNK_BYTES)) { out.push(cur); cur = []; bytes = 0; } cur.push(it); bytes += n; } if (cur.length || !out.length) out.push(cur); return out; }
+$('#go').onclick = async () => {
+  $('#go').disabled = true; const bar = $('#bar'); bar.hidden = false; bar.value = 0; const report = []; const skipDone = $('#skipDone').checked;
+  const todo = rows.filter(r => !r.error && !(skipDone && r.done)); const totalItems = todo.reduce((s, r) => s + r.parts.reduce((n, p) => n + p.items.length, 0), 0) || 1; let doneItems = 0;
+  for (const r of todo) {
+    const i = rows.indexOf(r); const st = $('#st' + i); const parts = r.parts.flatMap(p => chunks(p.items)); let boardId = '', added = 0, total = 0;
+    try {
+      for (const [k, part] of parts.entries()) {
+        st.textContent = `часть ${k + 1}/${parts.length}…`;
+        const d = await api('board/import', { method: 'POST', body: JSON.stringify({ boardId, title: r.json.title, pmProjectId: r.pmProjectId || '', sourceUrl: r.json.sourceUrl || '', items: part, done: k === parts.length - 1 }) });
+        boardId = d.boardId; added += d.added || 0; total = d.total || 0; doneItems += part.length; bar.value = doneItems / totalItems;
+      }
+      r.state = `готово: ${added} объектов`; st.innerHTML = `<span class="ok">${esc(r.state)}</span> <a href="/#/board?id=${esc(boardId)}" target="_blank">открыть</a>`;
+      report.push({ title: r.json.title, boardId, added, total, s: r.s, ok: true });
+    } catch (e) { r.state = 'ошибка: ' + e.message; st.innerHTML = `<span class="err">${esc(r.state)}</span>${boardId ? ` (доска ${esc(boardId)} создана частично)` : ''}`; report.push({ title: r.json.title, boardId, added, total, s: r.s, ok: false, error: e.message }); }
+  }
+  bar.value = 1;
+  $('#report').innerHTML = report.length ? `<table><thead><tr><th>Доска</th><th class="num">Объектов</th><th class="num">Заглушек</th><th class="num">Картинок</th><th class="num">Размер</th><th>Результат</th></tr></thead><tbody>` +
+    report.map(x => `<tr><td>${x.boardId ? `<a href="/#/board?id=${esc(x.boardId)}" target="_blank">${esc(x.title)}</a>` : esc(x.title)}</td><td class="num">${x.added} / ${x.s.objects}</td><td class="num">${x.s.placeholders}</td><td class="num">${x.s.images}</td><td class="num">${mb(x.s.bytes)}</td><td>${x.ok ? '<span class="ok">создана</span>' : `<span class="err">${esc(x.error)}</span>`}</td></tr>`).join('') +
+    `</tbody></table><p>Итого: досок ${report.filter(x => x.ok).length} из ${report.length}, объектов ${report.reduce((s, x) => s + x.added, 0)}, заглушек ${report.reduce((s, x) => s + x.s.placeholders, 0)}, картинок ${report.reduce((s, x) => s + x.s.images, 0)}, ${mb(report.reduce((s, x) => s + x.s.bytes, 0))}.</p>` : 'Нечего загружать (все выбранные доски уже перенесены или файлы не прочитаны).';
+  $('#go').disabled = false;
+};
+init();
+</script>
+</body>
+</html>

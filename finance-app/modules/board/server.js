@@ -91,6 +91,10 @@ function handle(ctx) {
   }
   // --- импорт (перенос досок Miro, JSON от modules/board/tools/miro_import.js): только руководитель; большие доски — частями ---
   // { title, pmProjectId, sourceUrl, items: [...], boardId?: продолжение, done?: true } → { boardId, added, total }
+  if (a === 'import' && b === 'page' && method === 'GET') { // страница переноса (tools/miro_upload.html): выбирает JSON, находит проект по имени, шлёт части
+    if (!BD.isLeader(user, PM)) return err(403, 'Импорт досок доступен владельцу и партнёру');
+    return ctx.send(200, fs.readFileSync(path.join(__dirname, 'tools', 'miro_upload.html')), { 'Content-Type': 'text/html; charset=utf-8' });
+  }
   if (a === 'import' && !b && method === 'POST') {
     if (!BD.isLeader(user, PM)) return err(403, 'Импорт досок доступен владельцу и партнёру');
     let bd = body.boardId ? db.boards.find(x => x.id === String(body.boardId)) : null; if (body.boardId && !bd) return err(404, 'Доска не найдена');
