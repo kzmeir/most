@@ -233,6 +233,11 @@ chk "rebuild: 48 совпали, отметки и статусы сохране
 chk "rebuild без keepExtra: несовпавшие удалены и записаны в отчёт" "48/Ручной пункт" "$(call OWN POST /pm/projects/$RMID/rebuild '{"template":"ep","keepExtra":false}' | js 'd.items.length+"/"+d.report.deleted.join(",")')"
 chk "rebuild РП-проекта по шаблону РП сохраняет отметку" "79/true" "$(call OWN POST /pm/projects/$RPID/rebuild '{"template":"rp","keepExtra":true}' | js 'd.items.filter(i=>!i.custom).length+"/"+d.items.some(i=>i.done)')"
 
+echo "== разделы ЭП / РП =="
+chk "access.tracks: owner — оба, gip — РП, pm — ЭП (и РП, где он ПМ после передачи), lead — оба" "ep,rp/rp/true/ep,rp" "$(call OWN GET /pm/access | js 'd.tracks.join(",")')/$(call GIP GET /pm/access | js 'd.tracks.join(",")')/$(call PMR GET /pm/access | js 'd.tracks.includes("ep")')/$(call LEAD GET /pm/access | js 'd.tracks.join(",")')"
+chk "overview?track=ep — только ЭП (и концепции), track=rp — только РП, блокеры своей стадии" "true/true" "$(call OWN GET '/pm/overview?track=ep' | js 'd.rows.length>0 && d.rows.every(r=>r.track!=="rp") && d.blockersList.every(b=>b.track!=="rp")')/$(call OWN GET '/pm/overview?track=rp' | js 'd.rows.length>0 && d.rows.every(r=>r.track==="rp")')"
+chk "badges: счётчики по разделам сходятся с общими" true "$(call OWN GET /pm/badges | js 'typeof d.byTrack.ep.my==="number" && typeof d.byTrack.rp.bl==="number" && d.byTrack.ep.my+d.byTrack.rp.my===d.pmmy && d.byTrack.ep.bl+d.byTrack.rp.bl===d.pmbl')"
+
 echo "== без сроков: зона «нет сроков» =="
 ND=$(call OWN POST /pm/projects '{"track":"ep","name":"ЭП без сроков","pmId":"dev-pm"}')
 NDID=$(echo "$ND" | js 'd.project.id')
