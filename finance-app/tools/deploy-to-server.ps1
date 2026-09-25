@@ -189,7 +189,17 @@ if (-not $conn) {
       Log "[DryRun] был бы остановлен только PID $childPid (родитель $parentPid подтверждён: $reason); обёртка подняла бы новый код сама"
     } else {
       Log "порт $Port держит PID $childPid, родитель $parentPid подтверждён как обёртка serve-local.js ($reason). Останавливаю только $childPid."
-      Stop-Process -Id $childPid -Force
+      try {
+        Stop-Process -Id $childPid -Force -ErrorAction Stop
+      } catch {
+        # автозапуск (задача Планировщика) обычно работает с повышенными правами - у самого deploy-to-server.ps1
+        # их может не быть, тогда Stop-Process падает с "Access is denied". Это не провал выкладки: код и база
+        # уже на месте, не хватает только перезапуска - отдельный код выхода 2, а не общий провал (1).
+        Log "код выложен, перезапуск нужен вручную: Диспетчер задач -> node.exe PID $childPid -> Снять задачу (или запустите deploy-to-server.bat от имени администратора)."
+        Log "Причина: не удалось остановить PID $childPid - $($_.Exception.Message)"
+        Log "=== ${tag}Выкладка завершена (выложено без перезапуска, код 2) ==="
+        exit 2
+      }
     }
   } else {
     Log "Не удалось однозначно подтвердить, что процесс на порту $Port (PID $childPid, родитель $parentPid) управляется обёрткой serve-local.js."
