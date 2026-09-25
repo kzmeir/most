@@ -137,6 +137,22 @@ chk "lead (не руководитель доски) удалить файл н�
 call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"delete","id":"i2"}]}' > /dev/null
 chk "неиспользуемый файл удаляет руководитель доски" 200 "$(code PMR DELETE /board/boards/$PBID/files/$KEY)"
 
+echo "== импорт из Miro (POST /api/board/import) =="
+chk "staff импорт 403" 403 "$(code STAFF POST /board/import '{"title":"x","items":[]}')"
+chk "gip импорт 403" 403 "$(code GIP POST /board/import '{"title":"x","items":[]}')"
+IMP1=$(call PART POST /board/import "{\"title\":\"Маяк (Miro)\",\"pmProjectId\":\"$P\",\"sourceUrl\":\"https://miro.com/app/board/uXjVHKj4TjI=/\",\"items\":[{\"id\":\"m1\",\"type\":\"frame\",\"x\":0,\"y\":0,\"w\":1000,\"h\":800,\"z\":-1,\"props\":{\"title\":\"Концепт фасада\",\"color\":\"gray\"}},{\"id\":\"m2\",\"type\":\"sticky\",\"x\":100,\"y\":100,\"w\":300,\"h\":200,\"props\":{\"text\":\"Мудборд\",\"color\":\"orange\",\"size\":24}},{\"id\":\"m3\",\"type\":\"arrow\",\"x\":0,\"y\":0,\"props\":{\"from\":\"m2\",\"to\":\"нет\",\"x2\":900,\"y2\":500}}]}")
+IMPID=$(echo "$IMP1" | js 'd.boardId'); chk "partner: первая часть создала доску, 3 объекта, источник Miro" "3/3/miro" "$(echo "$IMP1" | js 'd.added+"/"+d.total+"/"+d.board.source.kind')"
+node -e "const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==','base64');require('fs').writeFileSync('$DATA_DIR/imp2.json',JSON.stringify({boardId:'$IMPID',items:[{id:'m4',type:'image',x:500,y:100,w:200,h:150,props:{name:'img'},file:{name:'miro.png',type:'image/png',data:png.toString('base64')}},{id:'m5',type:'nope'}],done:true}))"
+IMP2=$(curl -s "${PART[@]}" "${H[@]}" -X POST $B/board/import -d @"$DATA_DIR/imp2.json")
+chk "вторая часть: картинка с файлом добавлена, мусор отброшен, всего 4" "1/4" "$(echo "$IMP2" | js 'd.added+"/"+d.total')"
+IMPB=$(call OWN GET /board/boards/$IMPID)
+IMGOK=$(echo "$IMPB" | js '(()=>{const i=d.items.find(x=>x.id==="m4");return /\.png$/.test(i.props.src)})()'); NFILES=$(ls "$DATA_DIR/board-files/$IMPID" 2>/dev/null | wc -l | tr -d ' ')
+chk "картинка получила ключ файла, файл лежит на диске" "true/1" "$IMGOK/$NFILES"
+chk "стрелка на отсутствующий объект после done — свободная, from сохранён" "m2/" "$(echo "$IMPB" | js '(()=>{const a=d.items.find(x=>x.id==="m3");return a.props.from+"/"+a.props.to})()')"
+chk "доска видна в списке с проектом и источником" true "$(call STAFF GET "/board/boards?pid=$P" | js '(()=>{const b=d.boards.find(x=>x.id==="'$IMPID'");return !!b && b.source.url.includes("miro.com")})()')"
+chk "продолжение в чужую доску без прав — 404 на несуществующую" 404 "$(code PART POST /board/import '{"boardId":"нет","items":[]}')"
+call PART DELETE /board/boards/$IMPID > /dev/null
+
 echo "== удаление досок =="
 chk "участник удалить свободную 403" 403 "$(code SEC DELETE /board/boards/$FB)"
 chk "ПМ проекта (не владелец доски) удалить 403" 403 "$(code PMR DELETE /board/boards/$PBID)"

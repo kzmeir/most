@@ -43,7 +43,7 @@ const onlineUsers = boardId => new Set(presence(boardId).map(p => p.userId)).siz
 
 function boardOut(ctx, b, r) {
   const { db } = ctx; const p = r ? r.project : projectOf(db, b);
-  return { id: b.id, title: b.title, pmProjectId: b.pmProjectId || '', project: p ? { id: p.id, name: p.name, track: p.track || '', status: p.status || '' } : null, ownerId: b.ownerId, ownerName: ctx.userName(b.ownerId) || '', members: b.members || [], memberNames: (b.members || []).map(id => ctx.userName(id) || id), editMode: BD.editMode(b), template: b.template || '', createdAt: b.createdAt, updatedAt: b.updatedAt || b.createdAt, updatedByName: ctx.userName(b.updatedBy || b.createdBy) || '', rev: b.rev || 0, itemsN: liveItems(db, b.id).length, openComments: BD.openComments(boardComments(db, b.id)), online: onlineUsers(b.id), canEdit: r ? r.edit : false, canManage: r ? r.manage : false, canDelete: r ? r.del : false };
+  return { id: b.id, title: b.title, pmProjectId: b.pmProjectId || '', project: p ? { id: p.id, name: p.name, track: p.track || '', status: p.status || '' } : null, ownerId: b.ownerId, ownerName: ctx.userName(b.ownerId) || '', members: b.members || [], memberNames: (b.members || []).map(id => ctx.userName(id) || id), editMode: BD.editMode(b), template: b.template || '', source: b.source || null, createdAt: b.createdAt, updatedAt: b.updatedAt || b.createdAt, updatedByName: ctx.userName(b.updatedBy || b.createdBy) || '', rev: b.rev || 0, itemsN: liveItems(db, b.id).length, openComments: BD.openComments(boardComments(db, b.id)), online: onlineUsers(b.id), canEdit: r ? r.edit : false, canManage: r ? r.manage : false, canDelete: r ? r.del : false };
 }
 // применить операции клиента: одна ревизия на пакет; объекты получают rev пакета и ver+1
 function applyOps(ctx, b, ops) {
@@ -88,6 +88,31 @@ function handle(ctx) {
   if (a === 'by-project' && b && method === 'GET') {
     const p = db.pmProjects.find(x => x.id === b); if (!p) return err(404, 'Проект не найден');
     return ok({ project: { id: p.id, name: p.name, track: p.track || '', status: p.status || '' }, boards: db.boards.filter(x => x.pmProjectId === p.id).map(x => boardOut(ctx, x, rights(ctx, x))).sort((x, y) => String(y.updatedAt).localeCompare(String(x.updatedAt))), canCreate: BD.canCreateProjectBoard(user, p) });
+  }
+  // --- импорт (перенос досок Miro, JSON от modules/board/tools/miro_import.js): только руководитель; большие доски — частями ---
+  // { title, pmProjectId, sourceUrl, items: [...], boardId?: продолжение, done?: true } → { boardId, added, total }
+  if (a === 'import' && !b && method === 'POST') {
+    if (!BD.isLeader(user, PM)) return err(403, 'Импорт досок доступен владельцу и партнёру');
+    let bd = body.boardId ? db.boards.find(x => x.id === String(body.boardId)) : null; if (body.boardId && !bd) return err(404, 'Доска не найдена');
+    if (!bd) {
+      const pid = String(body.pmProjectId || ''); if (pid && !db.pmProjects.some(x => x.id === pid)) return err(404, 'Проект не найден');
+      const url = String(body.sourceUrl || '').slice(0, 300); const title = String(body.title || '').trim().slice(0, BD.MAX_TITLE) || 'Импорт из Miro';
+      bd = { id: store.id(), title, pmProjectId: pid, ownerId: user.id, members: [], editMode: 'all', template: '', source: url ? { kind: 'miro', url, at: now(), byId: user.id } : null, rev: 0, createdAt: now(), createdBy: user.id, updatedAt: now(), updatedBy: user.id };
+      db.boards.push(bd); audit('import', 'boards', bd.id, { source: url });
+    }
+    const list = (Array.isArray(body.items) ? body.items : []).slice(0, 500); const t = now(); bd.rev = (bd.rev || 0) + 1; let added = 0; const dir = filesDir(ctx, bd.id);
+    for (const raw of list) {
+      const src = raw && typeof raw === 'object' ? raw : null; if (!src) continue; const file = src.file && typeof src.file === 'object' ? src.file : null; delete src.file;
+      const it = BD.cleanItem(src, bd.id); if (!it) continue;
+      if (file && BD.FILE_TYPES[file.type] && file.data) { // картинка из Miro: файл приезжает вместе с объектом
+        const data = Buffer.from(String(file.data), 'base64'); if (data.length && data.length <= BD.MAX_FILE) { fs.mkdirSync(dir, { recursive: true }); const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${BD.FILE_TYPES[file.type]}`; fs.writeFileSync(path.join(dir, key), data); it.props.src = key; it.props.name = String(file.name || it.props.name || '').slice(0, 200); }
+      } else { if (it.props.src && !fileExists(ctx, bd.id, it.props.src)) it.props.src = ''; if (it.props.pdf && !fileExists(ctx, bd.id, it.props.pdf)) it.props.pdf = ''; }
+      const cur = db.boardItems.find(x => x.boardId === bd.id && x.id === it.id);
+      if (cur) Object.assign(cur, it, { deleted: false, rev: bd.rev, ver: (cur.ver || 0) + 1, updatedAt: t, updatedBy: user.id }); else db.boardItems.push(Object.assign(it, { rev: bd.rev, ver: 1, createdAt: t, createdBy: user.id, updatedAt: t, updatedBy: user.id }));
+      added++;
+    }
+    bd.updatedAt = t; bd.updatedBy = user.id; if (body.done) { for (const fix of BD.repairArrows(liveItems(db, bd.id))) { const ar = db.boardItems.find(x => x.boardId === bd.id && x.id === fix.id); if (ar) Object.assign(ar, { props: fix.props, rev: bd.rev }); } }
+    store.save(); return ok({ boardId: bd.id, added, total: liveItems(db, bd.id).length, board: boardOut(ctx, bd, rights(ctx, bd)) });
   }
   if (a !== 'boards') return err(404, 'Нет такого действия');
 
