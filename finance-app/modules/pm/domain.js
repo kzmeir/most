@@ -496,7 +496,7 @@
     }
     const load = {}; for (const r of active) for (const k of ['gipId', 'pmId']) if (r[k]) { const x = load[r[k]] || (load[r[k]] = { concept: 0, ep: 0, rp: 0, an: 0, overdue: 0, late: 0 }); x[r.track] = (x[r.track] || 0) + 1; x.overdue += r.overdueN; if (r.late) x.late++; }
     const byStatus = {}; for (const r of active) byStatus[r.status || 'В работе'] = (byStatus[r.status || 'В работе'] || 0) + 1;
-    const openBl = blockers.filter(b => b.status !== 'closed');
+    const pids = new Set(projects.map(p => p.id)); const openBl = blockers.filter(b => b.status !== 'closed' && pids.has(b.pid)); // только блокеры переданных проектов (сводка раздела ЭП не считает блокеры РП)
     return { rows, active: active.length, byStatus, byTrack, late: active.filter(r => r.late).length, hot: active.filter(r => r.hot).length, overdueItems: active.reduce((s, r) => s + r.overdueN, 0), blockers: openBl.length, blockersOld: openBl.filter(b => blockerAge(b, t) > 14).length, load };
   }
   // Гант по месяцам: список месяцев от самого раннего старта до самого позднего срока (в пределах back/fwd месяцев от сегодня)
