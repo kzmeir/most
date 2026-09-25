@@ -90,12 +90,12 @@ function importClickup(ctx, list, mode, user) {
       const it = PM.findItemByTitle(items(), title) || items().find(i => i.custom && ((i.cuId && tk.cuId && i.cuId === tk.cuId) || PM.normTitle(i.title) === PM.normTitle(title))); // повторный импорт: свой же добавленный пункт не дублируем
       if (it) {
         rep.matched++;
-        if (tk.done && !it.done) { logHistory(it, { done: true }, user.id, 'по ClickUp'); Object.assign(it, { done: true, doneAt: tk.due || t, doneBy: 'clickup', doneNote: 'по ClickUp' }); rep.done++; }
+        if (tk.done && !it.done) { logHistory(it, { done: true }, user.id, 'по ClickUp'); Object.assign(it, { done: true, doneAt: tk.due || '', doneBy: 'clickup', doneNote: 'по ClickUp' }); rep.done++; } // doneAt — только дата из ClickUp: отметки импорта не должны выглядеть как сегодняшняя скорость
         if (tk.due && !it.done && it.due !== tk.due) { logHistory(it, { due: tk.due }, user.id, 'по ClickUp'); it.due = tk.due; } if (u && !it.assigneeId) { logHistory(it, { assigneeId: u.id }, user.id, 'по ClickUp'); it.assigneeId = u.id; }
         if (extra && !String(it.note || '').includes(extra)) it.note = [it.note, extra].filter(Boolean).join(' · ');
       } else {
         const st = PM.stageIndex('ep', tk.stage) || curStage(); const order = Math.max(0, ...items().map(i => i.order || 0)) + 1;
-        addItems(ctx, [{ pid: p.id, stage: st, stageName: PM.stageNames('ep')[st - 1] || `Этап ${st}`, title, role: 'ПМ', section: '', weeks: 1, weeksMax: 0, crit: '', optional: false, done: !!tk.done, doneAt: tk.done ? (tk.due || t) : '', doneBy: tk.done ? 'clickup' : '', doneNote: tk.done ? 'по ClickUp' : '', na: false, due: tk.due || '', assigneeId: u ? u.id : '', contractor: '', note: [tk.note, tk.status ? `статус ClickUp: ${tk.status}` : '', (tk.tags || []).length ? `теги: ${tk.tags.join(', ')}` : '', extra, 'из ClickUp'].filter(Boolean).join(' · '), order, custom: true, source: 'clickup', cuId: tk.cuId || '', createdBy: user.id, createdAt: now }]);
+        addItems(ctx, [{ pid: p.id, stage: st, stageName: PM.stageNames('ep')[st - 1] || `Этап ${st}`, title, role: 'ПМ', section: '', weeks: 1, weeksMax: 0, crit: '', optional: false, done: !!tk.done, doneAt: tk.done ? (tk.due || '') : '', doneBy: tk.done ? 'clickup' : '', doneNote: tk.done ? 'по ClickUp' : '', na: false, due: tk.due || '', assigneeId: u ? u.id : '', contractor: '', note: [tk.note, tk.status ? `статус ClickUp: ${tk.status}` : '', (tk.tags || []).length ? `теги: ${tk.tags.join(', ')}` : '', extra, 'из ClickUp'].filter(Boolean).join(' · '), order, custom: true, source: 'clickup', cuId: tk.cuId || '', createdBy: user.id, createdAt: now }]);
         rep.added++;
       }
     }

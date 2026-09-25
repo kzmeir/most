@@ -216,6 +216,17 @@ chk "staff: добавлять пункты и блокеры, править к
 chk "staff: участник проекта (members) тоже видит его" 2 "$(call OWN PUT /pm/projects/$GID '{"members":["dev-staff"]}' > /dev/null; call STAFF GET /pm/overview | js 'd.rows.length')"
 chk "настройки: владелец выключает — staff снова без доступа" "false/403" "$(call OWN PUT /pm/settings '{"staffOwnProjects":false}' | js 'd.staffOwnProjects')/$(code STAFF GET /pm/overview)"
 
+echo "== без сроков: зона «нет сроков» =="
+ND=$(call OWN POST /pm/projects '{"track":"ep","name":"ЭП без сроков","pmId":"dev-pm"}')
+NDID=$(echo "$ND" | js 'd.project.id')
+chk "без start/due: зона none, расход буфера не считается, прогнозов нет" "none/null/нет сроков//" "$(echo "$ND" | js 'd.health.zone+"/"+d.health.consumption+"/"+d.health.zoneLabel.slice(0,10)+"/"+d.health.forecast.realistic+"/"+d.health.planEnd')"
+call OWN PUT /pm/items/$(echo "$ND" | js 'd.items[0].id') '{"done":true}' > /dev/null
+chk "без сроков: отметка «сделано» зону не меняет" none "$(call OWN GET /pm/projects/$NDID | js 'd.health.zone')"
+chk "сводка: проект без сроков не красный/чёрный, Проход не считается" "none/true" "$(call OWN GET /pm/overview | js '(r=>r.health.zone+"/"+(r.throughput===undefined||r.throughput===null))(d.rows.find(r=>r.id==="'$NDID'"))')"
+chk "только старт без срока — тоже «нет сроков»" none "$(call OWN PUT /pm/projects/$NDID '{"start":"2026-09-01"}' | js 'd.health.zone')"
+chk "старт и срок заданы — зона считается (режим contract)" "contract/true" "$(call OWN PUT /pm/projects/$NDID '{"due":"2027-03-01"}' | js 'd.health.mode+"/"+["blue","green","yellow","red","black"].includes(d.health.zone)')"
+chk "ClickUp: отметки импорта не считаются текущей скоростью, doneAt — только дата из ClickUp" "0/true" "$(call OWN GET /pm/projects/$CUID | js 'd.health.curV+"/"+d.items.filter(i=>i.doneBy==="clickup").every(i=>!i.doneAt || i.doneAt<"2026-09")')"
+
 echo "== удаление =="
 chk "owner удаляет проект" 200 "$(code OWN DELETE /pm/projects/$GID)"
 chk "удалённый не найден" 404 "$(code OWN GET /pm/projects/$GID)"

@@ -454,9 +454,9 @@
     const opt = stages.reduce((s, st) => s + stageLen(act, st, W), 0) * 7, pess = stages.reduce((s, st) => s + stageLen(act, st, WMAX), 0) * 7;
     return { opt: Math.round(opt), pess: Math.round(pess), buffer: Math.round(Math.max(opt * 0.5, pess - opt)) };
   }
-  const ZONES = { blue: 'профицит', green: 'по плану', yellow: 'готовить план изменений', red: 'применять план изменений', black: 'пересогласовать срок или объём' };
-  const ZONE_NAME_RU = { blue: 'синяя', green: 'зелёная', yellow: 'жёлтая', red: 'красная', black: 'чёрная' };
-  const ZONE_RANK = { blue: 0, green: 1, yellow: 2, red: 3, black: 4 };
+  const ZONES = { blue: 'профицит', green: 'по плану', yellow: 'готовить план изменений', red: 'применять план изменений', black: 'пересогласовать срок или объём' , none: 'нет сроков — задайте старт и дату по договору, затем «Разложить сроки»' };
+  const ZONE_NAME_RU = { blue: 'синяя', green: 'зелёная', yellow: 'жёлтая', red: 'красная', black: 'чёрная', none: 'нет сроков' };
+  const ZONE_RANK = { none: -1, blue: 0, green: 1, yellow: 2, red: 3, black: 4 };
   // диагональный буфер: x — доля выполненного объёма, y — доля съеденного буфера
   function zone(x, y) {
     if (y > 1) return 'black'; if (y < -0.3) return 'blue';
@@ -467,13 +467,16 @@
     t = t || today(); const mine = items.filter(i => i.pid === p.id && !i.na);
     const total = mine.reduce((s, i) => s + W(i), 0), doneW = mine.filter(i => i.done).reduce((s, i) => s + W(i), 0), remain = Math.max(0, total - doneW);
     const progress = total ? doneW / total : 0;
-    const start = p.start || String(p.createdAt || '').slice(0, 10) || t; const ch = chain(mine);
+    const returns = mine.reduce((s, i) => s + (Number(i.returns) || 0), 0);
+    // без старта или срока по договору зона не считается: «нет сроков» (серый чип), расход буфера и прогнозы пустые; такие проекты не попадают в красные/чёрные
+    if (!p.start || !p.due) return { mode: 'none', start: p.start || '', planDays: 0, bufferDays: 0, planEnd: '', promised: '', elapsed: 0, total: Math.round(total * 10) / 10, doneW: Math.round(doneW * 10) / 10, remain: Math.round(remain * 10) / 10, progress: Math.round(progress * 1000) / 1000, timeProgress: 0, avgV: 0, curV: 0, addV: 0, addedW: 0, forecast: { optimistic: '', realistic: '', pessimistic: '' }, consumption: null, basis: 'сроки не заданы', zone: 'none', zoneLabel: ZONES.none, chain: chain(mine), returns };
+    const start = p.start; const ch = chain(mine);
     let mode, planDays, bufferDays;
     if (p.due && p.due > start) { mode = 'contract'; const T = days(start, p.due); bufferDays = Math.max(1, Math.round(T * 0.3)); planDays = T - bufferDays; }
     else { mode = 'chain'; planDays = Math.max(1, ch.opt); bufferDays = Math.max(1, ch.buffer); }
     const planEnd = addDays(start, planDays), promised = addDays(start, planDays + bufferDays);
     const elapsed = Math.max(0, days(start, t)); const timeProgress = elapsed / planDays;
-    const closed = mine.filter(i => i.done && i.doneAt); const since = addDays(t, -28);
+    const closed = mine.filter(i => i.done && i.doneAt && !['import', 'clickup'].includes(i.doneBy)); const since = addDays(t, -28); // отметки, поставленные импортом (реестр, ClickUp), скорость не измеряют
     const avgV = elapsed > 0 ? doneW / elapsed : 0; // средняя: весь выполненный объём (в т. ч. отмеченный по реестру) с начала проекта
     const curV = closed.filter(i => i.doneAt > since).reduce((s, i) => s + W(i), 0) / 28;
     const added = mine.filter(i => i.custom && i.createdAt && String(i.createdAt).slice(0, 10) > addDays(start, 1));
@@ -486,12 +489,11 @@
     else { consumption = (timeProgress - progress) * planDays / bufferDays; basis = 'прошедшее время против выполненного объёма'; }
     consumption = total ? Math.round(consumption * 100) / 100 : 0;
     const z = ACTIVE(p.status) || remain > 0 ? zone(progress, consumption) : (consumption > 1 ? 'black' : 'green');
-    const returns = mine.reduce((s, i) => s + (Number(i.returns) || 0), 0);
     return { mode, start, planDays, bufferDays, planEnd, promised, elapsed, total: Math.round(total * 10) / 10, doneW: Math.round(doneW * 10) / 10, remain: Math.round(remain * 10) / 10, progress: Math.round(progress * 1000) / 1000, timeProgress: Math.round(timeProgress * 1000) / 1000, avgV: Math.round(avgV * 1000) / 1000, curV: Math.round(curV * 1000) / 1000, addV: Math.round(addV * 1000) / 1000, addedW: Math.round(addedW * 10) / 10, forecast, consumption, basis, zone: z, zoneLabel: ZONES[z], chain: ch, returns };
   }
   // Проход: контракт без НДС в месяц длительности (по договору или по цепи); руководителю/ГИПу с доступом к бюджету
   function throughput(p, h) {
-    const contract = Number(p.budget && p.budget.contract) || 0; if (!contract) return null;
+    const contract = Number(p.budget && p.budget.contract) || 0; if (!contract || !h || h.mode === 'none') return null;
     const dur = p.due && p.start && p.due > p.start ? days(p.start, p.due) : h.planDays + h.bufferDays; const months = Math.max(0.5, dur / 30.4);
     return { contract, months: Math.round(months * 10) / 10, perMonth: Math.round(contract / months), perDay: Math.round(contract / dur) };
   }
