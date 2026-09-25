@@ -110,8 +110,16 @@ LC=$(call SEC POST /crm/leads '{"client":"ТОО Концепт","object":"Ко�
 LCID=$(echo "$LC" | js 'd.id'); chk "стадия concept сохраняется как ЭП" ep "$(echo "$LC" | js 'd.track')"
 SC=$(call OWN POST /crm/leads/$LCID/sign "{\"contractNo\":\"7-26-ЭП\",\"contractDate\":\"$T\",\"start\":\"$T\"}")
 chk "подписан: проект ЭП в pm" ep "$(call OWN GET /pm/projects/$(echo "$SC" | js 'd.pmProjectId') | js 'd.project.track')"
-chk "график ЭП привязан по названиям этапов pm" "0/5/7/8" "$(echo "$SC" | js 'd.payments.map(p=>p.stage).join("/")')"
-chk "этап 5 — «Планы»" 1 "$(echo "$SC" | js '+/Планы/.test(d.payments[1].stageInfo && d.payments[1].stageInfo.name || "")')"
+chk "график ЭП привязан по кодам этапов D/F/H" "0/5/7/9" "$(echo "$SC" | js 'd.payments.map(p=>p.stage).join("/")')"
+chk "коды и названия этапов сохранены в платежах" "D:5. D — Планировки|F:7. F — Финальный фасад (на весь комплекс)|H:9. H — Завершение проекта" "$(echo "$SC" | js 'd.payments.slice(1).map(p=>p.stageCode+":"+p.stageName).join("|")')"
+chk "этап 5 — «D — Планировки», найден" "1/false" "$(echo "$SC" | js '(+/Планировки/.test(d.payments[1].stageInfo && d.payments[1].stageInfo.name || ""))+"/"+d.payments[1].stageMissing')"
+chk "доли ЭП прежние" "30/30/30/10" "$(echo "$SC" | js 'd.payments.map(p=>p.share).join("/")')"
+chk "старый график ЭП («Градсовет» на этапе 8) → этап не найден; перепривязанный — найден" "true/false/true/false" "$(node -e "
+const C=require('./modules/crm/domain.js');const PM=require('./modules/pm/domain.js');const items=PM.itemsFromTemplate('ep','p1',{});const codes=C.stageCodes(items,PM.stageNames('ep'));
+const st=p=>C.paymentState(p,{items,codes,today:'2026-09-25'}).stageMissing;
+console.log([st({name:'Градсовет',stage:8}), st({name:'Аванс при подписании договора',stage:0}), st({name:'Платёж',stage:5,stageName:'5. Планы'}), st({name:'Платёж',stage:5,stageName:PM.stageNames('ep')[4],stageCode:'D'})].join('/'))")"
+PSC=$(echo "$SC" | js 'd.payments[3].id')
+chk "перепривязка строки: этап 8 → код G, название сохранено" "8/G/false" "$(call OWN PUT /crm/payments/$PSC '{"stage":8}' | js 'd.stage+"/"+d.stageCode+"/"+d.stageMissing')"
 
 echo "== договор из реестра → график =="
 chk "owner завёл договор в ядре" 200 "$(code OWN POST /contracts '{"name":"Старый договор","code":"Старый","title":"Договор 55-25-ЭП от 01.03.2025","clientShort":"Хаят","sum":20000000,"paid":6000000,"remaining":14000000,"company":"ТОО MOST Architects"}')"
