@@ -27,7 +27,7 @@ function cleanContract(patch, body, p) {
   return patch;
 }
 // история пункта: последние 20 изменений — кто, когда, что (галочки, срок, исполнитель, подрядчик, название, оценка, этап, роль)
-const HIST_FIELDS = ['done', 'na', 'due', 'assigneeId', 'contractor', 'title', 'weeks', 'weeksMax', 'stage', 'role'];
+const HIST_FIELDS = ['done', 'na', 'due', 'assigneeId', 'contractor', 'title', 'weeks', 'weeksMax', 'stage', 'role', 'rmStatus'];
 function logHistory(it, patch, userId, note) {
   const h = Array.isArray(it.history) ? it.history.slice() : []; const at = new Date().toISOString();
   for (const k of HIST_FIELDS) if (k in patch && String(patch[k] == null ? '' : patch[k]) !== String(it[k] == null ? '' : it[k])) h.push(Object.assign({ at, by: userId || '', field: k, from: it[k] == null ? '' : it[k], to: patch[k] == null ? '' : patch[k] }, note ? { note } : {}));
@@ -48,6 +48,7 @@ function createProject(ctx, fields, byUserId) {
   const p = Object.assign(ctx.pick(fields, FIELDS), { id: ctx.store.id(), track: PM.normalizeTrack(fields.track), name: String(fields.name).trim(), status: fields.status || 'В работе', risk: fields.risk || 'Низкий', createdAt: new Date().toISOString(), createdBy: byUserId || '' });
   if (!PM.STATUS.includes(p.status)) p.status = 'В работе'; if (!PM.RISK.includes(p.risk)) p.risk = 'Низкий';
   if (fields.budget) p.budget = cleanBudget(fields.budget);
+  p.templateVersion = PM.TEMPLATE_VERSION[p.track] || '';
   ctx.db.pmProjects.push(p); addItems(ctx, PM.itemsFromTemplate(p.track, p.id, { start: p.start, due: p.due, months: fields.months }));
   if (p.start) { const r = applyPlan(ctx, p, p.start, !!(fields.fit && p.due)); if (!p.forecast) p.forecast = fields.fit && p.due ? p.due : r.end; }
   ctx.store.save(); ctx.store.audit(byUserId || '', 'create', 'pmProjects', p.id); ctx.emit('pm.project.created', { project: p });
@@ -117,6 +118,28 @@ function hoursOf(ctx, hr, p, user, canBudget) {
   const people = (all.byEmployee || []).map(e => Object.assign({ employeeId: e.employeeId, name: e.name || e.employeeId, position: e.position || '', hours: e.hours, byMonth: Object.fromEntries(months.map(m => [m, ((perMonth[m].byEmployee || []).find(x => x.employeeId === e.employeeId) || {}).hours || 0])) }, money ? { cost: e.cost, rate: e.rate } : {}));
   return { money, total: Object.assign({ hours: all.hours || 0 }, money ? { cost: all.cost || 0 } : {}), weeks: all.weeks || 0, byStatus: all.byStatus || {}, months, byMonth: Object.fromEntries(months.map(m => [m, Object.assign({ hours: all.byMonth[m].hours }, money ? { cost: all.byMonth[m].cost } : {})])), sections, people };
 }
+// пересборка пунктов проекта по текущему шаблону: совпавшие по коду или названию сохраняют отметки, сроки, исполнителей, заметки и историю;
+// прочие пункты с данными (из ClickUp, ручные, старый шаблон) — в конец, этап «Прочее» (keepExtra), иначе удаляются; что удалено — в журнал
+function rebuildItems(ctx, p, track, keepExtra, userId) {
+  const db = ctx.db; const now = new Date().toISOString();
+  const old = db.pmItems.filter(i => i.pid === p.id).sort((a, b) => a.stage - b.stage || (a.order || 0) - (b.order || 0));
+  const fresh = PM.itemsFromTemplate(track, p.id, { start: p.start, due: p.due }); const used = new Set();
+  const rep = { template: track, version: PM.TEMPLATE_VERSION[track] || '', matched: 0, created: 0, moved: [], deleted: [] };
+  const CARRY = ['done', 'doneAt', 'doneBy', 'doneNote', 'na', 'due', 'assigneeId', 'contractor', 'note', 'history', 'returns', 'rmStatus', 'weeksMax', 'cuId'];
+  const hasData = x => !!(x.done || x.na || x.due || x.assigneeId || x.contractor || x.note || (x.history || []).length || x.rmStatus);
+  for (const n of fresh) {
+    const free = old.filter(x => !used.has(x.id));
+    const o = (n.code && free.find(x => x.code && PM.normCode(x.code) === PM.normCode(n.code))) || free.find(x => PM.normTitle(x.title) === PM.normTitle(n.title)) || (free.length ? PM.findItemByTitle(free.filter(x => !x.custom), n.title) : null);
+    if (o) { used.add(o.id); for (const k of CARRY) if (o[k] !== undefined && o[k] !== '' && o[k] !== null) n[k] = o[k]; rep.matched++; } else rep.created++;
+    n.id = ctx.store.id();
+  }
+  const lastStage = Math.max(0, ...fresh.map(i => i.stage)) + 1; let order = fresh.length; const keep = new Set();
+  for (const x of old) { if (used.has(x.id)) continue; if (keepExtra && (x.custom || hasData(x))) { Object.assign(x, { stage: lastStage, stageName: 'Прочее', order: ++order, custom: true }); keep.add(x.id); rep.moved.push(x.title); } else rep.deleted.push(x.title); }
+  db.pmItems = db.pmItems.filter(i => i.pid !== p.id || keep.has(i.id)).concat(fresh);
+  Object.assign(p, { templateVersion: PM.TEMPLATE_VERSION[track] || '', rebuiltAt: now, rebuiltBy: userId, updatedAt: now, updatedBy: userId });
+  ctx.store.save(); ctx.store.audit(userId, 'rebuild', 'pmProjects', p.id, { template: track, matched: rep.matched, created: rep.created, moved: rep.moved.length, deleted: rep.deleted });
+  return rep;
+}
 // финансовый проект, к которому привязан проект управления
 function finProject(db, p) { return p && p.projectId ? db.projects.find(x => x.id === p.projectId) || null : null; }
 // подрядчики по финансовому проекту — подсказки для поля «Исполнитель-подрядчик» (только названия, без сумм)
@@ -152,7 +175,7 @@ function handle(ctx) {
   const card = p => {
     const items = db.pmItems.filter(i => i.pid === p.id).sort((x, y) => x.stage - y.stage || x.order - y.order);
     const h = PM.health(p, db.pmItems, t);
-    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [] };
+    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i), waiting: PM.waitingFor(items, i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [] };
     if (staff) { out.staff = true; out.blockers = out.blockers.filter(x => x.ownerId === user.id); out.contractors = []; }
     const hrMod = ctx.modules && ctx.modules.hr; if (hrMod && hrMod.laborHours && !staff) out.hours = hoursOf(ctx, hrMod, p, user, out.canBudget); // вкладка «Часы» — только при включённом модуле hr
     if (out.canBudget) out.throughput = PM.throughput(p, h);
@@ -183,7 +206,7 @@ function handle(ctx) {
     dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }, PM.canBudget(user, r) ? { throughput: PM.throughput(r, r.health) } : {}));
     return ok(Object.assign(dash, { blockersList: db.pmBlockers.filter(x => PM.shownTrack((findP(x.pid) || {}).track) && (!staff || x.ownerId === user.id)).map(blockerOut), settings: PM.isLeader(user) ? S : undefined, canSettings: ['owner', 'partner'].includes(user.role), staff, canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
   }
-  if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
+  if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it), waiting: PM.waitingFor(db.pmItems.filter(x => x.pid === it.pid), it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
   if (a === 'finance' && b === 'projects' && method === 'GET') { if (!PM.isLeader(user)) return err(403, 'Только руководитель'); return ok(finProjects()); }
   if (a === 'projects') {
     if (!b && method === 'GET') return ok(db.pmProjects.filter(p => (!ctx.qs.track || p.track === ctx.qs.track) && visibleP(p)).map(p => Object.assign(projOut(PM.summary(p, db.pmItems, db.pmBlockers, t)), { canEdit: PM.isManager(user, p) })));
@@ -225,6 +248,28 @@ function handle(ctx) {
       const linkKey = next + 'Id'; if (p[linkKey] && findP(p[linkKey])) return err(400, 'Проект уже передан дальше');
       const q = createProject(ctx, { track: next, name: body.name || p.name, no: p.no || '', client: p.client || '', address: p.address || '', area: p.area || '', projectId: p.projectId || '', folder: p.folder || '', members: p.members || {}, pmId: body.pmId || p.pmId || '', gipId: body.gipId || p.gipId || '', start: body.start || t, due: body.due || '', fit: !!body.due, comment: body.comment || '', miroUrl: next === 'ep' ? (p.miroUrl || '') : '' }, user.id);
       q[p.track + 'Id'] = p.id; Object.assign(p, { status: 'Готово', [linkKey]: q.id, handedAt: t }); store.save(); store.audit(user.id, 'handover', 'pmProjects', p.id, { to: q.id, track: next }); ctx.emit('pm.project.handover', { from: p, to: q }); return ok(card(q));
+    }
+    // пересобрать пункты по текущему шаблону (руководитель): {template: ep|rp, keepExtra: true}
+    if (p && c === 'rebuild' && method === 'POST') {
+      if (!PM.isLeader(user)) return err(403, 'Пересобрать пункты может руководитель');
+      const track = TRACKS.includes(body.template) ? body.template : p.track; const keepExtra = !(body.keepExtra === false || body.keepExtra === 'false' || body.keepExtra === 0);
+      const rep = rebuildItems(ctx, p, track, keepExtra, user.id); return ok(Object.assign({ report: rep }, card(p)));
+    }
+    // статусы из дорожной карты по кодам пунктов: {items: [{code, status, due, title?}]} → «сделано» и подпись статуса (ГИП/ПМ проекта, руководитель)
+    if (p && c === 'statuses' && method === 'POST') {
+      if (!PM.isManager(user, p)) return err(403, 'Статусы ставит ГИП/ПМ проекта или руководитель');
+      const list = Array.isArray(body.items) ? body.items : []; if (!list.length) return err(400, 'Нет строк items');
+      const items = db.pmItems.filter(i => i.pid === p.id); const rep = { updated: 0, done: 0, missing: [] };
+      for (const r of list) {
+        const code = PM.normCode(r.code); const it = (code && items.find(i => i.code && PM.normCode(i.code) === code)) || (r.title ? PM.findItemByTitle(items, r.title) : null);
+        if (!it) { rep.missing.push(r.code || r.title || '?'); continue; }
+        const st = PM.roadmapStatus(r.status); const patch = {}; const due = r.due ? PM.parseAnyDate(r.due) : '';
+        if (due) patch.due = due; if (st.label !== undefined) patch.rmStatus = st.label;
+        if (st.done === true && !it.done) { Object.assign(patch, { done: true, doneAt: due || it.due || t, doneBy: user.id, doneNote: 'по дорожной карте' }); rep.done++; }
+        if (st.done === false && it.done) Object.assign(patch, { done: false, doneAt: '', doneBy: '' });
+        logHistory(it, patch, user.id, 'по дорожной карте'); Object.assign(it, patch, { updatedAt: now(), updatedBy: user.id }); rep.updated++;
+      }
+      store.save(); store.audit(user.id, 'statuses', 'pmProjects', p.id, rep); return ok(Object.assign({ report: rep }, card(p)));
     }
     // ретроспектива: снимок показателей + выводы и план действий (Метод Пульса)
     if (p && c === 'retro' && method === 'POST') {
@@ -331,4 +376,4 @@ function handle(ctx) {
   return err(404, 'Нет такого действия');
 }
 
-module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers'], handle, createProject, collapseConcept, importClickup, hoursOf, logHistory, domain: PM };
+module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers'], handle, createProject, collapseConcept, importClickup, hoursOf, logHistory, rebuildItems, domain: PM };
