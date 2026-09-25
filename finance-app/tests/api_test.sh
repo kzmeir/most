@@ -9,7 +9,7 @@ rm -rf "$DATA_DIR"
 cd "$APP"
 node server.js > $SCR/server.log 2>&1 &
 SP=$!
-sleep 1.2
+for i in $(seq 1 40); do curl -s -o /dev/null http://localhost:$PORT/api/status && break; sleep 0.25; done   # ждём старта: модулей много, 1,2 с уже мало
 B=http://localhost:$PORT/api
 BE=http://localhost:$((PORT + 1))/api   # сайт MOST ERP того же процесса (SPLIT всегда включён без DEV_USER) — модули только тут
 H='-H Content-Type:application/json -H X-Requested-With:fetch'
@@ -255,7 +255,7 @@ kill $SP 2>/dev/null; wait $SP 2>/dev/null
 rm -rf "$DATA_DIR"
 DEV_USER=pm PORT=$PORT node server.js > $SCR/server-dev.log 2>&1 &
 SP2=$!
-sleep 1.2
+for i in $(seq 1 40); do curl -s -o /dev/null http://localhost:$PORT/api/status && break; sleep 0.25; done   # ждём старта: модулей много, 1,2 с уже мало
 chk "dev user: /me работает локально без cookie" 200 "$(code $B/me)"
 chk "cookie devrole=owner принимается" 200 "$(code -H 'Cookie: devrole=owner' $B/me)"
 OWNROLE=$(curl -s -H 'Cookie: devrole=owner' $B/me | python3 -c 'import sys,json;print(json.load(sys.stdin)["user"]["role"])')
@@ -269,7 +269,7 @@ kill $SP2 2>/dev/null; wait $SP2 2>/dev/null
 rm -rf "$DATA_DIR"
 TRUST_PROXY=1 PORT=$PORT DEV_USER=pm node server.js > $SCR/server-trust.log 2>&1 &
 SP3=$!
-sleep 1.2
+for i in $(seq 1 40); do curl -s -o /dev/null http://localhost:$PORT/api/status && break; sleep 0.25; done   # ждём старта: модулей много, 1,2 с уже мало
 chk "TRUST_PROXY=1 (за туннелем) отключает dev-вход даже с 127.0.0.1" 401 "$(code $B/me)"
 kill $SP3 2>/dev/null; wait $SP3 2>/dev/null
 
@@ -279,7 +279,7 @@ ERP_PORT=$((PORT + 1))
 BE=http://localhost:$ERP_PORT/api
 DEV_USER=owner DEV_SPLIT=1 PORT=$PORT ERP_PORT=$ERP_PORT node server.js > $SCR/server-split.log 2>&1 &
 SP4=$!
-sleep 1.2
+for i in $(seq 1 40); do curl -s -o /dev/null http://localhost:$PORT/api/status && break; sleep 0.25; done   # ждём старта: модулей много, 1,2 с уже мало
 chk "сайт Финансы: /api/ops 200" 200 "$(code $B/ops)"
 chk "сайт Финансы: /api/pm/overview 404 (модули не отдаёт)" 404 "$(code $B/pm/overview)"
 chk "сайт ERP: /api/ops 404 (финансы не отдаёт)" 404 "$(code $BE/ops)"
