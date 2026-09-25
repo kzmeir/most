@@ -25,7 +25,7 @@
   ],
   onNav(ui, id) {
     // кнопка «✦ ИИ» в шапке карточки проекта pm (без правки модуля pm): ведёт в панель с выбранным проектом
-    if (id !== 'pmp' || !window.MostAI || !window.MostAI.canUse(ui.state.user) || window.MOST_SITE === 'fin') return;
+    if (!['pmp', 'ep/p', 'rp/p'].includes(id) || !window.MostAI || !window.MostAI.canUse(ui.state.user) || window.MOST_SITE === 'fin') return;
     let n = 0; const tick = () => { const h = document.querySelector('.main .head'); const pid = ui.params().get('id');
       if (h && pid && !h.querySelector('.ai-pmbtn')) h.insertAdjacentHTML('beforeend', `<a class="btn sm ai-pmbtn" href="#/ai?scope=pm&pid=${encodeURIComponent(pid)}" title="ИИ-панель по этому проекту">✦ ИИ</a>`);
       else if (!h && ++n < 30) setTimeout(tick, 100); };
@@ -110,7 +110,7 @@ ${(d.plan.dues || []).length ? `<div class="label">Сроки пунктов</di
 ${(d.plan.items || []).length ? `<div class="label" style="margin-top:10px">Новые пункты</div>${d.plan.items.map((x, i) => `<label><input type="checkbox" data-item="${i}" checked><span><b>${esc(x.title)}</b> · этап ${x.stage} · ${esc(x.role)} · ${x.weeks} нед.${x.due ? ' · до ' + fdate(x.due) : ''}${x.crit ? `<br><span class="faint">${esc(x.crit)}</span>` : ''}</span></label>`).join('')}` : ''}
 <div class="actions" style="margin-top:10px"><button class="btn primary" id="ai-apply"${d.applied ? ' disabled' : ''}>${d.applied ? 'Применено ' + fdate(d.applied.at) : 'Применить выбранное'}</button></div></div>` : '';
       const projHtml = d.project ? `<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Новый проект</h3><div class="kv"><span>Название</span><b>${esc(d.project.name)}</b><span>Стадия</span><b>${esc({ concept: 'Концепция', ep: 'ЭП', rp: 'РП', an: 'АН' }[d.project.track])}</b><span>Заказчик</span><b>${esc(d.project.client || '—')}</b><span>Старт — срок</span><b>${fdate(d.project.start) || '—'} — ${fdate(d.project.due) || '—'}</b></div>
-<div class="actions" style="margin-top:10px">${d.applied ? `<a class="btn" href="#/pmp?id=${encodeURIComponent(d.applied.pmProjectId)}">Открыть проект</a>` : '<button class="btn primary" id="ai-apply">Создать проект в «Проектах»</button>'}</div></div>` : '';
+<div class="actions" style="margin-top:10px">${d.applied ? `<a class="btn" href="#/ep/p?id=${encodeURIComponent(d.applied.pmProjectId)}">Открыть проект</a>` : '<button class="btn primary" id="ai-apply">Создать проект в «Проектах»</button>'}</div></div>` : '';
       out.innerHTML = `<div class="card"><div class="head" style="margin:0 0 6px"><div class="grow"><h2>${esc(d.title)}</h2><p class="sub" style="margin:0">${esc(d.label)}${d.pname ? ' · ' + esc(d.pname) : ''} · ${fdate(d.createdAt)} ${String(d.createdAt).slice(11, 16)}${d.backend === 'mock' ? ' · заглушка' : ''}</p></div>
 <div class="actions"><a class="btn" href="/api/ai/drafts/${encodeURIComponent(d.id)}/docx">⬇ Скачать .docx</a><button class="btn" id="ai-copy">Копировать</button><button class="btn danger" id="ai-del" title="Удалить черновик">✕</button></div></div>
 ${d.question ? `<p class="faint" style="margin:0 0 8px">Запрос: ${esc(ui.cut(d.question, 300))}</p>` : ''}${d.summary ? `<p class="sum">${inline(d.summary)}</p>` : ''}<div class="ai-doc">${blocksHtml(d.blocks) || '<p class="faint">Пустой ответ</p>'}</div>
