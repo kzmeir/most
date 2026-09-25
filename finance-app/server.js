@@ -21,7 +21,9 @@ const MAX_OPS = 3000;
 
 // ---------- модули ERP: modules/<id>/server.js (API + коллекции), domain.js и ui.js (браузер). Контракт — docs/ARCHITECTURE.md ----------
 const MODULES_DIR = path.join(__dirname, 'modules');
-const MODULES = (fs.existsSync(MODULES_DIR) ? fs.readdirSync(MODULES_DIR) : []).sort()
+// порядок в меню и переключателе: первый видимый модуль открывается при входе (на ERP — «Проекты», в «Финансах» после самих финансов — «Коммерция»)
+const MODULE_ORDER = ['pm', 'board', 'kb', 'office', 'hr', 'crm', 'analytics', 'ai', 'sys'];
+const MODULES = (fs.existsSync(MODULES_DIR) ? fs.readdirSync(MODULES_DIR) : []).sort((a, b) => ((MODULE_ORDER.indexOf(a) + 1) || 99) - ((MODULE_ORDER.indexOf(b) + 1) || 99) || a.localeCompare(b))
   .filter(n => /^[a-z][a-z0-9]*$/.test(n) && fs.existsSync(path.join(MODULES_DIR, n, 'server.js')))
   .map(n => Object.assign(require(path.join(MODULES_DIR, n, 'server.js')), { dir: path.join(MODULES_DIR, n), id: n }));
 const MODULE_BY_ID = Object.fromEntries(MODULES.map(m => [m.id, m]));
