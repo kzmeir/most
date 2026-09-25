@@ -415,6 +415,21 @@ const HOST = DEV_ROLE ? '127.0.0.1' : '0.0.0.0';
 // в режиме разработки — один порт со всеми разделами; на рабочем сервере — два сайта
 const SPLIT = !DEV_ROLE || !!process.env.DEV_SPLIT; // DEV_SPLIT=1 — два сайта и в режиме разработки
 if (SPLIT) http.createServer(handler('erp')).listen(ERP_PORT, HOST);
+// Адреса по имени на стандартном порту: http://fin.most → «Финансы», http://erp.most (и любое другое имя) → ERP.
+// «Финансы» — только по имени из FIN_HOSTS и только из офиса: запрос через туннель (cf-connecting-ip / x-forwarded-for) всегда уходит в ERP.
+// Имена прописывает сисадмин в роутере (DNS) или файле hosts. NAME_PORT=0 — выключить.
+const NAME_PORT = Number(process.env.NAME_PORT == null ? 80 : process.env.NAME_PORT);
+const FIN_HOSTS = String(process.env.FIN_HOSTS || 'fin.most,finance.most,fin').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+if (SPLIT && NAME_PORT) {
+  const fin = handler('fin'), erp = handler('erp');
+  const byName = http.createServer((req, res) => {
+    const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+    const viaTunnel = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'];
+    return (!viaTunnel && FIN_HOSTS.includes(host) ? fin : erp)(req, res);
+  });
+  byName.on('error', e => console.log(`  Адреса по имени (порт ${NAME_PORT}) не включены: ${e.code === 'EADDRINUSE' ? 'порт занят другой программой' : e.code === 'EACCES' ? 'нет прав на порт' : e.message}. Работают адреса с портами.`));
+  byName.listen(NAME_PORT, HOST, () => console.log(`  По имени (порт ${NAME_PORT}): http://${FIN_HOSTS[0]} — «Финансы», http://erp.most — ERP`));
+}
 http.createServer(handler(SPLIT ? 'fin' : 'all')).listen(PORT, HOST, () => {
   console.log('\n  MOST запущен.');
   console.log(`  Финансы (офис):      http://localhost:${PORT}   ` + lanIPs().map(ip => `http://${ip}:${PORT}`).join('  '));
