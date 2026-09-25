@@ -155,7 +155,7 @@ function handle(ctx) {
   const [, a, b, c, d] = parts;
   const S = PM.pmSettings(db); const staff = PM.isStaff(user);
   // доступность модуля для текущего пользователя — без прав на модуль: меню в браузере узнаёт, показывать ли «Проекты» сотруднику
-  if (a === 'access' && method === 'GET') return ok({ canOpen: PM.canOpen(user, S), staffOwnProjects: !!S.staffOwnProjects, staff });
+  if (a === 'access' && method === 'GET') return ok({ canOpen: PM.canOpen(user, S), staffOwnProjects: !!S.staffOwnProjects, staff, tracks: PM.canOpen(user, S) ? PM.userTracks(user, db.pmProjects, db.pmItems) : [] });
   if (!PM.canOpen(user, S)) return err(403, 'Нет доступа к управлению проектами');
   // настройки модуля: читает руководитель, меняют владелец и партнёр (db.settings.pm)
   if (a === 'settings') {
@@ -200,11 +200,15 @@ function handle(ctx) {
       if (p.pmId === user.id && ['ПМ', 'Заказчик'].includes(it.role)) return true;
       return PM.isLeader(user) && !!it.due && it.due < t; });
   };
-  if (a === 'badges' && method === 'GET') return ok({ pmmy: myItems().filter(it => it.due && it.due < t).length, pmbl: db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && (!staff || x.ownerId === user.id) && x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE(q.status); }).length });
+  const inTrackQ = p => { const q = ctx.qs && ctx.qs.track; return !q || PM.trackPath(p.track) === PM.trackPath(q); }; // ?track=ep|rp — раздел интерфейса (concept считается ЭП)
+  if (a === 'badges' && method === 'GET') { const my = myItems().filter(it => it.due && it.due < t); const bl = db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && (!staff || x.ownerId === user.id) && x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE(q.status); });
+    const byTrack = { ep: { my: 0, bl: 0 }, rp: { my: 0, bl: 0 } }; for (const it of my) { const q = findP(it.pid); if (q) byTrack[PM.trackPath(q.track)].my++; } for (const x of bl) byTrack[PM.trackPath(findP(x.pid).track)].bl++;
+    return ok({ pmmy: my.length, pmbl: bl.length, byTrack }); }
+  if (false) return ok({ pmmy: myItems().filter(it => it.due && it.due < t).length, pmbl: db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && (!staff || x.ownerId === user.id) && x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE(q.status); }).length });
   if (a === 'overview' && method === 'GET') {
-    const dash = PM.dashboard(db.pmProjects.filter(p => PM.shownTrack(p.track) && visibleP(p)), db.pmItems, db.pmBlockers, t); // АН скрыт из сводки (данные и карточки по API остаются)
+    const dash = PM.dashboard(db.pmProjects.filter(p => PM.shownTrack(p.track) && visibleP(p) && inTrackQ(p)), db.pmItems, db.pmBlockers, t); // АН скрыт из сводки (данные и карточки по API остаются)
     dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }, PM.canBudget(user, r) ? { throughput: PM.throughput(r, r.health) } : {}));
-    return ok(Object.assign(dash, { blockersList: db.pmBlockers.filter(x => PM.shownTrack((findP(x.pid) || {}).track) && (!staff || x.ownerId === user.id)).map(blockerOut), settings: PM.isLeader(user) ? S : undefined, canSettings: ['owner', 'partner'].includes(user.role), staff, canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
+    return ok(Object.assign(dash, { blockersList: db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && inTrackQ(q) && visibleP(q) && (!staff || x.ownerId === user.id); }).map(blockerOut), settings: PM.isLeader(user) ? S : undefined, canSettings: ['owner', 'partner'].includes(user.role), staff, canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
   }
   if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it), waiting: PM.waitingFor(db.pmItems.filter(x => x.pid === it.pid), it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
   if (a === 'finance' && b === 'projects' && method === 'GET') { if (!PM.isLeader(user)) return err(403, 'Только руководитель'); return ok(finProjects()); }
