@@ -267,7 +267,29 @@
   }
   // текст PDF-счёта (типовая форма «Счет на оплату № … от …») → поля счёта
   const RU_MONTHS = { января: 1, февраля: 2, марта: 3, апреля: 4, мая: 5, июня: 6, июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12 };
-  function parseInvoiceText(text) {
+  // текст после распознавания скана (OCR): латиница-двойники в русских словах, «О/З/l» вместо цифр в числах, «№» как «N°/Ne», пробелы вокруг знаков
+  const LAT_CYR = { A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У', a: 'а', c: 'с', e: 'е', o: 'о', p: 'р', x: 'х', y: 'у' };
+  const DIGIT_LIKE = { 'О': '0', 'O': '0', 'о': '0', 'o': '0', 'З': '3', 'з': '3', 'l': '1', 'I': '1', '|': '1' };
+  function ocrNormalize(text) {
+    let t = String(text || '').replace(/\r/g, '').replace(/[ \t   ]+/g, ' ');
+    // русские слова с латинскими буквами-двойниками: «Cчeт» → «Счет», «ИTOГO» → «ИТОГО»
+    t = t.replace(/[A-Za-zА-Яа-яЁё]+/g, w => /[А-Яа-яЁё]/.test(w) && /[A-Za-z]/.test(w) ? w.replace(/[A-Za-z]/g, ch => LAT_CYR[ch] || ch) : w);
+    // «№»: N°, Nº, No, Ne, Ns, N2 перед числом
+    t = t.replace(/(^|[\s(])N\s?[°ºoOeEsS2]\.?\s*(?=[\dО])/g, '$1№ ');
+    // числовые токены: буквы-двойники цифр, если в токене уже есть цифры («6 З00,О0» → «6 300,00», «2О.О9.2О26» → «20.09.2026»)
+    // (токены, приклеенные к буквам — IBAN «KZ…», «корпус 1Б», — не трогаем)
+    t = t.replace(/(?<![A-Za-zА-Яа-яЁё0-9])[0-9ОOоoЗзlI|.,:\/-]+(?![A-Za-zА-Яа-яЁё])/g, w => /\d/.test(w) && /[ОOоoЗзlI|]/.test(w) && !/^[.,:\/-]|[ОOоoЗзlI|]{3,}/.test(w) ? w.replace(/[ОOоoЗзlI|]/g, ch => DIGIT_LIKE[ch]) : w);
+    // группы разрядов сплошь из букв-двойников после числа: «1 095 ООО,ОО» → «1 095 000,00» (повторяем, пока меняется)
+    const fixGroup = g => g.replace(/[ОOоЗз]/g, ch => DIGIT_LIKE[ch]);
+    for (let i = 0, prev = ''; i < 5 && prev !== t; i++) { prev = t; t = t.replace(/(?<=\d) ([0-9ОOоЗз]{3})(?=[ ,.:]|$)/gm, (m, g) => ' ' + fixGroup(g)).replace(/(?<=\d[,.])([0-9ОOоЗз]{2})(?![0-9A-Za-zА-Яа-яЁё])/g, g => fixGroup(g)); }
+    // организационные формы латиницей: «TOO» → «ТОО», «AO» → «АО»
+    t = t.replace(/(^|[\s"«(])(TOO|OOO|AO)(?=[\s"«])/g, (m, a, w) => a + w.replace(/[A-Z]/g, ch => LAT_CYR[ch]));
+    // пробелы вокруг знаков: «Итого :», «6 756 , 00»
+    t = t.replace(/ +:/g, ':').replace(/(\d) ?([,.]) ?(\d{2})(?!\d)/g, '$1$2$3');
+    return t;
+  }
+  function parseInvoiceText(text, opts) {
+    if (opts && opts.ocr) text = ocrNormalize(text);
     const t = String(text || '').replace(/[ \t ]+/g, ' ');
     const out = { number: '', invoiceDate: '', contractor: '', company: '', amount: 0, purpose: '' };
     const money = s => num(String(s).replace(/\s/g, '').replace(',', '.'));
@@ -619,5 +641,5 @@
     return cols;
   }
 
-  return { SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, subProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, receivables, cashForecast };
+  return { ocrNormalize, SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, subProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, receivables, cashForecast };
 });
