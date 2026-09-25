@@ -152,6 +152,12 @@ chk "стрелка на отсутствующий объект после done
 chk "доска видна в списке с проектом и источником" true "$(call STAFF GET "/board/boards?pid=$P" | js '(()=>{const b=d.boards.find(x=>x.id==="'$IMPID'");return !!b && b.source.url.includes("miro.com")})()')"
 chk "продолжение в чужую доску без прав — 404 на несуществующую" 404 "$(code PART POST /board/import '{"boardId":"нет","items":[]}')"
 call PART DELETE /board/boards/$IMPID > /dev/null
+echo "== страница переноса (GET /api/board/import/page — tools/miro_upload.html) =="
+chk "owner: 200, html" "200 text/html; charset=utf-8" "$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "${OWN[@]}" $B/board/import/page)"
+chk "partner: 200" 200 "$(code PART GET /board/import/page)"
+chk "gip: 403" 403 "$(code GIP GET /board/import/page)"
+chk "staff: 403" 403 "$(code STAFF GET /board/import/page)"
+chk "страница — загрузчик JSON (input files, /api/pm/projects, части)" true "$(curl -s "${OWN[@]}" $B/board/import/page | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(String(s.includes('id=\"files\"')&&s.includes('pm/projects')&&s.includes('part.key'))))")"
 
 echo "== удаление досок =="
 chk "участник удалить свободную 403" 403 "$(code SEC DELETE /board/boards/$FB)"
