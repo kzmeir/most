@@ -169,7 +169,15 @@
   // ---- права ----
   const LEADERS = ['owner', 'partner'];
   const PM_ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm', 'gip', 'lead'];
-  const canOpen = u => !!u && PM_ROLES.includes(u.role);
+  // настройки модуля (db.settings.pm). staffOwnProjects — рядовые сотрудники (staff) видят проекты, где они исполнители пунктов или участники (members); по умолчанию выключено
+  const SETTINGS_DEFAULT = { staffOwnProjects: false };
+  const pmSettings = db => Object.assign({}, SETTINGS_DEFAULT, (db && db.settings && db.settings.pm) || {});
+  const isStaff = u => !!u && u.role === 'staff';
+  const canOpen = (u, s) => !!u && (PM_ROLES.includes(u.role) || (isStaff(u) && !!(s && s.staffOwnProjects)));
+  const memberIds = p => { const m = p && p.members; return Array.isArray(m) ? m.map(String) : m && typeof m === 'object' ? Object.values(m).flat().map(String) : []; };
+  // проект виден сотруднику: он участник проекта или исполнитель хотя бы одного пункта
+  const staffSees = (u, p, items) => !!u && !!p && (memberIds(p).includes(u.id) || (items || []).some(i => i.pid === p.id && i.assigneeId === u.id));
+  const STAFF_ITEM_FIELDS = ['done', 'doneNote', 'note']; // что сотрудник может менять в своём пункте (срок и исполнителя — нет)
   const isLeader = u => !!u && LEADERS.includes(u.role);
   const isManager = (u, p) => !!u && !!p && (isLeader(u) || p.gipId === u.id || p.pmId === u.id);
   const canCreate = u => !!u && (isLeader(u) || u.role === 'pm' || u.role === 'gip');
@@ -498,7 +506,7 @@
   // снимок показателей для ретроспективы
   const retroSnapshot = (h, blockers) => ({ progress: h.progress, zone: h.zone, consumption: h.consumption, curV: h.curV, avgV: h.avgV, addedW: h.addedW, remain: h.remain, forecast: h.forecast, returns: h.returns, blockers: (blockers || []).filter(b => b.status !== 'closed').length });
 
-  return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
+  return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, SETTINGS_DEFAULT, pmSettings, isStaff, memberIds, staffSees, STAFF_ITEM_FIELDS, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
     parseCsv, CLICKUP_FIELDS, clickupAutoMap, parseAnyDate, splitList, CLICKUP_DONE, clickupStatus, normTitle, findItemByTitle, matchUser, clickupToProjects, crc32, zipStore, xlsx, registryExport, ZONE_NAME_RU,
     W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot };
 });

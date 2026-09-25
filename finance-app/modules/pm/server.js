@@ -130,8 +130,22 @@ function contractorsOf(db, p) {
 function handle(ctx) {
   const { parts, method, body, user, db, store, D, ok, err, pick, num } = ctx;
   const [, a, b, c, d] = parts;
-  if (!PM.canOpen(user)) return err(403, 'Нет доступа к управлению проектами');
+  const S = PM.pmSettings(db); const staff = PM.isStaff(user);
+  // доступность модуля для текущего пользователя — без прав на модуль: меню в браузере узнаёт, показывать ли «Проекты» сотруднику
+  if (a === 'access' && method === 'GET') return ok({ canOpen: PM.canOpen(user, S), staffOwnProjects: !!S.staffOwnProjects, staff });
+  if (!PM.canOpen(user, S)) return err(403, 'Нет доступа к управлению проектами');
+  // настройки модуля: читает руководитель, меняют владелец и партнёр (db.settings.pm)
+  if (a === 'settings') {
+    if (!PM.isLeader(user)) return err(403, 'Только руководитель');
+    if (method === 'GET') return ok(S);
+    if (method === 'PUT') {
+      if (!['owner', 'partner'].includes(user.role)) return err(403, 'Менять настройки модуля могут владелец и партнёр');
+      const next = Object.assign({}, S); if ('staffOwnProjects' in body) next.staffOwnProjects = body.staffOwnProjects === true || body.staffOwnProjects === 'true' || body.staffOwnProjects === 1;
+      db.settings = Object.assign({}, db.settings, { pm: next }); store.save(); store.audit(user.id, 'update', 'settings', 'pm', next); return ok(next);
+    }
+  }
   const t = ctx.today(); const now = () => new Date().toISOString(); const findP = id => db.pmProjects.find(p => p.id === id);
+  const visibleP = p => !!p && (!staff || PM.staffSees(user, p, db.pmItems)); // сотрудник видит только свои проекты
   const projOut = p => { const o = Object.assign({}, p); if (!PM.canBudget(user, p)) delete o.budget; return o; };
   const finProjects = () => db.projects.map(x => ({ id: x.id, name: x.name, status: x.status || '' })).sort((x, y) => (x.status === 'archive') - (y.status === 'archive') || String(x.name).localeCompare(String(y.name), 'ru'));
   const blockerOut = x => { const p = findP(x.pid) || {}; return Object.assign({}, x, { project: p.name || '', track: p.track || '', days: PM.blockerAge(x, t), canEdit: PM.isManager(user, p) || x.createdBy === user.id }); };
@@ -139,7 +153,8 @@ function handle(ctx) {
     const items = db.pmItems.filter(i => i.pid === p.id).sort((x, y) => x.stage - y.stage || x.order - y.order);
     const h = PM.health(p, db.pmItems, t);
     const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [] };
-    const hrMod = ctx.modules && ctx.modules.hr; if (hrMod && hrMod.laborHours) out.hours = hoursOf(ctx, hrMod, p, user, out.canBudget); // вкладка «Часы» — только при включённом модуле hr
+    if (staff) { out.staff = true; out.blockers = out.blockers.filter(x => x.ownerId === user.id); out.contractors = []; }
+    const hrMod = ctx.modules && ctx.modules.hr; if (hrMod && hrMod.laborHours && !staff) out.hours = hoursOf(ctx, hrMod, p, user, out.canBudget); // вкладка «Часы» — только при включённом модуле hr
     if (out.canBudget) out.throughput = PM.throughput(p, h);
     for (const k of ['epId', 'rpId', 'conceptId']) { const q = p[k] && findP(p[k]); if (q) out[k.replace('Id', '')] = { id: q.id, name: q.name, status: q.status, track: q.track }; }
     const fp = finProject(db, p); if (fp) out.finance = { id: fp.id, name: fp.name, client: fp.client || '', status: fp.status || '' };
@@ -149,6 +164,7 @@ function handle(ctx) {
       if (fp) { const ops = db.ops.filter(o => (o.project === fp.id || o.project === fp.name) && D.catKind(db.categories, o.category) !== 'transfer'); const subs = db.subcontracts.filter(s => s.project === fp.id || s.project === fp.name);
         out.fact = { project: fp.name, income: ops.reduce((s, o) => s + num(o.credit), 0), expense: ops.reduce((s, o) => s + num(o.debit), 0), n: ops.length, subPaid: subs.reduce((s, x) => s + num(x.paid), 0), subSum: subs.reduce((s, x) => s + num(x.sum), 0), contracts: db.contracts.filter(cn => cn.projectId === fp.id || cn.code === fp.id).reduce((s, x) => s + num(x.sum), 0), contractNoVat: num(fp.contractNoVat), targetCost: num(fp.targetCost) }; }
     }
+    if (staff) { delete out.finance; delete out.financeProjects; delete out.budget; delete out.fact; delete out.throughput; }
     return out;
   };
   // счётчики в меню: просроченные «мои» пункты и блокеры старше 14 дней
@@ -161,16 +177,16 @@ function handle(ctx) {
       if (p.pmId === user.id && ['ПМ', 'Заказчик'].includes(it.role)) return true;
       return PM.isLeader(user) && !!it.due && it.due < t; });
   };
-  if (a === 'badges' && method === 'GET') return ok({ pmmy: myItems().filter(it => it.due && it.due < t).length, pmbl: db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE(q.status); }).length });
+  if (a === 'badges' && method === 'GET') return ok({ pmmy: myItems().filter(it => it.due && it.due < t).length, pmbl: db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && (!staff || x.ownerId === user.id) && x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE(q.status); }).length });
   if (a === 'overview' && method === 'GET') {
-    const dash = PM.dashboard(db.pmProjects.filter(p => PM.shownTrack(p.track)), db.pmItems, db.pmBlockers, t); // АН скрыт из сводки (данные и карточки по API остаются)
+    const dash = PM.dashboard(db.pmProjects.filter(p => PM.shownTrack(p.track) && visibleP(p)), db.pmItems, db.pmBlockers, t); // АН скрыт из сводки (данные и карточки по API остаются)
     dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }, PM.canBudget(user, r) ? { throughput: PM.throughput(r, r.health) } : {}));
-    return ok(Object.assign(dash, { blockersList: db.pmBlockers.filter(x => PM.shownTrack((findP(x.pid) || {}).track)).map(blockerOut), canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
+    return ok(Object.assign(dash, { blockersList: db.pmBlockers.filter(x => PM.shownTrack((findP(x.pid) || {}).track) && (!staff || x.ownerId === user.id)).map(blockerOut), settings: PM.isLeader(user) ? S : undefined, canSettings: ['owner', 'partner'].includes(user.role), staff, canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
   }
   if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
   if (a === 'finance' && b === 'projects' && method === 'GET') { if (!PM.isLeader(user)) return err(403, 'Только руководитель'); return ok(finProjects()); }
   if (a === 'projects') {
-    if (!b && method === 'GET') return ok(db.pmProjects.filter(p => !ctx.qs.track || p.track === ctx.qs.track).map(p => Object.assign(projOut(PM.summary(p, db.pmItems, db.pmBlockers, t)), { canEdit: PM.isManager(user, p) })));
+    if (!b && method === 'GET') return ok(db.pmProjects.filter(p => (!ctx.qs.track || p.track === ctx.qs.track) && visibleP(p)).map(p => Object.assign(projOut(PM.summary(p, db.pmItems, db.pmBlockers, t)), { canEdit: PM.isManager(user, p) })));
     if (!b && method === 'POST') {
       if (!PM.canCreate(user)) return err(403, 'Создавать проекты могут руководители, ПМ и ГИП');
       if (!TRACKS.includes(body.track) || !String(body.name || '').trim()) return err(400, 'Укажите стадию (ЭП / РП) и название');
@@ -179,6 +195,7 @@ function handle(ctx) {
       return ok(card(createProject(ctx, f, user.id)));
     }
     const p = b && findP(b); if (b && !p) return err(404, 'Проект не найден');
+    if (p && staff && !visibleP(p)) return err(403, 'Проект вам не назначен');
     if (p && !c && method === 'GET') return ok(card(p));
     if (p && !c && method === 'PUT') {
       if (!PM.isManager(user, p)) return err(403, 'Менять карточку могут руководитель, ГИП и ПМ проекта');
@@ -230,7 +247,7 @@ function handle(ctx) {
     const it = db.pmItems.find(i => i.id === b); if (!it) return err(404, 'Пункт не найден'); const p = findP(it.pid);
     if (method === 'PUT') {
       if (!PM.canEditItem(user, p, it)) return err(403, 'Этот пункт ведёт другой раздел');
-      const patch = pick(body, ITEM_FIELDS_ANY);
+      const patch = pick(body, staff ? PM.STAFF_ITEM_FIELDS : ITEM_FIELDS_ANY); // сотрудник — только отметка и заметка своего пункта
       if (PM.isManager(user, p)) Object.assign(patch, pick(body, ITEM_FIELDS_MGR));
       if ('done' in patch) { patch.done = !!patch.done && patch.done !== 'false'; if (patch.done && !it.done) { patch.doneAt = t; patch.doneBy = user.id; } if (!patch.done) { if (it.done) patch.returns = (Number(it.returns) || 0) + 1; patch.doneAt = ''; patch.doneBy = ''; } }
       if ('weeksMax' in patch) patch.weeksMax = num(patch.weeksMax) || 0;
@@ -247,7 +264,7 @@ function handle(ctx) {
     if (method === 'DELETE') { if (!PM.isManager(user, p)) return err(403, 'Удалять пункты может ГИП/ПМ проекта'); db.pmItems = db.pmItems.filter(i => i.id !== it.id); store.save(); store.audit(user.id, 'delete', 'pmItems', b); return ok({ ok: true }); }
   }
   if (a === 'blockers') {
-    if (!b && method === 'GET') return ok(db.pmBlockers.map(blockerOut));
+    if (!b && method === 'GET') return ok(db.pmBlockers.filter(x => !staff || x.ownerId === user.id).map(blockerOut));
     if (!b && method === 'POST') { const p = findP(body.pid); if (!p) return err(400, 'Нет проекта'); if (!PM.isManager(user, p) && user.role !== 'lead') return err(403, 'Нет прав');
       if (!String(body.what || '').trim()) return err(400, 'Опишите, чего ждём');
       const x = Object.assign(pick(body, BLOCKER_FIELDS), { id: store.id(), pid: p.id, what: String(body.what).trim(), status: body.status === 'closed' ? 'closed' : 'open', since: body.since || t, createdAt: now(), createdBy: user.id }); db.pmBlockers.push(x); store.save(); store.audit(user.id, 'create', 'pmBlockers', x.id); return ok(blockerOut(x)); }

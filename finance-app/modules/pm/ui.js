@@ -1,17 +1,19 @@
 /* Модуль «Управление проектами» — экраны. Поток A. Помощники интерфейса приходят в init(ui) (см. docs/ARCHITECTURE.md).
    Логика — modules/pm/domain.js (window.MostPM). Данные — только /api/pm/* (на сайте ERP финансовых API нет). */
+let PM_ACCESS = { canOpen: null, staffOwnProjects: false, staff: false }; // ответ /api/pm/access: показывать ли «Проекты» сотруднику (staff)
 (window.MOST_MODULES = window.MOST_MODULES || []).push({
   id: 'pm',
   title: 'Проекты',
-  nav: [
-    { id: 'pm', label: 'Сводка', icon: '◎' },
-    { id: 'pmep', label: 'Эскизные проекты', icon: '✎' },
-    { id: 'pmrp', label: 'Рабочие проекты', icon: '▤' },
+  nav: [ // сотруднику (staff, при включённом settings.pm.staffOwnProjects) — только «Мои проекты» и «Мои задачи»
+    { id: 'pm', label: 'Сводка', icon: '◎', can: u => u.role !== 'staff' },
+    { id: 'pmep', label: 'Эскизные проекты', icon: '✎', can: u => u.role !== 'staff' },
+    { id: 'pmrp', label: 'Рабочие проекты', icon: '▤', can: u => u.role !== 'staff' },
+    { id: 'pmown', label: 'Мои проекты', icon: '▣', can: u => u.role === 'staff' },
     { id: 'pmmy', label: 'Мои задачи', icon: '☑' },
-    { id: 'pmbl', label: 'Блокеры', icon: '⛔' },
+    { id: 'pmbl', label: 'Блокеры', icon: '⛔', can: u => u.role !== 'staff' },
   ],
   routes: ['pmp'], // карточка проекта: #/pmp?id=…&tab=…
-  canOpen: u => !!window.MostPM && window.MostPM.canOpen(u),
+  canOpen: u => !!window.MostPM && window.MostPM.canOpen(u, PM_ACCESS),
   // инструкция модуля (раздел «Инструкция» и кнопка «?» в шапке раздела): [заголовок, html, id раздела меню]
   help: [
     ['Как устроено управление проектами', `
@@ -20,6 +22,7 @@
 <li>ЭП ведёт <b>проектный менеджер (ПМ)</b>, РП — <b>ГИП</b>: назначают сроки и исполнителей, добавляют пункты, передают проект на следующую стадию.</li>
 <li><b>Руководитель раздела</b> (АР, КЖ, ГП, ОВ, ВК, ЭЛ, СС…) отмечает пункты своего раздела во всех проектах — в том числе те, что делает субподрядчик. Субподрядчики в систему не заходят; в пункте указывается «исполнитель-подрядчик».</li>
 <li>У пункта есть <b>критерий приёмки</b> — что должно быть на руках, чтобы поставить «сделано» (подписанный документ, письмо, комплект чертежей). «Не требуется» — если пункт к проекту не относится.</li>
+<li><b>Рядовые сотрудники</b> (роль staff) модуль по умолчанию не видят. Владелец или партнёр может включить на Сводке «Доступ сотрудников»: тогда сотрудник видит «Мои проекты» (где он исполнитель пункта или участник) и «Мои задачи», только на чтение, отмечает «сделано» у своих пунктов; бюджет, финансы и чужие блокеры ему не показываются.</li>
 <li><b>Руководители</b> видят всё, назначают ГИП/ПМ, привязывают финансовый проект, видят бюджет и маржу; ГИП/ПМ видят бюджет своего проекта, если владелец включил им доступ. Деньги здесь не вводятся — факт приходит из финансов.</li>
 <li>Уведомлений нет: всё, что ждёт вас, видно в цифрах меню («Мои задачи» — просроченные пункты, «Блокеры» — висят больше 14 дней) и в списках.</li>
 </ul>`],
@@ -75,6 +78,8 @@
   init(ui) {
     const M = this; const PM = window.MostPM;
     const { esc, api, fdate, today, toast, modal, formHtml, tbl, empty, chip, sel, head, bind, params, route, money, qsOf, cut, $ } = ui;
+    // сотруднику модуль виден только при включённой настройке — узнаём у сервера и перерисовываем меню
+    api('/pm/access').then(acc => { const was = PM_ACCESS.canOpen; PM_ACCESS = acc; if (acc.staff && acc.canOpen && !was) route(); }).catch(() => {});
     if (!document.getElementById('pm-style')) document.head.insertAdjacentHTML('beforeend', `<style id="pm-style">
 .pm-kpi .card .val{font-size:20px}.pm-kpi .card .foot{margin-top:6px}
 .pm-sub{display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center;font-size:13px}
@@ -159,12 +164,12 @@
     });
 
     // ---- реестры ----
-    const REG = { pmep: { title: 'Эскизные проекты', tracks: ['ep'], also: ['concept'] }, pmrp: { title: 'Рабочие проекты', tracks: ['rp'] } }; // также: старые карточки концепций показываем среди ЭП
+    const REG = { pmep: { title: 'Эскизные проекты', tracks: ['ep'], also: ['concept'] }, pmrp: { title: 'Рабочие проекты', tracks: ['rp'] }, pmown: { title: 'Мои проекты', tracks: ['rp'], any: true } }; // также: старые карточки концепций показываем среди ЭП
     const register = (id, cfg) => async main => {
       const d = await api('/pm/overview'); ctxData = { leader: d.leader, financeProjects: d.financeProjects }; badges();
       const u = params(); const track = cfg.tracks.includes(u.get('track')) ? u.get('track') : cfg.tracks[0];
       const fs = u.get('status') || 'active', mine = u.get('mine') === '1', q = (u.get('q') || '').trim(), ql = q.toLowerCase();
-      const all = d.rows.filter(r => r.track === track || (cfg.also || []).includes(r.track));
+      const all = d.rows.filter(r => cfg.any || r.track === track || (cfg.also || []).includes(r.track)); // сервер уже отдал сотруднику только его проекты
       let rows = all.slice();
       if (fs === 'active') rows = rows.filter(r => PM.ACTIVE(r.status)); else if (fs !== 'all') rows = rows.filter(r => r.status === fs);
       if (mine) rows = rows.filter(r => r.gipId === me().id || r.pmId === me().id);
@@ -173,9 +178,9 @@
       expState = { rows, blockers: d.blockersList.filter(b => rows.some(r => r.id === b.pid)) };
       const act = all.filter(r => PM.ACTIVE(r.status));
       const sub = `${act.length} в работе · <span class="${act.filter(r => r.late).length ? 'crit-text' : ''}">просрочено ${act.filter(r => r.late).length}</span> · <span class="${act.filter(r => r.hot).length ? 'warn-text' : ''}">горит (≤ 14 дн.) ${act.filter(r => r.hot).length}</span> · просроченных пунктов ${act.reduce((s, r) => s + r.overdueN, 0)}`;
-      const tabs = cfg.tracks.length > 1 ? `<div class="tabs pm-tabs">${cfg.tracks.map(t => `<a href="#/${id}?${qsOf({ track: t, status: fs, mine: mine ? '1' : '', q })}" class="${t === track ? 'active' : ''}">${esc(PM.TRACKS[t])} <span class="faint">${d.rows.filter(r => r.track === t && PM.ACTIVE(r.status)).length}</span></a>`).join('')}</div>` : '';
+      const tabs = cfg.tracks.length > 1 && !cfg.any ? `<div class="tabs pm-tabs">${cfg.tracks.map(t => `<a href="#/${id}?${qsOf({ track: t, status: fs, mine: mine ? '1' : '', q })}" class="${t === track ? 'active' : ''}">${esc(PM.TRACKS[t])} <span class="faint">${d.rows.filter(r => r.track === t && PM.ACTIVE(r.status)).length}</span></a>`).join('')}</div>` : '';
       const leadLabel = PM.LEAD_FIELD[track] === 'pmId' ? 'ПМ' : 'ГИП';
-      main.innerHTML = head(cfg.title, sub, (d.canCreate ? `<button class="btn primary" data-act="pmNew" data-track="${track}">+ Проект</button> ` : '') + '<button class="btn" data-act="pmExport" title="Показанные строки — в Excel">⇩ Excel</button>') + tabs +
+      main.innerHTML = head(cfg.title, cfg.any ? `${sub}<div class="faint">Проекты, где вы исполнитель пункта или участник; отмечать «сделано» можно только свои пункты.</div>` : sub, (d.canCreate ? `<button class="btn primary" data-act="pmNew" data-track="${track}">+ Проект</button> ` : '') + (d.staff ? '' : '<button class="btn" data-act="pmExport" title="Показанные строки — в Excel">⇩ Excel</button>')) + tabs +
         `<div class="filters">${sel('pm-f-status', [['active', 'Активные'], ...PM.STATUS.map(s => [s, s]), ['all', 'Все']], fs)}<label class="fl"><input type="checkbox" id="pm-f-mine"${mine ? ' checked' : ''}> мои</label><input id="pm-f-q" placeholder="Поиск: объект, заказчик, №" value="${esc(q)}"></div>` +
         (rows.length ? tbl([{ t: 'Объект' }, { t: leadLabel }, { t: 'Этап' }, { t: 'Статус' }, { t: 'Буфер' }, { t: 'Старт' }, { t: 'Срок' }, { t: 'Просрочено', cls: 'right' }, { t: 'Блокеры', cls: 'right' }, { t: 'Риск' }],
           rows.map(r => `<tr class="pm-row" data-id="${esc(r.id)}"><td><b>${esc(r.name)}</b>${r.no ? ` <span class="faint">№${esc(r.no)}</span>` : ''}<div class="faint">${esc(r.client || '')}</div></td><td class="nowrap">${esc(pname(r.leadId) || '—')}</td><td style="min-width:150px"><div class="faint">${esc(r.progress.stageName)}</div>${bar(r.progress.pct)}<span class="faint">${r.progress.done}/${r.progress.total} · ${r.progress.pct}%</span></td><td>${chip(r.status, STATUS_CHIP)}${r.hot ? ' <span class="chip warn">горит</span>' : ''}</td><td class="nowrap">${PM.ACTIVE(r.status) ? zoneChip(r.health) : '<span class="faint">—</span>'}</td><td class="nowrap">${r.start ? fdate(r.start) : '—'}</td><td class="nowrap">${r.due ? (r.late ? `<span class="crit-text">${fdate(r.due)}</span>` : fdate(r.due)) : '—'}${r.forecast && r.forecast !== r.due ? `<div class="faint">прогноз ${fdate(r.forecast)}</div>` : ''}</td><td class="right">${r.overdueN ? `<span class="chip crit">${r.overdueN}</span>` : '<span class="faint">0</span>'}</td><td class="right">${r.blockersN ? `<span class="chip ${r.blockerMaxDays > 14 ? 'crit' : 'warn'}" title="самый старый — ${r.blockerMaxDays} дн.">${r.blockersN} · ${r.blockerMaxDays} дн.</span>` : '<span class="faint">—</span>'}</td><td>${r.risk && r.risk !== 'Низкий' ? chip(r.risk, RISK_CHIP) : '<span class="faint">низкий</span>'}</td></tr>`))
@@ -401,6 +406,7 @@
         <div class="card ${d.late ? 'crit' : ''}"><div class="label">Просрочено проектов <a href="#/pmrp?status=all">→</a></div><div class="val">${d.late}</div><div class="foot">дата по договору прошла</div></div>
         <div class="card ${d.hot ? 'crit' : ''}"><div class="label">Горит (≤ 14 дней)</div><div class="val">${d.hot}</div><div class="foot">просроченных пунктов ${d.overdueItems}</div></div>
         <div class="card ${d.blockersOld ? 'crit' : ''}"><div class="label">Блокеры <a href="#/pmbl">→</a></div><div class="val">${d.blockers}</div><div class="foot">висят > 14 дней: ${d.blockersOld}</div></div></div>`;
+      const settingsCard = d.canSettings && d.settings ? `<div class="card" style="margin-bottom:14px"><div class="label">Доступ рядовых сотрудников (staff) к «Проектам»</div><div class="pm-sub" style="margin-top:6px"><span>${d.settings.staffOwnProjects ? 'включён: сотрудник видит проекты, где он исполнитель пункта или участник — только чтение и отметки «сделано» у своих пунктов, без бюджета, финансов и чужих блокеров' : 'выключен (по умолчанию): сотрудники модуль не видят'}</span> <button class="btn sm" data-act="pmStaffToggle" data-on="${d.settings.staffOwnProjects ? '1' : '0'}">${d.settings.staffOwnProjects ? 'Выключить' : 'Включить'}</button></div></div>` : '';
       const statusRow = `<div class="pm-sub" style="margin-bottom:14px">${Object.entries(d.byStatus).map(([k, n]) => `${chip(k, STATUS_CHIP)} <b>${n}</b>`).join(' ') || '<span class="faint">Активных проектов нет</span>'}</div>`;
       const funnel = tr => { const f = d.byTrack[tr]; const max = Math.max(1, ...f.funnel.map(x => x.n)); return `<div class="card"><div class="label">Воронка ${esc(PM.TRACKS[tr])} <a href="${listHash(tr)}">→</a><span>${f.n} в работе${f.late ? ` · <span class="crit-text">${f.late} просрочено</span>` : ''}</span></div>${f.funnel.map(x => `<div style="display:grid;grid-template-columns:1fr 36px;gap:8px;align-items:center;font-size:12.5px;margin-top:6px"><div><div class="${x.n ? '' : 'faint'}" style="margin-bottom:2px">${esc(x.name)}</div><div class="bar"><i style="width:${Math.round(x.n / max * 100)}%"></i></div></div><b class="right">${x.n}</b></div>`).join('')}</div>`; };
       const funnels = `<div class="grid g2" style="margin-bottom:14px">${PM.VISIBLE_TRACKS.map(funnel).join('')}</div>`;
@@ -413,9 +419,10 @@
       const grows = active.filter(r => r.start).sort((a, b) => String(a.start).localeCompare(String(b.start)));
       const months = PM.ganttMonths(grows, t, 8, 16); const cur = t.slice(0, 7); const loadM = PM.ganttLoad(grows, months);
       const gantt = `<h2>Гант по месяцам</h2><div class="faint" style="margin:-6px 0 8px">Полоса — от даты старта до прогноза / даты по договору. Красная — срок прошёл, жёлтая — ждём заказчика или госорган, зелёная — готово. Текущий месяц подсвечен.</div>` + (grows.length ? `<div class="tbl cal-wrap"><table class="cal"><thead><tr><th>Объект</th><th class="pm-hidem">Ведёт</th><th class="pm-hidem">Старт</th><th class="pm-hidem">Срок</th>${months.map(m => `<th class="cal-h"${m === cur ? ' style="background:var(--accent-soft)"' : ''} title="${esc(PM.mname(m))}">${m.slice(5)}.${m.slice(2, 4)}</th>`).join('')}</tr></thead><tbody>${grows.map(r => { const end = r.forecast || r.due; const cls = r.status === 'Готово' ? 'vac-t' : r.late ? 'vac-v' : /Ждём/.test(r.status) ? 'vac-s' : 'vac-u'; return `<tr class="pm-row" data-id="${esc(r.id)}"><td class="nowrap"><b>${esc(r.name)}</b> <span class="faint">${esc(PM.TRACK_SHORT[r.track])}</span></td><td class="pm-hidem nowrap">${esc(pname(r.leadId) || '—')}</td><td class="pm-hidem nowrap">${fdate(r.start)}</td><td class="pm-hidem nowrap ${r.late ? 'crit-text' : ''}">${end ? fdate(end) : '—'}</td>${months.map(m => `<td class="cal-cell${PM.inMonth(r, m) ? ' ' + cls : ''}${m === cur ? ' wknd' : ''}" title="${esc(r.name)} · ${esc(PM.mname(m))}"></td>`).join('')}</tr>`; }).join('')}<tr><td colspan="4"><b>Активных объектов</b></td>${loadM.map((n, i) => `<td class="cal-cell right num" style="font-size:11px;padding:2px 3px;${months[i] === cur ? 'background:var(--accent-soft)' : ''}"><b>${n || ''}</b></td>`).join('')}</tr></tbody></table></div>` : empty('Задайте дату старта и дату по договору в карточках — появится Гант'));
-      main.innerHTML = head('Сводка по проектам', `Сегодня ${fdate(t)} · шаблоны: ЭП ${d.templates.ep}, РП ${d.templates.rp} пунктов`, (d.canCreate ? '<button class="btn primary" data-act="pmNew" data-track="rp">+ Проект</button> ' : '') + '<button class="btn" data-act="pmExport" title="Реестр проектов и блокеры — в Excel">⇩ Excel</button> ' + (d.leader ? '<button class="btn" data-act="pmImport">⇪ Импорт реестра</button> <button class="btn" data-act="pmClickup">⇪ Импорт из ClickUp</button>' : '')) + kpi + statusRow + portfolio + funnels + `<div class="grid g2"><div>${load}</div><div></div></div>` + gantt;
+      main.innerHTML = head('Сводка по проектам', `Сегодня ${fdate(t)} · шаблоны: ЭП ${d.templates.ep}, РП ${d.templates.rp} пунктов`, (d.canCreate ? '<button class="btn primary" data-act="pmNew" data-track="rp">+ Проект</button> ' : '') + '<button class="btn" data-act="pmExport" title="Реестр проектов и блокеры — в Excel">⇩ Excel</button> ' + (d.leader ? '<button class="btn" data-act="pmImport">⇪ Импорт реестра</button> <button class="btn" data-act="pmClickup">⇪ Импорт из ClickUp</button>' : '')) + kpi + statusRow + settingsCard + portfolio + funnels + `<div class="grid g2"><div>${load}</div><div></div></div>` + gantt;
       main.querySelectorAll('.tbl, .cal-wrap').forEach(el => el.classList.add('pm-scroll'));
       main.querySelectorAll('tr.pm-row').forEach(tr => tr.onclick = () => { location.hash = cardLink(tr.dataset.id); });
+      ui.ACT.pmStaffToggle = async ({ on }) => { const r = await api('/pm/settings', { method: 'PUT', body: { staffOwnProjects: on !== '1' } }); toast(r.staffOwnProjects ? 'Доступ сотрудников к своим проектам включён' : 'Доступ сотрудников выключен'); rerender(); };
       ui.ACT.pmImport = () => modal('Импорт реестра проектов', `<p class="faint" style="margin:0 0 10px">JSON готовит скрипт <code>modules/pm/tools/import_pm.py</code> из реестра MOST_Планирование_проектов.xlsx и таблицы бюджетов. Проекты с таким же названием и стадией пропускаются (или пересоздаются в режиме «заменить»).</p><form><div class="field"><label>Файл JSON</label><input type="file" id="pm-imp-file" accept=".json,application/json" required></div><div class="field"><label>Если проект уже есть</label><select name="mode"><option value="skip">Пропустить</option><option value="replace">Заменить (удалить и создать заново)</option></select></div><div class="error"></div><button class="btn primary block" type="submit">Импортировать</button></form>`, async v => {
         const f = $('#pm-imp-file').files[0]; if (!f) throw new Error('Выберите файл'); let data; try { data = JSON.parse(await f.text()); } catch { throw new Error('Файл не читается как JSON'); }
         if (!Array.isArray(data.projects)) throw new Error('В файле нет списка projects'); data.mode = v.mode;

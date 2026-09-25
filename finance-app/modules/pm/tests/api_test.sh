@@ -196,6 +196,26 @@ chk "массовые даты: gip 403" 403 "$(code GIP POST /pm/contract-dates
 chk "массовые даты: по id, 60 кал. дн. от 09.12.2025 → 07.02.2026; чужое имя — missed" "2026-02-07|1" "$(call OWN POST /pm/contract-dates "{\"rows\":[{\"id\":\"$RPID\",\"contractTerm\":60,\"contractTermUnit\":\"календарных\",\"start\":\"2025-12-09\",\"dueFromTerm\":true},{\"name\":\"Нет такого объекта\"}]}" | js 'd.applied[0].due+"|"+d.missed.length')"
 chk "календарь: 1 рабочий день после 31.12.2026 → 05.01.2027" 2027-01-05 "$(node -e "console.log(require('./modules/pm/domain.js').addWorkDays('2027-01-01',1))")"
 
+echo "== доступ staff: переключатель settings.pm.staffOwnProjects =="
+chk "staff: по умолчанию доступа нет" "false/false" "$(call STAFF GET /pm/access | js 'd.canOpen+"/"+d.staffOwnProjects')"
+chk "настройки: gip читать не может" 403 "$(code GIP GET /pm/settings)"
+chk "настройки: владелец читает (по умолчанию выключено)" false "$(call OWN GET /pm/settings | js 'd.staffOwnProjects')"
+chk "настройки: gip менять не может" 403 "$(code GIP PUT /pm/settings '{"staffOwnProjects":true}')"
+chk "настройки: партнёр включает" true "$(call PART PUT /pm/settings '{"staffOwnProjects":true}' | js 'd.staffOwnProjects')"
+chk "staff: доступ появился, создавать нельзя, проектов без назначений нет" "true/false/0" "$(call STAFF GET /pm/access | js 'd.canOpen')/$(call STAFF GET /pm/overview | js 'd.canCreate+"/"+d.rows.length')"
+SI=$(call OWN GET /pm/projects/$RPID | js 'd.items.find(i=>!i.done && !i.na && i.id!=="'$AR'").id')
+call OWN PUT /pm/items/$SI '{"assigneeId":"dev-staff"}' > /dev/null
+chk "staff: видит только проект, где он исполнитель" "1/Тест РП" "$(call STAFF GET /pm/overview | js 'd.rows.length+"/"+d.rows[0].name')"
+chk "staff: список проектов и блокеров отфильтрован" "1/0" "$(call STAFF GET /pm/projects | js 'd.length')/$(call STAFF GET /pm/blockers | js 'd.length')"
+chk "staff: карточка без бюджета, финансов, часов, подрядчиков и чужих блокеров; править только свой пункт" true "$(call STAFF GET /pm/projects/$RPID | js 'd.staff===true && d.canEdit===false && d.canBudget===false && d.budget===undefined && d.fact===undefined && d.finance===undefined && d.hours===undefined && d.contractors.length===0 && d.blockers.length===0 && d.items.filter(i=>i.canEdit).length===1')"
+chk "staff: чужой проект 403" 403 "$(code STAFF GET /pm/projects/$GID)"
+chk "staff: «мои задачи» — свой открытый пункт" 1 "$(call STAFF GET /pm/my | js 'd.length')"
+chk "staff: чужой пункт 403" 403 "$(code STAFF PUT /pm/items/$AR '{"done":true}')"
+chk "staff: свой пункт — отметил «сделано», заметка записана, срок и исполнитель не меняются" "true/false/готово/dev-staff" "$(call STAFF PUT /pm/items/$SI '{"done":true,"due":"2030-01-01","assigneeId":"dev-gip","note":"готово"}' | js 'd.done+"/"+(d.due==="2030-01-01")+"/"+d.note+"/"+d.assigneeId')"
+chk "staff: добавлять пункты и блокеры, править карточку нельзя" "403/403/403" "$(code STAFF POST /pm/projects/$RPID/items '{"title":"x"}')/$(code STAFF POST /pm/blockers "{\"pid\":\"$RPID\",\"what\":\"x\"}")/$(code STAFF PUT /pm/projects/$RPID '{"name":"x"}')"
+chk "staff: участник проекта (members) тоже видит его" 2 "$(call OWN PUT /pm/projects/$GID '{"members":["dev-staff"]}' > /dev/null; call STAFF GET /pm/overview | js 'd.rows.length')"
+chk "настройки: владелец выключает — staff снова без доступа" "false/403" "$(call OWN PUT /pm/settings '{"staffOwnProjects":false}' | js 'd.staffOwnProjects')/$(code STAFF GET /pm/overview)"
+
 echo "== удаление =="
 chk "owner удаляет проект" 200 "$(code OWN DELETE /pm/projects/$GID)"
 chk "удалённый не найден" 404 "$(code OWN GET /pm/projects/$GID)"
