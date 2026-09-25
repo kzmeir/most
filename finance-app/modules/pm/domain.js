@@ -31,21 +31,61 @@
 
   // пункт: [название, роль, недель, критерий приёмки, необязательный]
   const I = (t, role, w, crit, opt) => ({ t, role, w, crit: crit || '', opt: !!opt });
+  // пункт дорожной карты: код (A1…), название, роль, недель, блокеры (коды пунктов, которые должны быть закрыты), критерий
+  const R = (code, t, role, w, deps, crit) => ({ t, role, w, crit: crit || '', opt: false, code, deps: deps || [] });
+  const TEMPLATE_VERSION = { ep: '2026-09-25 дорожная карта Hayat (A–H) + концепция', rp: '2026-09-24 реестр, 79 пунктов', concept: '2026-09-24', an: '2026-09-24' };
   const TEMPLATES = {
     concept: [
       { name: '1. Форэскиз (10 %)', items: [I('Исходные данные и ТЗ от заказчика', 'ПМ', 1, 'Получены участок, ТЗ, пожелания заказчика'), I('Анализ участка и градрегламента', 'ГАП', 1, 'Ограничения участка, плотность, этажность'), I('Форэскиз: посадка и объёмы', 'ГАП', 2), I('Презентация форэскиза заказчику', 'ПМ', 1, 'Форэскиз согласован заказчиком')] },
       { name: '2. Концепция (20 %)', items: [I('Концепция генплана', 'ГП', 2), I('Планировочные решения и ТЭП', 'ГАП', 3, 'ТЭП согласованы с отделом продаж заказчика'), I('Фасадные решения', 'ГАП', 2), I('Визуализации', 'Визуализатор', 2), I('Альбом концепции', 'ГАП', 1, 'Альбом собран и проверен ПМ')] },
       { name: '3. Согласование и передача в ЭП', items: [I('Презентация концепции заказчику', 'ПМ', 1), I('Корректировки по замечаниям', 'ГАП', 2), I('Концепция утверждена заказчиком', 'ПМ', 1, 'Подписанный альбом / письмо заказчика'), I('Передача в ЭП (КП и договор на ЭП — 70 %)', 'ПМ', 1, 'Создан ЭП, назначен ПМ')] },
     ],
+    // ЭП — дорожная карта бюро (Google Sheet «Hayat дорожная карта», 25.09.2026): этапы A–H, коды задач и блокеры (зависимости) как в таблице.
+    // Роли — по смыслу (ГАП / ГП / ПМ / Заказчик / Визуализатор), недели оценки — допущение (1–3), критерии — короткие. Первый этап «Концепция» добавляется ниже (CONCEPT_STAGE).
     ep: [
-      { name: '1. ИРД', items: [I('Гос. акт на участок', 'Заказчик', 1), I('АПЗ', 'Заказчик', 3, 'АПЗ получено (14 рабочих дней)'), I('Топосъёмка со штампом, координаты участка', 'Заказчик', 2), I('Выкопировка ПДП', 'Заказчик', 1)] },
-      { name: '2. Анализ участка и ЗНП', items: [I('Красные линии', 'ГАП', 1), I('Водоохранная зона', 'ГАП', 1), I('Тектонические разломы', 'ГАП', 1), I('Существующие сети и отступы от сетей (СЗЗ)', 'ГП', 1), I('Анализ соседних зданий на СЗЗ', 'ГАП', 1), I('Склон', 'ГП', 1, '', true), I('ЗНП для ЭП', 'ПМ', 1, 'Задание на проектирование подписано заказчиком')] },
-      { name: '3. Посадка', items: [I('Посадка', 'ГАП', 2), I('Задание на геологию', 'ГИП', 1), I('ТП, котельная, КПП', 'ГП', 1), I('Площадка ТБО', 'ГП', 1), I('Согласование посадки и ГП с заказчиком, корректировки', 'ПМ', 1, 'Посадка и ГП согласованы заказчиком')] },
-      { name: '4. Планы', items: [I('Концепт-презентация', 'ГАП', 1), I('Планы', 'ГАП', 3), I('Расчёт инсоляции', 'ГАП', 1), I('Согласование коммерческих помещений с отделом продаж', 'ПМ', 1), I('Согласование квартирографии и площадей с отделом продаж', 'ПМ', 1, 'Квартирография согласована ОП'), I('Корректировки по комментариям', 'ГАП', 1), I('Расчёт нагрузок', 'ГИП', 1)] },
-      { name: '5. Фасады', items: [I('Фасады', 'ГАП', 3), I('Проверка инсоляции', 'ГАП', 1), I('Согласование фасадов с заказчиком, корректировки', 'ПМ', 1), I('Согласование материалов и RAL', 'ПМ', 1, 'Материалы и RAL согласованы заказчиком')] },
-      { name: '6. Рендеры и согласование ЭП', items: [I('Рендеры', 'Визуализатор', 2), I('Дополнительные рендеры для отдела продаж', 'Визуализатор', 1, '', true), I('ЭП согласован с заказчиком', 'ПМ', 1, 'Подписанный альбом ЭП / письмо заказчика')] },
-      { name: '7. Градсовет', items: [I('Презентационные материалы для градсовета', 'ГАП', 1), I('Уточнение сейсмики у КазНИИСА', 'ГИП', 2), I('Градсовет', 'ПМ', 3), I('ЭП согласован с городом', 'ПМ', 1, 'Протокол / заключение градсовета')] },
-      { name: '8. Передача в РП', items: [I('Совещание передачи в РП: ГИП, ГАП, ГП, ГКП, главспецы ОВ/ВК/ЭЛ, АПТ', 'ПМ', 1, 'Протокол передачи, назначен ГИП РП')] },
+      { name: 'A — Сбор информации', items: [
+        R('A1', 'Подписание договора', 'ПМ', 1, [], 'Договор на ЭП подписан обеими сторонами'),
+        R('A2', 'Оплата за разработку ЭП', 'Заказчик', 1, [], 'Аванс по договору получен'),
+        R('A3', 'Получить ТЗ по анкете', 'ПМ', 1, [], 'Анкета-ТЗ заполнена и подписана заказчиком'),
+        R('A4', 'Получить ИРД', 'Заказчик', 2, [], 'ИРД по перечню договора получены')] },
+      { name: 'B — Посадка', items: [
+        R('B1', 'Анализ участка', 'ГАП', 1, ['A1', 'A2'], 'Ограничения участка, красные линии, сети, регламенты'),
+        R('B2', 'Посадка (со всеми индикативами)', 'ГАП', 2, ['B1']),
+        R('B3', 'Просчитать ТЭПы', 'ГАП', 1, ['B2'], 'ТЭП по посадке'),
+        R('B4', 'Согласование посадки', 'ПМ', 1, ['B3'], 'Посадка согласована заказчиком')] },
+      { name: 'C — Схемы блоков и планировок', items: [
+        R('C1', 'Схема блоков и ЛЛУ', 'ГАП', 1, ['B2']),
+        R('C2', 'Схема квартир', 'ГАП', 1, ['C1']),
+        R('C3', 'Просчет квартирографии (ТЭПов)', 'ГАП', 1, ['C2'], 'Квартирография согласована с отделом продаж'),
+        R('C4', '3Д схемы и определение нулей', 'ГАП', 1, ['B2']),
+        R('C5', 'Согласование схемы блоков и квартирографии', 'ПМ', 1, ['C1', 'C2', 'C3'], 'Схемы блоков и квартирография согласованы заказчиком'),
+        R('C6', 'Разрезы по участку (для анализа)', 'ГАП', 1, ['C5'])] },
+      { name: 'D — Планировки', items: [
+        R('D5', 'Планировки типовых эт, 1ых эт, паркингов и подвалов', 'ГАП', 3, ['C5']),
+        R('D6', 'Согласование планировок типовых эт, 1ых эт, паркингов и подвалов', 'ПМ', 1, ['D5'], 'Планировки согласованы заказчиком')] },
+      { name: 'E — Концепт фасада (один угол фасада)', items: [
+        R('E1', 'Сбор мудборда с референсами', 'ГАП', 1, ['C5']),
+        R('E2', 'Визуализация одного ракурса в разн. вар. (ИИ)', 'Визуализатор', 1, ['E1', 'C4']),
+        R('E3', 'Согласование направления фасада (одного ракурса)', 'ПМ', 1, ['E2'], 'Направление фасада выбрано заказчиком'),
+        R('E4', 'Финальное моделирование выбранного варианта (одного ракурса)', 'ГАП', 2, ['E3']),
+        R('E5', 'Схема ночной декоративной подсветки', 'ГАП', 1, ['E3']),
+        R('E6', 'Согласование варианта фасада', 'ПМ', 1, ['E4'], 'Вариант фасада согласован заказчиком')] },
+      { name: 'F — Финальный фасад (на весь комплекс)', items: [
+        R('F1', 'Финальное моделирование фасада комплекса', 'ГАП', 2, ['E6']),
+        R('F2', 'Развертки ключевых фасадов и фасады с ведомостью материалов наружной отделки', 'ГАП', 2, ['E6']),
+        R('F3', 'Визуализация фасада комплекса (ИИ)', 'Визуализатор', 1, ['F1', 'E6']),
+        R('F4', 'Согласование фасада комплекса', 'ПМ', 1, ['F1', 'F2', 'F3'], 'Фасад комплекса согласован заказчиком')] },
+      { name: 'G — ГП и благоустройство', items: [
+        R('G1', 'Оформление ГП', 'ГП', 2, ['C5']),
+        R('G2', 'Ситуационный план и выкопировка ПДП', 'ГП', 1, []),
+        R('G3', 'ГП с функциональным зонированием и основными ТЭП', 'ГП', 1, []),
+        R('G4', 'Схема транспортных и пешеходных связей, включая межквартальные связи и главную пешеходную ось', 'ГП', 1, []),
+        R('G5', 'Планы инженерных сетей', 'ГП', 1, []),
+        R('G6', 'Согласование ГП с благоустройством', 'ПМ', 1, ['G2'], 'ГП и благоустройство согласованы заказчиком')] },
+      { name: 'H — Завершение проекта', items: [
+        R('H1', 'Сбор альбома', 'ГАП', 1, ['F4', 'G6', 'D6'], 'Альбом ЭП собран и проверен ПМ'),
+        R('H2', 'Согласование ЭП с заказчиком', 'ПМ', 1, ['H1'], 'Подписанный альбом / письмо заказчика'),
+        R('H3', 'Согласование ЭП с городом', 'ПМ', 3, ['H2'], 'ЭП согласован уполномоченным органом')] },
     ],
     // 79 пунктов — как в листе «Шаблон этапов» реестра; роль, недели и критерий — из регламента РП
     rp: [
@@ -146,7 +186,7 @@
   // Решение директора 24.09.2026: концепция — не отдельная стадия, а первый этап ЭП (форэскиз → концепция → согласование → договор на ЭП).
   // Трек concept остаётся в данных для старых карточек (они сворачиваются в ЭП при «передаче»); АН в интерфейсе скрыт («панель планирования сейчас не нужна»), данные и API сохранены.
   const CONCEPT_STAGE = { name: '1. Концепция (форэскиз → концепция → согласование)', items: TEMPLATES.concept.flatMap(s => s.items).map(x => /^Передача в ЭП/.test(x.t) ? Object.assign({}, x, { t: 'КП и договор на ЭП (70 %)', crit: 'Договор на ЭП подписан, назначен ПМ' }) : x) };
-  TEMPLATES.ep = [CONCEPT_STAGE].concat(TEMPLATES.ep.map((s, i) => Object.assign({}, s, { name: s.name.replace(/^\d+\.\s*/, `${i + 2}. `) })));
+  TEMPLATES.ep = [CONCEPT_STAGE].concat(TEMPLATES.ep.map((s, i) => Object.assign({}, s, { name: `${i + 2}. ${s.name.replace(/^\d+\.\s*/, '')}` })));
   const VISIBLE_TRACKS = ['ep', 'rp'];                     // что предлагаем создавать и показываем в меню
   const HIDDEN_TRACKS = ['concept', 'an'];
   const normalizeTrack = t => t === 'concept' ? 'ep' : (TRACKS[t] ? t : 'rp'); // «Концепция» при создании/импорте — это ЭП
@@ -308,6 +348,7 @@
   // пункт шаблона по названию задачи: точное совпадение → общий префикс (≥ 5 знаков) → все слова задачи есть в пункте (≥ 2 слов)
   function findItemByTitle(items, title) {
     const t = normTitle(title); if (!t) return null; const pool = (items || []).filter(i => !i.custom);
+    const cm = String(title || '').trim().match(/^([A-Za-zА-Яа-я]\d{1,2})[\s.:—-]/); if (cm) { const code = normCode(cm[1]); const byCode = pool.find(i => i.code && normCode(i.code) === code); if (byCode) return byCode; }
     let hit = pool.find(i => normTitle(i.title) === t); if (hit) return hit;
     if (t.length >= 5) { hit = pool.find(i => { const n = normTitle(i.title); return n.length >= 5 && (n.startsWith(t) || t.startsWith(n)); }); if (hit) return hit; }
     const tk = tokensOf(title); if (tk.length >= 2) hit = pool.find(i => { const n = new Set(tokensOf(i.title)); return tk.every(x => n.has(x)); });
@@ -371,7 +412,7 @@
   // пункты проекта из шаблона. opts: { start, due, months } — для АН (этап на каждый месяц; по умолчанию 6 месяцев или до даты по договору)
   function itemsFromTemplate(track, pid, opts) {
     opts = opts || {}; const out = []; let order = 0;
-    const push = (si, stageName, x) => out.push({ pid, stage: si, stageName, title: x.t, role: x.role, section: ROLE_SECTION[x.role] || '', weeks: x.w, crit: x.crit, optional: x.opt, done: false, na: false, due: '', assigneeId: '', contractor: '', note: '', order: order++ });
+    const push = (si, stageName, x) => out.push({ pid, stage: si, stageName, title: x.t, role: x.role, section: ROLE_SECTION[x.role] || '', weeks: x.w, crit: x.crit, optional: x.opt, code: x.code || '', deps: (x.deps || []).slice(), done: false, na: false, due: '', assigneeId: '', contractor: '', note: '', order: order++ });
     (TEMPLATES[track] || []).forEach((s, si) => s.items.forEach(x => push(si + 1, s.name, x)));
     if (track === 'an') {
       const base = (TEMPLATES.an || []).length; const s0 = opts.start && ym(opts.start);
@@ -380,16 +421,43 @@
     }
     return out;
   }
-  // план: этапы последовательно, пункты этапа параллельно; длительность этапа = самый длинный пункт.
-  // fitTo — растянуть/сжать до даты по договору.
+  // коды: кириллические А В С Е Н К М О Р Т Х → латиница (в таблице встречается «С5»)
+  const normCode = c => String(c || '').trim().toUpperCase().replace(/[АВСЕНКМОРТХ]/g, ch => 'ABCEHKMOPTX'['АВСЕНКМОРТХ'.indexOf(ch)]);
+  const finished = i => !!i && (i.done || i.na);
+  // пункты-блокеры (по кодам deps) внутри одного проекта
+  const depItems = (items, it) => (it && it.deps || []).map(c => items.find(i => i.pid === it.pid && normCode(i.code) === normCode(c))).filter(Boolean);
+  // коды блокеров, которые ещё не закрыты — «ждёт: B3»
+  const waitingFor = (items, it) => finished(it) ? [] : depItems(items, it).filter(d => !finished(d)).map(d => d.code);
+  // план: пункт с блокерами начинается, когда закрыты все блокеры (раннее начало = конец блокеров); без блокеров — с начала своего этапа;
+  // этапы идут друг за другом (следующий начинается, когда закончился самый долгий пункт предыдущего). fitTo — растянуть/сжать под дату по договору.
   function plan(items, start, fitTo) {
     const stages = [...new Set(items.map(i => i.stage))].sort((a, b) => a - b);
-    const len = st => Math.max(0.2, ...items.filter(i => i.stage === st && !i.na).map(i => Number(i.weeks) || 1));
-    const total = stages.reduce((s, st) => s + len(st), 0) * 7;
-    const k = fitTo && start && fitTo > start ? days(start, fitTo) / total : 1;
-    let cur = 0; const out = {};
-    for (const st of stages) { for (const it of items.filter(i => i.stage === st)) out[it.id] = addDays(start, (cur + (Number(it.weeks) || 1) * 7) * k); cur += len(st) * 7; }
-    return { due: out, end: addDays(start, total * k), weeks: Math.round(total * k / 7) };
+    const byCode = new Map(items.filter(i => i.code).map(i => [normCode(i.code), i]));
+    const dur = it => it.na ? 0 : Math.max(1.4, (Number(it.weeks) || 1) * 7);
+    const schedule = k => {
+      const startOf = {}, endOf = {}; let prevEnd = 0;
+      for (const st of stages) {
+        let pending = items.filter(i => i.stage === st), stageEnd = prevEnd, guard = 0;
+        while (pending.length && guard++ < 50) {
+          const later = [];
+          for (const it of pending) {
+            const deps = (it.deps || []).map(c => byCode.get(normCode(c))).filter(d => d && d.id !== it.id);
+            if (deps.some(d => !finished(d) && endOf[d.id] === undefined)) { later.push(it); continue; } // блокер ещё не рассчитан (тот же этап)
+            const s0 = deps.length ? Math.max(prevEnd * 0, ...deps.map(d => finished(d) ? 0 : endOf[d.id])) : prevEnd;
+            const e = s0 + dur(it) * k; startOf[it.id] = s0; endOf[it.id] = e; stageEnd = Math.max(stageEnd, e);
+          }
+          if (later.length === pending.length) { for (const it of later) { const e = prevEnd + dur(it) * k; startOf[it.id] = prevEnd; endOf[it.id] = e; stageEnd = Math.max(stageEnd, e); } break; } // цикл или блокер из следующего этапа — от начала этапа
+          pending = later;
+        }
+        prevEnd = stageEnd;
+      }
+      return { startOf, endOf, total: prevEnd };
+    };
+    const base = schedule(1);
+    const k = fitTo && start && fitTo > start && base.total > 0 ? days(start, fitTo) / base.total : 1;
+    const sch = k === 1 ? base : schedule(k);
+    const out = {}, starts = {}; for (const it of items) { out[it.id] = addDays(start, sch.endOf[it.id] || 0); starts[it.id] = addDays(start, sch.startOf[it.id] || 0); }
+    return { due: out, start: starts, end: addDays(start, sch.total), weeks: Math.round(sch.total / 7) };
   }
   function progress(items) {
     const act = items.filter(i => !i.na); const done = act.filter(i => i.done).length;
@@ -505,10 +573,20 @@
   const CHARTER_FIELDS = [['what', 'Что делаем (результат, без глаголов)'], ['why', 'Зачем (обоснование, ценность для заказчика и бюро)'], ['doneCriterion', 'Критерий завершения (как узнаем, что проект завершён; зависит только от нас)'], ['successCriterion', 'Критерий успеха (как узнаем, что проект успешен; может зависеть от внешних факторов)'], ['requirements', 'Требования к результату (характеристики, а не действия)'], ['environment', 'Факторы среды (что влияет снаружи и внутри команды)'], ['threats', 'Угрозы (что может убить проект)'], ['time', 'Время (сроки по договору, контрольные точки)'], ['budget', 'Бюджет (деньги и материальные ресурсы, которые есть сейчас)'], ['people', 'Люди (кто работает, кто может помочь)']];
   const charterPhrase = c => c && c.what ? `Мы делаем «${c.what}» для того, чтобы «${c.why || '…'}», до тех пор пока не случится «${c.doneCriterion || '…'}», и узнаем, что проект успешен, когда «${c.successCriterion || '…'}».` : '';
   const charterComplete = c => !!c && ['what', 'why', 'doneCriterion', 'successCriterion'].every(k => String(c[k] || '').trim());
+  // статус из дорожной карты (ГОТОВО / В РАБОТЕ / У ГАПа / У ЗАКАЗЧИКА / НЕ НАЧАТО) → отметка «сделано» и подпись статуса
+  function roadmapStatus(v) {
+    const s = String(v == null ? '' : v).trim(); if (!s) return { done: undefined, label: undefined };
+    if (/готов|done|complete|закрыт|выполнен/i.test(s)) return { done: true, label: 'ГОТОВО' };
+    if (/не\s*начат|not\s*started|to\s*do/i.test(s)) return { done: false, label: 'НЕ НАЧАТО' };
+    if (/у\s*гап/i.test(s)) return { done: false, label: 'У ГАПа' };
+    if (/у\s*заказчик|client|customer/i.test(s)) return { done: false, label: 'У ЗАКАЗЧИКА' };
+    if (/в\s*работе|in\s*progress|progress/i.test(s)) return { done: false, label: 'В РАБОТЕ' };
+    return { done: false, label: s.toUpperCase().slice(0, 40) };
+  }
   // снимок показателей для ретроспективы
   const retroSnapshot = (h, blockers) => ({ progress: h.progress, zone: h.zone, consumption: h.consumption, curV: h.curV, avgV: h.avgV, addedW: h.addedW, remain: h.remain, forecast: h.forecast, returns: h.returns, blockers: (blockers || []).filter(b => b.status !== 'closed').length });
 
-  return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, PM_ROLES, SETTINGS_DEFAULT, pmSettings, isStaff, memberIds, staffSees, STAFF_ITEM_FIELDS, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
+  return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, TEMPLATE_VERSION, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, normCode, depItems, waitingFor, roadmapStatus, PM_ROLES, SETTINGS_DEFAULT, pmSettings, isStaff, memberIds, staffSees, STAFF_ITEM_FIELDS, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
     parseCsv, CLICKUP_FIELDS, clickupAutoMap, parseAnyDate, splitList, CLICKUP_DONE, clickupStatus, normTitle, findItemByTitle, matchUser, clickupToProjects, crc32, zipStore, xlsx, registryExport, ZONE_NAME_RU,
     W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot };
 });

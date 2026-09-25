@@ -39,7 +39,7 @@ chk "все пункты получили срок" 79 "$(echo "$RP" | js 'd.ite
 chk "бюджет виден владельцу" 100000000 "$(echo "$RP" | js 'd.budget.contract')"
 chk "подсказка имени папки №-год-название" "001-$(date +%Y)-Тест РП" "$(echo "$RP" | js 'd.folderHint')"
 EP=$(call OWN POST /pm/projects "{\"track\":\"ep\",\"name\":\"Тест ЭП\",\"pmId\":\"dev-pm\",\"start\":\"$T\",\"miroUrl\":\"https://miro.com/app/board/uXjVKabc123=/\"}")
-EPID=$(echo "$EP" | js 'd.project.id'); chk "owner создал ЭП (9 этапов, 1-й — концепция)" "9/1. Концепция (форэскиз → концепция → согласование)" "$(echo "$EP" | js 'd.stageNames.length+"/"+d.stageNames[0]')"
+EPID=$(echo "$EP" | js 'd.project.id'); chk "owner создал ЭП (9 этапов: концепция + A–H дорожной карты)" "9/1. Концепция (форэскиз → концепция → согласование)/9. H — Завершение проекта" "$(echo "$EP" | js 'd.stageNames.length+"/"+d.stageNames[0]+"/"+d.stageNames[8]')"
 AN=$(call OWN POST /pm/projects "{\"track\":\"an\",\"name\":\"Тест АН\",\"start\":\"2026-10-01\",\"due\":\"2027-01-15\",\"fit\":true}")
 chk "АН: запуск + 4 месяца = 5 этапов (API сохранён)" 5 "$(echo "$AN" | js 'd.stageNames.length')"
 chk "АН скрыт из сводки и счётчиков" true "$(call OWN GET /pm/overview | js '!d.rows.some(r=>r.track==="an") && d.byTrack.an.n===0')"
@@ -131,15 +131,15 @@ chk "импорт gip 403" 403 "$(code GIP POST /pm/import "$IMP")"
 echo "== импорт из ClickUp =="
 CU=$(node -e "const PM=require('./modules/pm/domain.js');const fs=require('fs');const csv=PM.parseCsv(fs.readFileSync('modules/pm/tools/clickup.example.csv','utf8'));const P=PM.clickupToProjects(csv,PM.clickupAutoMap(csv.header),{source:'parent'});console.log(JSON.stringify({mode:'skip',projects:P}))")
 chk "clickup: разбор примера — 2 проекта, 11 задач, даты из epoch" "2/11/2026-08-03/2026-12-18" "$(echo "$CU" | js 'd.projects.length+"/"+d.projects.reduce((s,p)=>s+p.tasks.length,0)+"/"+d.projects[0].start+"/"+d.projects[0].due')"
-chk "clickup: подзадача 2-го уровня попала в проект через родителя" true "$(echo "$CU" | js 'd.projects[1].tasks.some(t=>/инсоляц/i.test(t.title))')"
+chk "clickup: подзадача 2-го уровня попала в проект через родителя" true "$(echo "$CU" | js 'd.projects[1].tasks.some(t=>/квартирограф/i.test(t.title))')"
 R=$(call OWN POST /pm/import-clickup "$CU")
 chk "clickup: создано 2 ЭП, совпало 10 пунктов, отмечено 5, добавлен 1" "2/10/5/1" "$(echo "$R" | js 'd.created.length+"/"+d.matched+"/"+d.done+"/"+d.added')"
 chk "clickup: люди без совпадений — в отчёт (4 имени)" 4 "$(echo "$R" | js 'd.people.unmapped.length')"
 CUP=$(call OWN GET /pm/overview | js 'JSON.stringify(d.rows.find(r=>r.name==="ЖК Пример Сити")||null)')
 chk "clickup: карточка ЭП — заказчик, договор, площадь, статус, срок" "ТОО «Пример Девелопмент»/ЭП-001-26/25000/В работе/2026-12-18/ep" "$(echo "$CUP" | js '[d.client,d.contractNo,d.area,d.status,d.due,d.track].join("/")')"
 CUID=$(echo "$CUP" | js 'd.id')
-chk "clickup: «Посадка» получила срок, «Форэскиз» отмечен по ClickUp, парковка — доп. пункт этапа 1" "2026-10-02/clickup/1" "$(call OWN GET /pm/projects/$CUID | js '[d.items.find(i=>i.title==="Посадка").due, d.items.find(i=>/^Форэскиз/.test(i.title)).doneBy, d.items.find(i=>/парковки/.test(i.title)).stage].join("/")')"
-chk "clickup: БЦ Демо Плаза — «На паузе», инсоляция отмечена" "На паузе/true" "$(call OWN GET /pm/overview | js '(r=>r.status+"/"+(r.progress.done>=2))(d.rows.find(r=>r.name==="БЦ Демо Плаза"))')"
+chk "clickup: B2 по коду получила срок, A1 отмечен по ClickUp, парковка — доп. пункт этапа 1" "2026-10-02/clickup/1" "$(call OWN GET /pm/projects/$CUID | js '[d.items.find(i=>i.code==="B2").due, d.items.find(i=>i.code==="A1").doneBy, d.items.find(i=>/парковки/.test(i.title)).stage].join("/")')"
+chk "clickup: БЦ Демо Плаза — «На паузе», A4 и C3 отмечены" "На паузе/true" "$(call OWN GET /pm/overview | js '(r=>r.status+"/"+(r.progress.done>=2))(d.rows.find(r=>r.name==="БЦ Демо Плаза"))')"
 chk "clickup: повторный импорт пропускает по названию" 2 "$(call OWN POST /pm/import-clickup "$CU" | js 'd.skipped.length')"
 chk "clickup: режим «дополнить» — совпадения (10 шаблонных + 1 свой) без новых отметок и пунктов" "2/11/0/0" "$(call OWN POST /pm/import-clickup "${CU/\"mode\":\"skip\"/\"mode\":\"merge\"}" | js 'd.merged.length+"/"+d.matched+"/"+d.done+"/"+d.added')"
 CUL=$(node -e "const fs=require('fs');console.log(JSON.stringify({mode:'skip',source:'list',csv:fs.readFileSync('modules/pm/tools/clickup.example.csv','utf8')}))")
@@ -215,6 +215,23 @@ chk "staff: свой пункт — отметил «сделано», заме�
 chk "staff: добавлять пункты и блокеры, править карточку нельзя" "403/403/403" "$(code STAFF POST /pm/projects/$RPID/items '{"title":"x"}')/$(code STAFF POST /pm/blockers "{\"pid\":\"$RPID\",\"what\":\"x\"}")/$(code STAFF PUT /pm/projects/$RPID '{"name":"x"}')"
 chk "staff: участник проекта (members) тоже видит его" 2 "$(call OWN PUT /pm/projects/$GID '{"members":["dev-staff"]}' > /dev/null; call STAFF GET /pm/overview | js 'd.rows.length')"
 chk "настройки: владелец выключает — staff снова без доступа" "false/403" "$(call OWN PUT /pm/settings '{"staffOwnProjects":false}' | js 'd.staffOwnProjects')/$(code STAFF GET /pm/overview)"
+
+echo "== шаблон ЭП по дорожной карте: коды, зависимости, план, statuses, rebuild =="
+chk "шаблон ЭП: 48 пунктов, 35 с кодами, у H1 блокеры F4, G6, D6; версия шаблона" "48/35/F4,G6,D6/true" "$(node -e "const PM=require('./modules/pm/domain.js');const it=PM.itemsFromTemplate('ep','x',{});console.log(it.length+'/'+it.filter(i=>i.code).length+'/'+it.find(i=>i.code==='H1').deps.join(',')+'/'+/дорожная карта/.test(PM.TEMPLATE_VERSION.ep))")"
+RM=$(call OWN POST /pm/projects '{"track":"ep","name":"ЭП дорожная карта","pmId":"dev-pm","start":"2026-10-05","due":"2027-03-31","fit":true}')
+RMID=$(echo "$RM" | js 'd.project.id')
+chk "план по блокерам: B1 после A1 и A2, C1 и C4 после B2, H3 — последний; версия шаблона у проекта" true "$(echo "$RM" | js '(()=>{const by=Object.fromEntries(d.items.filter(i=>i.code).map(i=>[i.code,i]));return by.B1.due>by.A1.due && by.B1.due>by.A2.due && by.C1.due>by.B2.due && by.C4.due>by.B2.due && d.items.every(i=>i.due<=by.H3.due) && by.H3.due==="2027-03-31" && /дорожная/.test(d.project.templateVersion)})()')"
+chk "«ждёт»: B1 ждёт A1, A2; A1 никого не ждёт" "A1,A2/" "$(echo "$RM" | js 'd.items.find(i=>i.code==="B1").waiting.join(",")+"/"+d.items.find(i=>i.code==="A1").waiting.join(",")')"
+ST=$(call OWN POST /pm/projects/$RMID/statuses '{"items":[{"code":"A1","status":"ГОТОВО"},{"code":"A2","status":"ГОТОВО","due":"2026-10-06"},{"code":"B2","status":"У ЗАКАЗЧИКА","due":"10.10.2026"},{"code":"С3","status":"в работе"},{"code":"Z9","status":"ГОТОВО"}]}')
+chk "statuses: 4 обновлено, 2 «сделано», Z9 не найден" "4/2/Z9" "$(echo "$ST" | js 'd.report.updated+"/"+d.report.done+"/"+d.report.missing.join(",")')"
+chk "statuses: A1 сделано с пометкой, B1 больше никого не ждёт, B2 — «У ЗАКАЗЧИКА» со сроком, С3 (кириллица) → C3 «В РАБОТЕ»" "true/по дорожной карте//У ЗАКАЗЧИКА/2026-10-10/В РАБОТЕ" "$(echo "$ST" | js '(()=>{const by=Object.fromEntries(d.items.filter(i=>i.code).map(i=>[i.code,i]));return [by.A1.done,by.A1.doneNote,by.B1.waiting.join(","),by.B2.rmStatus,by.B2.due,by.C3.rmStatus].join("/")})()')"
+chk "statuses: gip чужого проекта 403" 403 "$(code GIP POST /pm/projects/$RMID/statuses '{"items":[{"code":"A1","status":"ГОТОВО"}]}')"
+call OWN POST /pm/projects/$RMID/items '{"title":"Ручной пункт","stage":3}' > /dev/null
+chk "rebuild: gip 403" 403 "$(code GIP POST /pm/projects/$RMID/rebuild '{"template":"ep"}')"
+RB=$(call OWN POST /pm/projects/$RMID/rebuild '{"template":"ep","keepExtra":true}')
+chk "rebuild: 48 совпали, отметки и статусы сохранены, ручной пункт — в «Прочее»" "48/0/1/49/true/У ЗАКАЗЧИКА/Прочее" "$(echo "$RB" | js '(()=>{const c=d.items.find(i=>i.title==="Ручной пункт");return d.report.matched+"/"+d.report.deleted.length+"/"+d.report.moved.length+"/"+d.items.length+"/"+d.items.find(i=>i.code==="A1").done+"/"+d.items.find(i=>i.code==="B2").rmStatus+"/"+c.stageName})()')"
+chk "rebuild без keepExtra: несовпавшие удалены и записаны в отчёт" "48/Ручной пункт" "$(call OWN POST /pm/projects/$RMID/rebuild '{"template":"ep","keepExtra":false}' | js 'd.items.length+"/"+d.report.deleted.join(",")')"
+chk "rebuild РП-проекта по шаблону РП сохраняет отметку" "79/true" "$(call OWN POST /pm/projects/$RPID/rebuild '{"template":"rp","keepExtra":true}' | js 'd.items.filter(i=>!i.custom).length+"/"+d.items.some(i=>i.done)')"
 
 echo "== без сроков: зона «нет сроков» =="
 ND=$(call OWN POST /pm/projects '{"track":"ep","name":"ЭП без сроков","pmId":"dev-pm"}')
