@@ -32,10 +32,10 @@ chk "partner 200" 200 "$(code PART GET /mkt/posts)"
 chk "secretary 200" 200 "$(code SEC GET /mkt/posts)"
 chk "коллекция mktPosts через общий API закрыта" 404 "$(code OWN GET /mktPosts)"
 chk "права секретаря в meta: правит, не утверждает, не импортирует" "true/false/false" "$(call SEC GET /mkt/meta | js 'd.rights.editor+"/"+d.rights.approve+"/"+d.rights.import')"
-chk "рубрики и каналы" "7/instagram,threads,telegram,linkedin" "$(call SEC GET /mkt/meta | js 'd.rubrics.length+"/"+Object.keys(d.channels).join(",")')"
+chk "рубрики и каналы" "7/instagram,instagram_en,threads,telegram,linkedin" "$(call SEC GET /mkt/meta | js 'd.rubrics.length+"/"+Object.keys(d.channels).join(",")')"
 
 echo "== пост: создание и картинки =="
-P1=$(call SEC POST /mkt/posts '{"date":"2026-10-05","channels":["instagram","threads","facebook"],"rubric":"Backstage","title":"Утро в бюро","text":"Что обсуждаем на планёрке в понедельник?"}')
+P1=$(call SEC POST /mkt/posts '{"date":"2026-10-05","channels":["instagram","threads","facebook"],"rubric":"Backstage","title":"Утро в бюро","text":"Что обсуждаем на планёрке в понедельник?","textKz":"Дүйсенбідегі жиналыста не талқылаймыз?"}')
 P1ID=$(echo "$P1" | js 'd.id')
 chk "черновик создан, лишний канал отброшен" "draft/instagram,threads" "$(echo "$P1" | js 'd.status+"/"+d.channels.join(",")')"
 chk "кириллица сохранилась" "Утро в бюро" "$(echo "$P1" | js 'd.title')"
@@ -86,7 +86,7 @@ chk "секретарь удалил черновик" 200 "$(code SEC DELETE /m
 echo "== правило согласий заказчиков =="
 PID=$(call OWN POST /pm/projects '{"track":"rp","name":"ЖК Тестовый квартал","client":"ТОО Вымышленный заказчик"}' | js 'd.project.id')
 chk "проект есть в списке согласий, «не спрашивали»" "unknown" "$(call SEC GET /mkt/consents | js 'd.find(r=>r.project.id==="'$PID'").status')"
-P3=$(call SEC POST /mkt/posts "{\"title\":\"Почему двор без машин\",\"text\":\"Паркинг ушёл под стилобат.\",\"rubric\":\"Архитектура как улика\",\"pmProjectId\":\"$PID\"}")
+P3=$(call SEC POST /mkt/posts "{\"title\":\"Почему двор без машин\",\"text\":\"Паркинг ушёл под стилобат.\",\"textKz\":\"Паркинг стилобат астына түсті.\",\"rubric\":\"Архитектура как улика\",\"pmProjectId\":\"$PID\"}")
 P3ID=$(echo "$P3" | js 'd.id')
 call SEC POST /mkt/posts/$P3ID/submit > /dev/null
 chk "без согласия утвердить нельзя — 409" 409 "$(code OWN POST /mkt/posts/$P3ID/approve)"
@@ -104,7 +104,14 @@ call SEC PUT /mkt/consents/$PID '{"status":"unknown"}' > /dev/null
 chk "согласие снято — опубликовать нельзя" 409 "$(code SEC POST /mkt/posts/$P3ID/publish '{"url":"https://t.me/x/1"}')"
 call SEC PUT /mkt/consents/$PID '{"status":"yes","what":["renders"]}' > /dev/null
 chk "согласие есть — опубликован" published "$(call SEC POST /mkt/posts/$P3ID/publish '{"url":"https://t.me/x/1"}' | js 'd.status')"
-chk "пост без проекта утверждается без согласия" approved "$(P4=$(call SEC POST /mkt/posts '{"title":"Команда","text":"Нас 50+."}' | js 'd.id'); call SEC POST /mkt/posts/$P4/submit > /dev/null; call OWN POST /mkt/posts/$P4/approve | js 'd.status')"
+chk "пост без проекта утверждается без согласия" approved "$(P4=$(call SEC POST /mkt/posts '{"title":"Команда","text":"Нас 50+.","textKz":"Бізде 50+ маман."}' | js 'd.id'); call SEC POST /mkt/posts/$P4/submit > /dev/null; call OWN POST /mkt/posts/$P4/approve | js 'd.status')"
+echo "== языки: казахский и русский по закону, английский для Instagram EN =="
+P5=$(call SEC POST /mkt/posts '{"title":"Только русский","text":"Текст","channels":["instagram"]}' | js 'd.id'); call SEC POST /mkt/posts/$P5/submit > /dev/null
+chk "без казахского не утвердить" 1 "$(call OWN POST /mkt/posts/$P5/approve | js '+/казахском/.test(d.error)')"
+call SEC POST /mkt/posts/$P5/rework > /dev/null; call OWN POST /mkt/posts/$P5/rework '{"comment":"добавить казахский"}' > /dev/null
+chk "с казахским и Instagram EN без английского — нельзя" 1 "$(call SEC PUT /mkt/posts/$P5 '{"textKz":"Мәтін","channels":["instagram","instagram_en"]}' > /dev/null; call SEC POST /mkt/posts/$P5/submit > /dev/null; call OWN POST /mkt/posts/$P5/approve | js '+/английском/.test(d.error)')"
+call OWN POST /mkt/posts/$P5/rework '{"comment":"добавить английский"}' > /dev/null
+chk "все три языка — утверждён" approved "$(call SEC PUT /mkt/posts/$P5 '{"textEn":"Text"}' > /dev/null; call SEC POST /mkt/posts/$P5/submit > /dev/null; call OWN POST /mkt/posts/$P5/approve | js 'd.status')"
 chk "pm-проект не изменён модулем" "undefined" "$(call OWN GET /pm/projects/$PID | js 'd.project.consent')"
 
 echo "== импорт черновиков от ИИ =="

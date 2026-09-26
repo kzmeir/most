@@ -45,14 +45,14 @@ function handle(ctx) {
   const postOut = (p, full) => {
     const cs = p.pmProjectId ? M.consentOf(p.pmProjectId, consents) : null;
     const o = Object.assign({}, p, { images: (p.images || []).map(i => Object.assign({}, i, { url: `/api/mkt/files/${i.key}` })), project: pmBrief(p.pmProjectId),
-      consent: cs ? { status: cs.status, label: M.CONSENT[cs.status], what: cs.what || [] } : null, block: M.blockReason(p, consents, projects), lint: M.lint(p.text), createdByName: un(p.createdBy) });
+      consent: cs ? { status: cs.status, label: M.CONSENT[cs.status], what: cs.what || [] } : null, block: M.readyReason(p, consents, projects), lint: M.lint([p.textKz, p.text].filter(Boolean).join('\n')), createdByName: un(p.createdBy) });
     if (full) o.history = (p.history || []).map(h => Object.assign({}, h, { byName: un(h.by) })); else delete o.history;
     return o;
   };
   const sortPosts = arr => arr.sort((x, y) => String(x.date || '9').localeCompare(String(y.date || '9')) || String(x.createdAt).localeCompare(String(y.createdAt)));
   // новый пост из полей (создание и импорт)
   const makePost = (f, status, note) => {
-    const p = Object.assign({ date: t, channels: ['instagram'], rubric: 'Другое', title: '', text: '', pmProjectId: '' }, f, { id: store.id(), images: [], status, comment: '', publishedUrl: '', createdAt: now(), createdBy: user.id, history: [] });
+    const p = Object.assign({ date: t, channels: ['instagram'], rubric: 'Другое', title: '', text: '', textKz: '', textEn: '', pmProjectId: '' }, f, { id: store.id(), images: [], status, comment: '', publishedUrl: '', createdAt: now(), createdBy: user.id, history: [] });
     if (!p.date) p.date = t; if (!p.channels.length) p.channels = ['instagram'];
     hist(p, 'create', note); if (status === 'review') hist(p, 'submit', ''); return p;
   };
@@ -84,7 +84,7 @@ function handle(ctx) {
     if (!b && method === 'POST') {
       if (!editor) return err(403, 'Нет прав');
       const f = M.cleanPost(body); if (f.pmProjectId && !pmBrief(f.pmProjectId)) return err(400, 'Проект не найден');
-      if (!f.title && !f.text) return err(400, 'Укажите заголовок или текст');
+      if (!f.title && !f.text && !f.textKz && !f.textEn) return err(400, 'Укажите заголовок или текст');
       const p = makePost(f, 'draft'); db.mktPosts.push(p); saveAudit('create', 'mktPosts', p.id); return ok(postOut(p, true));
     }
     const p = b && findP(b); if (b && !p) return err(404, 'Пост не найден');
@@ -130,7 +130,7 @@ function handle(ctx) {
     const list = Array.isArray(body.posts) ? body.posts : []; if (!list.length) return err(400, 'Нет постов (posts: [...])'); if (list.length > 50) return err(400, 'Не больше 50 постов за раз');
     const errs = []; const ready = list.map((x, i) => {
       const f = M.cleanPost(x || {}); const n = `Пост ${i + 1}`;
-      if (!f.title && !f.text) errs.push(`${n}: нет заголовка и текста`);
+      if (!f.title && !f.text && !f.textKz && !f.textEn) errs.push(`${n}: нет заголовка и текста`);
       if (x && x.date && !f.date) errs.push(`${n}: дата не в формате ГГГГ-ММ-ДД`);
       if (f.pmProjectId && !pmBrief(f.pmProjectId)) errs.push(`${n}: проект ${f.pmProjectId} не найден`);
       const imgs = Array.isArray(x && x.images) ? x.images : []; if (imgs.length > M.MAX_IMAGES) errs.push(`${n}: больше ${M.MAX_IMAGES} картинок`);
