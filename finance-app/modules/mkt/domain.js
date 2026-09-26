@@ -10,7 +10,11 @@
   const fdate = d => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}.${m[2]}.${m[1]}` : ''; };
 
   // ---- справочники ----
-  const CHANNELS = { instagram: 'Instagram', threads: 'Threads', telegram: 'Telegram', linkedin: 'LinkedIn' };
+  const CHANNELS = { instagram: 'Instagram (каз/рус)', instagram_en: 'Instagram EN', threads: 'Threads', telegram: 'Telegram', linkedin: 'LinkedIn' };
+  // языки текста по каналам: казахстанские каналы — казахский и русский (закон о рекламе), зарубежные — английский
+  const LANG_NEED = { instagram: ['kz', 'ru'], threads: ['kz', 'ru'], telegram: ['kz', 'ru'], instagram_en: ['en'], linkedin: ['en'] };
+  const LANG_NAME = { kz: 'казахском', ru: 'русском', en: 'английском' };
+  const textIn = (p, l) => String((l === 'kz' ? p.textKz : l === 'en' ? p.textEn : p.text) || '').trim();
   const RUBRICS = ['The Lab', 'Архитектура как улика', 'Most in detail', 'Backstage', 'Diaries', 'Culture', 'Другое'];
   const RUBRIC_HINT = { // из статьи «Голос бренда и правила постов» (kb)
     'The Lab': 'Архив идей: нереализованная концепция как «архивное дело» — задача, идея, почему не построили. 1 пост в неделю.',
@@ -45,7 +49,7 @@
     if ('channels' in f) { const a = Array.isArray(f.channels) ? f.channels : String(f.channels || '').split(/[,\s]+/); o.channels = [...new Set(a.map(x => String(x).trim().toLowerCase()).filter(x => CHANNELS[x]))]; }
     if ('rubric' in f) o.rubric = RUBRICS.includes(f.rubric) ? f.rubric : 'Другое';
     if ('title' in f) o.title = String(f.title || '').trim().slice(0, 200);
-    if ('text' in f) o.text = String(f.text || '').replace(/\r\n/g, '\n').slice(0, 5000);
+    for (const k of ['text', 'textKz', 'textEn']) if (k in f) o[k] = String(f[k] || '').replace(/\r\n/g, '\n').slice(0, 5000);
     if ('pmProjectId' in f) o.pmProjectId = String(f.pmProjectId || '').trim();
     return o;
   }
@@ -59,6 +63,15 @@
     if (c.status === 'no') return `Проект ${name} под NDA — публиковать нельзя`;
     return `Нет согласия заказчика проекта ${name}: отметьте «можно публиковать» в разделе «Согласия заказчиков»`;
   }
+  // все ли нужные языки заполнены для выбранных каналов; '' — да, иначе причина
+  function langReason(post) {
+    const need = [...new Set((post.channels || []).flatMap(c => LANG_NEED[c] || []))]; const miss = need.filter(l => !textIn(post, l)); if (!miss.length) return '';
+    const kzru = miss.filter(l => l !== 'en'); const parts = [];
+    if (kzru.length) parts.push(`нет текста на ${kzru.map(l => LANG_NAME[l]).join(' и ')} — по закону о рекламе посты в казахстанских каналах публикуются на казахском и русском`);
+    if (miss.includes('en')) parts.push('нет текста на английском для Instagram EN / LinkedIn');
+    return 'Не готов к публикации: ' + parts.join('; ');
+  }
+  const readyReason = (post, consents, projects) => blockReason(post, consents, projects) || langReason(post);
   // переходы статусов: действие → { из каких статусов, в какой, кто }
   const ACTIONS = {
     submit: { from: ['draft', 'rework'], to: 'review', who: 'edit', label: 'на утверждение' },
@@ -74,8 +87,8 @@
     if (A.who === 'approve' ? !canApprove(u) : !canEdit(u)) return [403, A.who === 'approve' ? 'Утверждают только владелец и партнёр' : 'Нет прав'];
     if (!A.from.includes(post.status)) return [409, `Пост «${STATUSES[post.status] || post.status}» — действие недоступно`];
     if (A.comment && !String((body && body.comment) || '').trim()) return [400, 'Напишите, что поправить'];
-    if (A.consent) { const r = blockReason(post, consents, projects); if (r) return [409, r]; }
-    if (action === 'submit' && !String(post.text || '').trim() && !(post.images || []).length) return [400, 'Пустой пост: добавьте текст или картинки'];
+    if (A.consent) { const r = readyReason(post, consents, projects); if (r) return [409, r]; }
+    if (action === 'submit' && !['ru', 'kz', 'en'].some(l => textIn(post, l)) && !(post.images || []).length) return [400, 'Пустой пост: добавьте текст или картинки'];
     return '';
   }
   // подсказки по голосу бренда (не запрет); \w и \b с кириллицей не работают — только [а-яё]
@@ -109,5 +122,5 @@
   const lastPublished = posts => (posts || []).filter(p => p.status === 'published').map(p => p.publishedAt || p.date).filter(Boolean).sort().pop() || '';
 
   return { num, almaty, addDays, days, weekStart, fdate, CHANNELS, RUBRICS, RUBRIC_HINT, RULES, STATUSES, EDITABLE, CONSENT, CONSENT_WHAT, IMAGE_TYPES, MAX_IMAGE, MAX_IMAGES, KEY_RE,
-    isLeader, canOpen, canEdit, canApprove, canImport, canConsents, cleanPost, consentOf, blockReason, ACTIONS, checkAction, lint, monthOf, publishedByRubric, leadsBySource, cleanMetrics, lastPublished };
+    isLeader, canOpen, canEdit, canApprove, canImport, canConsents, cleanPost, consentOf, blockReason, langReason, readyReason, LANG_NEED, textIn, ACTIONS, checkAction, lint, monthOf, publishedByRubric, leadsBySource, cleanMetrics, lastPublished };
 });

@@ -83,6 +83,7 @@
       tr.onscroll = () => { n.textContent = `${Math.round(tr.scrollLeft / tr.clientWidth) + 1} / ${tot}`; };
       c.querySelector('.l').onclick = () => tr.scrollBy({ left: -tr.clientWidth, behavior: 'smooth' }); c.querySelector('.r').onclick = () => tr.scrollBy({ left: tr.clientWidth, behavior: 'smooth' }); });
     const metaLine = p => `<div class="mkt-meta">${chip(p.status, ST_CHIP)}<span>${fdate(p.date)}</span><span>· ${esc(p.rubric)}</span><span>· ${esc(chans(p))}</span></div>`;
+    const texts = p => [['textKz', 'KZ'], ['text', 'RU'], ['textEn', 'EN']].filter(([k]) => p[k]).map(([k, l]) => `<div class="mkt-text"><span class="chip">${l}</span> ${esc(p[k])}</div>`).join('');
     const warns = p => [p.project ? `<div class="mkt-meta" style="margin-top:6px">Проект: <b>${esc(p.project.name)}</b>${p.consent ? ' ' + chip(p.consent.status, CS_CHIP) : ''}${p.consent && p.consent.what.length ? ` <span>${esc(p.consent.what.map(w => MK.CONSENT_WHAT[w]).join(', '))}</span>` : ''}</div>` : '',
       p.block && ['review', 'approved'].includes(p.status) ? `<div class="mkt-warn crit">${esc(p.block)}</div>` : '',
       p.comment && ['rework', 'rejected', 'review'].includes(p.status) ? `<div class="mkt-warn">Замечание: ${esc(p.comment)}</div>` : '',
@@ -108,13 +109,16 @@
 <div class="field"><label>Каналы</label><div class="mkt-ch">${Object.entries(m.channels).map(([k, l]) => `<label><input type="checkbox" name="ch" value="${k}"${(v.channels || []).includes(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></div>
 ${ui.field({ name: 'pmProjectId', label: 'Проект', type: 'select', options: projOpts }, v.pmProjectId)}
 ${ui.field({ name: 'title', label: 'Заголовок (для плана)' }, v.title)}
-<div class="field"><label>Текст</label><textarea name="text" rows="9">${esc(v.text || '')}</textarea></div>
+<div class="mkt-hint">Instagram, Threads, Telegram — текст на казахском и русском (закон о рекламе). Instagram EN и LinkedIn — на английском.</div>
+<div class="field"><label>Текст — қазақша</label><textarea name="textKz" rows="6">${esc(v.textKz || '')}</textarea></div>
+<div class="field"><label>Текст — русский</label><textarea name="text" rows="6">${esc(v.text || '')}</textarea></div>
+<div class="field"><label>Текст — English</label><textarea name="textEn" rows="6">${esc(v.textEn || '')}</textarea></div>
 <div class="mkt-hint">${esc(m.rules.join(' · '))}</div>
 ${M_FILES()}
 <div class="error"></div><button class="btn primary block" type="submit">${isNew ? 'Создать черновик' : 'Сохранить'}</button></form>`;
       modal(isNew ? 'Новый пост' : 'Пост', html, async f => {
         const files = [...($('#modal-body input[type=file]') || {}).files || []];
-        const body = { date: f.date, rubric: f.rubric, pmProjectId: f.pmProjectId, title: f.title, text: f.text, channels: [...document.querySelectorAll('#modal-body input[name=ch]:checked')].map(x => x.value) };
+        const body = { date: f.date, rubric: f.rubric, pmProjectId: f.pmProjectId, title: f.title, text: f.text, textKz: f.textKz, textEn: f.textEn, channels: [...document.querySelectorAll('#modal-body input[name=ch]:checked')].map(x => x.value) };
         const r = await api(isNew ? '/mkt/posts' : '/mkt/posts/' + p.id, { method: isNew ? 'POST' : 'PUT', body });
         const n = files.length ? await upload(r.id, files) : 0; toast((isNew ? 'Черновик создан' : 'Сохранено') + (n ? ` · картинок: ${n}` : '')); badges(true);
         if (isNew) location.hash = postLink(r.id); else rerender();
@@ -128,7 +132,7 @@ ${M_FILES()}
     ui.SECTIONS.mktreview = async main => {
       const list = await api('/mkt/review'); const m = await meta();
       main.innerHTML = head('На утверждение', list.length ? `${nposts(list.length)} ${list.length % 10 === 1 && list.length % 100 !== 11 ? 'ждёт' : 'ждут'} решения` : 'Все посты рассмотрены') +
-        (list.length ? `<div class="mkt-revs">${list.map(p => `<div class="card mkt-rev">${carousel(p)}<div class="b">${metaLine(p)}${p.title ? `<h3>${esc(p.title)}</h3>` : ''}<div class="mkt-text">${esc(p.text)}</div>${warns(p)}<div class="mkt-meta"><a href="${postLink(p.id)}">Карточка и история</a></div></div>
+        (list.length ? `<div class="mkt-revs">${list.map(p => `<div class="card mkt-rev">${carousel(p)}<div class="b">${metaLine(p)}${p.title ? `<h3>${esc(p.title)}</h3>` : ''}${texts(p)}${warns(p)}<div class="mkt-meta"><a href="${postLink(p.id)}">Карточка и история</a></div></div>
 ${m.rights.approve ? `<div class="mkt-btns"><button class="btn ok" data-act="mktOk" data-id="${p.id}"${p.block ? ' disabled title="' + esc(p.block) + '"' : ''}>ОК</button><button class="btn" data-act="mktRework" data-id="${p.id}">Правка</button><button class="btn danger" data-act="mktReject" data-id="${p.id}">Нет</button></div>` : ''}</div>`).join('')}</div>` : empty('Новых постов на утверждение нет'));
       bind(main); bindCars(main); badges(true);
     };
@@ -143,7 +147,7 @@ ${m.rights.approve ? `<div class="mkt-btns"><button class="btn ok" data-act="mkt
       main.innerHTML = head('Контент-план', `${nposts(list.length)} · на утверждении ${sum.review} · на правке ${sum.rework} · утверждено ${sum.approved}`, m.rights.editor ? '<button class="btn primary" data-act="mktNew">+ Пост</button>' : '') + pause +
         `<div class="mkt-filters">${sel('mkt-f-rubric', m.rubrics, f.rubric, 'Все рубрики')}${sel('mkt-f-status', Object.entries(m.statuses), f.status, 'Все статусы')}${sel('mkt-f-period', [['cur', 'С этой недели и незакрытые'], ['all', 'Все даты']], f.period)}</div>` +
         (list.length ? [...weeks.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([w, ps]) => `<div class="mkt-week">Неделя ${fdate(w)} – ${fdate(MK.addDays(w, 6))}${w === MK.weekStart(m.today) ? ' · текущая' : ''}</div>` +
-          ps.map(p => `<a class="mkt-row" href="${postLink(p.id)}">${p.images.length ? `<img class="th" src="${esc(p.images[0].url)}" alt="" loading="lazy">` : '<div class="th"></div>'}<div><b>${esc(p.title || ui.cut(p.text, 60) || 'Без заголовка')}</b><div class="m">${fdate(p.date)} · ${esc(p.rubric)} · ${esc(chans(p))}${p.images.length ? ` · ${p.images.length} карт.` : ''}${p.project ? ' · ' + esc(p.project.name) : ''}</div>${p.block && ['review', 'approved'].includes(p.status) ? '<div class="m crit-text">нет согласия заказчика</div>' : ''}</div><div class="st">${chip(p.status, ST_CHIP)}${p.status === 'approved' && p.date < m.today ? '<span class="chip crit">дата прошла</span>' : ''}</div></a>`).join('')).join('') : empty('Постов нет'));
+          ps.map(p => `<a class="mkt-row" href="${postLink(p.id)}">${p.images.length ? `<img class="th" src="${esc(p.images[0].url)}" alt="" loading="lazy">` : '<div class="th"></div>'}<div><b>${esc(p.title || ui.cut(p.text || p.textKz || p.textEn, 60) || 'Без заголовка')}</b><div class="m">${fdate(p.date)} · ${esc(p.rubric)} · ${esc(chans(p))}${p.images.length ? ` · ${p.images.length} карт.` : ''}${p.project ? ' · ' + esc(p.project.name) : ''}</div>${p.block && ['review', 'approved'].includes(p.status) ? '<div class="m crit-text">не готов к публикации</div>' : ''}</div><div class="st">${chip(p.status, ST_CHIP)}${p.status === 'approved' && p.date < m.today ? '<span class="chip crit">дата прошла</span>' : ''}</div></a>`).join('')).join('') : empty('Постов нет'));
       const go = () => { location.hash = '#/mktplan?' + ui.qsOf({ rubric: $('#mkt-f-rubric').value, status: $('#mkt-f-status').value, period: $('#mkt-f-period').value === 'cur' ? '' : 'all' }); };
       ['#mkt-f-rubric', '#mkt-f-status', '#mkt-f-period'].forEach(s => { $(s).onchange = go; });
       ui.ACT.mktNew = () => editPost(null); bind(main);
@@ -161,7 +165,7 @@ ${m.rights.approve ? `<div class="mkt-btns"><button class="btn ok" data-act="mkt
         (R.leader || (R.editor && ['draft', 'rework', 'rejected'].includes(p.status))) ? `<button class="btn danger" data-act="mktDel" data-id="${p.id}">Удалить</button>` : ''].join('');
       const imgs = editable && p.images.length ? `<div class="mkt-imgs">${p.images.map((i, n) => `<figure><img src="${esc(i.url)}" alt=""><button class="btn sm" data-act="mktMv" data-n="${n}" data-d="-1"${n ? '' : ' disabled'}>←</button><button class="btn sm" data-act="mktMv" data-n="${n}" data-d="1"${n < p.images.length - 1 ? '' : ' disabled'}>→</button><button class="btn sm danger" data-act="mktRm" data-n="${n}">✕</button></figure>`).join('')}</div>` : '';
       main.innerHTML = head(p.title || 'Пост', `<a href="#/mktplan">← к контент-плану</a>`) +
-        `<div class="mkt-post"><div class="card mkt-rev">${carousel(p)}</div><div>${metaLine(p)}${warns(p)}<div class="mkt-text">${esc(p.text)}</div>${p.publishedUrl ? `<p><a href="${esc(p.publishedUrl)}" target="_blank" rel="noopener">Открыть публикацию ↗</a> · ${fdate(p.publishedAt)}</p>` : ''}<div class="mkt-acts">${btns}</div>${imgs}
+        `<div class="mkt-post"><div class="card mkt-rev">${carousel(p)}</div><div>${metaLine(p)}${warns(p)}${texts(p)}${p.publishedUrl ? `<p><a href="${esc(p.publishedUrl)}" target="_blank" rel="noopener">Открыть публикацию ↗</a> · ${fdate(p.publishedAt)}</p>` : ''}<div class="mkt-acts">${btns}</div>${imgs}
 <h3 style="font-size:14px;margin:14px 0 6px">История</h3><ol class="mkt-hist">${(p.history || []).map(h => `<li>${dtm(h.at)}${h.byName ? ' · ' + esc(h.byName) : ''} · ${esc(ACT_LABEL[h.action] || h.action)}${h.note ? ': ' + esc(h.note) : ''}</li>`).join('')}</ol></div></div>`;
       const order = async keys => { await api('/mkt/posts/' + p.id, { method: 'PUT', body: { images: keys } }); rerender(); };
       ui.ACT.mktEdit = () => editPost(p);
