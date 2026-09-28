@@ -82,7 +82,7 @@ module.exports = {
 
 - Пользователи: `db.users` — `id, name, role, section, seeBudget, employeeId`. Роли: `owner, partner` (руководители), `accountant, secretary` (финансы), `pm` (проектный менеджер), `gip`, `lead` (руководитель раздела, `section`), `staff` (сотрудник). Разделы: `D.SECTIONS`.
 - Сотрудники: `db.employees` — `id, name, company, position, salary (на руки), hired, status, resigned`. Пользователь ↔ сотрудник: `users.employeeId`.
-- Проекты управления: `db.pmProjects` (`id, track: 'ep'|'rp', name, client, gipId, pmId, status, start, due, forecast, projectId → db.projects.id`), `db.pmItems` (`pid, stage, stageName, title, role, section, due, done, kstatus` — колонка канбана: todo|doing|review|done, «done» = done). Владелец — модуль pm.
+- Проекты управления: `db.pmProjects` (`id, track: 'ep'|'rp', name, client, gipId, pmId, status, start, due, forecast, projectId → db.projects.id`), `db.pmItems` (`pid, stage, stageName, title, role, section, due, done, kstatus` — колонка канбана: todo|doing|review; «Готово» = done). Владелец — модуль pm.
 - Финансовые проекты и договоры: `db.projects`, `db.contracts` (`projectId`), акты `db.docs`, операции `db.ops` (только руководители и финансы).
 
 ## События
