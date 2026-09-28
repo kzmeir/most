@@ -16,6 +16,7 @@ function pmModule(T) {
       { id: S('reg'), label: M.full, icon: M.icon },
       { id: S('my'), label: 'Мои задачи', icon: '☑' },
       { id: S('bl'), label: 'Блокеры', icon: '⛔', can: u => u.role !== 'staff' },
+      { id: S('team'), label: 'Исполнители', icon: '👤', can: u => ['owner', 'pm', 'gip'].includes(u.role) },
     ],
     routes: [S('p'), ...(T === 'rp' ? ['pmp', 'pm', 'pmrp', 'pmmy', 'pmbl', 'pmown'] : ['pmep'])], // карточка #/ep/p?id=… и #/rp/p?id=…; старые адреса → редирект
     canOpen: u => !!window.MostPM && window.MostPM.canOpen(u, PM_ACCESS) && pmTrackOpen(u, T),
@@ -475,6 +476,24 @@ function pmInit(ui, T) {
     };
 
     // ---- блокеры (все проекты) ----
+    // ---- исполнители: ПМ/ГИП заводят аккаунты сотрудников (роль «Сотрудник»); владелец видит всех сотрудников ----
+    ui.SECTIONS[S('team')] = async main => {
+      const all = await api('/users'); const u = me(); const list = all.filter(x => x.role === 'staff');
+      const SEC = [['', '—'], ...(window.MOST_SECTIONS || ['АР', 'КЖ', 'ГП', 'ОВ', 'ВК', 'ЭЛ', 'СС', 'ГСВ', 'ТХ', 'Смета', 'Визуализация']).map(x => [x, x])];
+      const gen = () => { const c = 'abcdefghjkmnpqrstuvwxyz23456789'; let r = ''; const a = new Uint32Array(10); crypto.getRandomValues(a); for (const v of a) r += c[v % c.length]; return r; };
+      const slug = n => { const t = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ы: 'y', э: 'e', ю: 'yu', я: 'ya', ә: 'a', ғ: 'g', қ: 'k', ң: 'n', ө: 'o', ұ: 'u', ү: 'u', һ: 'h', і: 'i' }; const w = String(n).toLowerCase().trim().split(/\s+/); const tr = x => [...x].map(ch => t[ch] ?? ch).join('').replace(/[^a-z0-9]/g, ''); return w.length > 1 ? `${tr(w[1]).slice(0, 1)}.${tr(w[0])}` : tr(w[0] || ''); };
+      const showCreds = (title, login, pass) => modal(title, `<p>Передайте исполнителю — пароль показывается один раз:</p><div class="card" style="font-family:monospace;font-size:15px;user-select:all">Адрес: ${esc(location.origin)}<br>Логин: ${esc(login)}<br>Пароль: ${esc(pass)}</div><p class="faint">Если исполнитель забудет пароль — выдайте новый кнопкой «Новый пароль».</p><button class="btn primary block" type="button" id="pm-cred-copy">Скопировать</button>`) || ($('#pm-cred-copy').onclick = () => { navigator.clipboard.writeText(`Адрес: ${location.origin}\nЛогин: ${login}\nПароль: ${pass}`).then(() => toast('Скопировано')); });
+      main.innerHTML = head('Исполнители', `${list.length} ${u.role === 'owner' ? 'сотрудников' : 'заведено вами'} · роль «Сотрудник»: видят свои проекты и задачи, без финансов`, `<button class="btn primary" data-act="pmTeamAdd">+ Новый исполнитель</button>`) +
+        (list.length ? tbl([{ t: 'ФИО' }, { t: 'Логин' }, { t: 'Раздел' }, { t: 'Статус' }, { t: '' }], list.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.login)}</td><td>${esc(x.section || '—')}</td><td>${x.active ? chip('ok', { ok: ['ok', 'активен'] }) : '<span class="faint">отключён</span>'}</td><td style="white-space:nowrap"><button class="btn sm" data-act="pmTeamPass" data-id="${x.id}">Новый пароль</button> <button class="btn sm" data-act="pmTeamToggle" data-id="${x.id}">${x.active ? 'Отключить' : 'Включить'}</button></td></tr>`)) : empty('Исполнителей пока нет — нажмите «+ Новый исполнитель»')) +
+        `<p class="faint">Исполнителя назначают на пункты проекта («Исполнитель» в пункте). Роли и доступ к финансам меняет только владелец.</p>`;
+      ui.ACT.pmTeamAdd = () => { const pass = gen(); modal('Новый исполнитель', formHtml([{ name: 'name', label: 'ФИО', required: true }, { name: 'login', label: 'Логин (латиницей)', required: true }, { name: 'section', label: 'Раздел', type: 'select', options: SEC }, { name: 'password', label: 'Пароль', required: true }], { password: pass }, 'Создать аккаунт'), async v => {
+        const r = await api('/users', { method: 'POST', body: v }); ui.state.people = await api('/people'); setTimeout(() => { showCreds('Аккаунт создан', r.login, v.password); $('#modal-close').addEventListener('click', () => route(), { once: true }); }, 0); });
+        const n = $('#modal-body [name=name]'), l = $('#modal-body [name=login]'); if (n && l) { n.addEventListener('input', () => { if (!l.dataset.touched) l.value = slug(n.value); }); l.addEventListener('input', () => { l.dataset.touched = 1; }); } };
+      ui.ACT.pmTeamPass = async ({ id }) => { const x = list.find(y => y.id === id); if (!x || !confirm(`Выдать новый пароль для ${x.name}? Старый перестанет работать.`)) return; const pass = gen(); await api('/users/' + id, { method: 'PUT', body: { password: pass } }); showCreds('Новый пароль', x.login, pass); };
+      ui.ACT.pmTeamToggle = async ({ id }) => { const x = list.find(y => y.id === id); if (!x) return; if (x.active && !confirm(`Отключить ${x.name}? Войти он не сможет, задачи останутся.`)) return; await api('/users/' + id, { method: 'PUT', body: { active: !x.active } }); ui.state.people = await api('/people'); toast(x.active ? 'Отключён' : 'Включён'); route(); };
+      bind(main);
+    };
+
     ui.SECTIONS[S('bl')] = async main => {
       const d = await api('/pm/overview?track=' + T); ctxData = { leader: d.leader, financeProjects: d.financeProjects }; badges(true);
       const st = params().get('st') || 'open'; const activeP = new Set(d.rows.filter(r => PM.ACTIVE(r.status)).map(r => r.id));

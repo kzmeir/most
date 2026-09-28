@@ -39,7 +39,7 @@ const moduleOn = m => !!process.env.DEV_USER || ((store.get().settings || {}).en
 // сайты: 'fin' — только финансы, 'erp' — только модули, 'all' — всё вместе (режим разработки на одном порту)
 // на каком сайте модуль: m.site ('erp' по умолчанию, 'fin' — «Коммерция» у финансов, ['erp','fin'] — на обоих, например ИИ-панель)
 const moduleActive = (m, site) => (site === 'all' || [].concat(m.site || 'erp').includes(site)) && moduleOn(m); // m.site: 'erp' | 'fin' | ['erp','fin'] // 'all' — один порт в режиме разработки
-const ERP_API = ['status', 'login', 'logout', 'me', 'people']; // общее ядро, доступное на сайте ERP
+const ERP_API = ['status', 'login', 'logout', 'me', 'people', 'users']; // общее ядро, доступное на сайте ERP
 const moduleScripts = site => MODULES.filter(m => moduleActive(m, site)).flatMap(m => ['domain.js', 'ui.js'].filter(f => fs.existsSync(path.join(m.dir, f))).map(f => `<script src="/m/${m.id}/${f}"></script>`)).join('\n');
 
 store.load();
@@ -263,13 +263,38 @@ async function api(req, res, url, user, site) {
 
   // --- users (owner) ---
   if (seg === 'users') {
+    // ПМ и ГИП заводят исполнителей (роль «Сотрудник») и управляют только своими: имя, раздел, пароль, вкл/выкл. Роли и финансы — только владелец.
+    if (role === 'pm' || role === 'gip') {
+      const mine = u => u && u.createdBy === user.id && u.role === 'staff';
+      const sec = v => D.SECTIONS.includes(String(v || '')) ? String(v) : '';
+      if (method === 'GET' && !id2) return ok(res, db.users.filter(mine).map(auth.publicUser));
+      if (method === 'POST' && !id2) {
+        const login = String(body.login || '').trim().toLowerCase(), name = String(body.name || '').trim();
+        if (!name || !/^[a-z0-9._-]{3,40}$/.test(login)) return err(res, 400, 'ФИО и логин (латиница, цифры, точка, дефис; от 3 символов)');
+        if (String(body.password || '').length < 6) return err(res, 400, 'Пароль — не короче 6 символов');
+        if (db.users.some(u => u.login === login)) return err(res, 409, 'Такой логин уже есть');
+        const { salt, hash } = auth.hashPassword(String(body.password));
+        const u = store.insert('users', { login, name, role: 'staff', section: sec(body.section), seeBudget: false, employeeId: '', salt, passHash: hash, active: true, createdAt: new Date().toISOString(), createdBy: user.id });
+        store.audit(user.id, 'create', 'users', u.id, { by: role }); return ok(res, auth.publicUser(u));
+      }
+      if (method === 'PUT' && id2) {
+        const u = store.find('users', id2); if (!mine(u)) return err(res, 403, 'Можно менять только исполнителей, которых вы завели');
+        const patch = {};
+        if (body.name) patch.name = String(body.name).trim();
+        if ('section' in body) patch.section = sec(body.section);
+        if (typeof body.active === 'boolean') patch.active = body.active;
+        if (body.password) { if (String(body.password).length < 6) return err(res, 400, 'Пароль — не короче 6 символов'); const { salt, hash } = auth.hashPassword(String(body.password)); patch.salt = salt; patch.passHash = hash; }
+        const r = store.update('users', id2, patch); store.audit(user.id, 'update', 'users', id2, { by: role, fields: Object.keys(patch).filter(k => k !== 'salt' && k !== 'passHash') }); return ok(res, auth.publicUser(r));
+      }
+      return err(res, 403, 'Удаляет и меняет роли только владелец — отключите аккаунт');
+    }
     if (role !== 'owner') return err(res, 403, 'Только владелец');
     if (method === 'GET') return ok(res, db.users.map(auth.publicUser));
     if (method === 'POST') {
       if (!body.login || !body.password || !D.ROLES.includes(body.role)) return err(res, 400, 'Логин, пароль, роль');
       if (db.users.some(u => u.login === String(body.login).trim().toLowerCase())) return err(res, 409, 'Такой логин уже есть');
       const { salt, hash } = auth.hashPassword(body.password);
-      const u = store.insert('users', { login: String(body.login).trim().toLowerCase(), name: body.name || body.login, role: body.role, section: String(body.section || ''), seeBudget: body.seeBudget === true || body.seeBudget === 'true', employeeId: String(body.employeeId || ''), salt, passHash: hash, active: true, createdAt: new Date().toISOString() });
+      const u = store.insert('users', { login: String(body.login).trim().toLowerCase(), name: body.name || body.login, role: body.role, section: String(body.section || ''), seeBudget: body.seeBudget === true || body.seeBudget === 'true', employeeId: String(body.employeeId || ''), salt, passHash: hash, active: true, createdAt: new Date().toISOString(), createdBy: user.id });
       store.audit(user.id, 'create', 'users', u.id); return ok(res, auth.publicUser(u));
     }
     if (method === 'PUT' && id2) {
