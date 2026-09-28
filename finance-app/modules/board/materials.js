@@ -48,6 +48,24 @@ function parseUserPath(list, input) {
   }
   return null;
 }
+// путь в другом виде: другая буква диска (X:\…), другое имя или IP сервера (\192.168.50.9\MOST-2025\…), диск на уровень выше (X:\MOST-2025\…).
+// Узнаём по имени общей папки и проверяем, что такая папка есть под корнем. → { root, rel } или null
+async function guessUserPath(list, input) {
+  const direct = parseUserPath(list, input); if (direct) return direct;
+  const s = String(input || '').trim().replace(/^["']|["']$/g, '').replace(/\\/g, '/'); if (!s || s.length > 1000) return null;
+  const share = r => (String(r.path || '').replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || '').toLowerCase();
+  const tries = [];
+  const unc = s.match(/^\/\/[^/]+\/([^/]+)(?:\/(.*))?$/); // //хост/общая папка/остаток
+  if (unc) { for (const r of list) if (share(r) === unc[1].toLowerCase()) tries.push([r, unc[2] || '']); }
+  const drv = s.match(/^[a-z]:(?:\/(.*))?$/i); // X:/остаток
+  if (drv) { const rest = drv[1] || ''; const first = rest.split('/')[0].toLowerCase();
+    for (const r of list) { if (first && first === share(r)) tries.push([r, rest.split('/').slice(1).join('/')]); tries.push([r, rest]); } }
+  for (const [r, relRaw] of tries) {
+    const rel = BD.cleanRel(relRaw); if (rel === null) continue; const abs = absOf(list, r.id, rel); if (!abs) continue;
+    try { if ((await fsp.stat(abs)).isDirectory()) return { root: r.id, rel }; } catch { }
+  }
+  return null;
+}
 // абсолютный путь внутри корня (с проверкой, что не вышли наружу)
 function absOf(list, rootId, rel) {
   const r = list.find(x => x.id === rootId); if (!r) return null; const clean = BD.cleanRel(rel); if (clean === null) return null;
@@ -196,4 +214,4 @@ async function sendRaw(ctx, abs, name) {
 // настоящий тип файла по первым байтам
 const sniff = b => !b || b.length < 12 ? '' : b.subarray(0, 5).toString('latin1') === '%PDF-' ? 'pdf' : b.readUInt32BE(0) === 0x89504e47 ? 'png' : b.readUInt16BE(0) === 0xffd8 ? 'jpg' : b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP' ? 'webp' : '';
 
-module.exports = { sniff, DEFAULT_ROOTS, LIMITS, THUMB_MAX, RESCAN_MIN_MS, STALE_MS, cleanRoot, parseRootsEnv, roots, rootSource, parseUserPath, absOf, insideReal, displayPath, uncPath, fileId, thumbKey, thumbsDir, scanFolder, rescan, docOf, filesOut, linkedState, folderOut, findFile, candidates, sendRaw, SCANS };
+module.exports = { guessUserPath, sniff, DEFAULT_ROOTS, LIMITS, THUMB_MAX, RESCAN_MIN_MS, STALE_MS, cleanRoot, parseRootsEnv, roots, rootSource, parseUserPath, absOf, insideReal, displayPath, uncPath, fileId, thumbKey, thumbsDir, scanFolder, rescan, docOf, filesOut, linkedState, folderOut, findFile, candidates, sendRaw, SCANS };

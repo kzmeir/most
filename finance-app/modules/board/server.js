@@ -258,8 +258,8 @@ async function materialsAsync(ctx, bd, r, c, d, e) {
     if (method === 'PUT') {
       if (!r.manage) return err(403, 'Папку проекта привязывает руководитель доски: владелец доски, ПМ/ГИП проекта, владелец или партнёр');
       const list = MAT.roots(db); const rel = body.root ? BD.cleanRel(body.rel) : null;
-      const pp = body.root ? (BD.ROOT_ID_RE.test(String(body.root)) && rel !== null ? { root: String(body.root), rel } : null) : MAT.parseUserPath(list, body.path);
-      if (!pp || !list.some(x => x.id === pp.root)) return err(400, 'Путь вне разрешённых сетевых папок (или содержит «..»). Разрешены: ' + list.map(x => x.alias || x.path).join(', '));
+      const pp = body.root ? (BD.ROOT_ID_RE.test(String(body.root)) && rel !== null ? { root: String(body.root), rel } : null) : await MAT.guessUserPath(list, body.path);
+      if (!pp || !list.some(x => x.id === pp.root)) return err(400, 'Папка не найдена в сетевых папках (или путь содержит «..»). Сетевые папки: ' + list.map(x => `${x.alias ? x.alias + ' = ' : ''}${x.path}`).join(', ') + '. Можно вставить путь с любой буквой диска или адресом сервера — лишь бы папка была внутри них.');
       const abs = MAT.absOf(list, pp.root, pp.rel); if (!abs) return err(400, 'Путь вне разрешённых сетевых папок');
       let st = null; try { st = await fs.promises.stat(abs); } catch { } if (!st || !st.isDirectory()) return err(404, `Папка не найдена: ${MAT.displayPath(list, pp.root, pp.rel)}`);
       if (!(await MAT.insideReal(list, pp.root, abs))) return err(400, 'Папка ведёт за пределы разрешённых сетевых папок (ссылка)');
