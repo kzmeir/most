@@ -1,10 +1,9 @@
 @echo off
 setlocal
 title MOST - выкладка на сервер
-set "TARGET=\\MostServer\Documents\MOST-Финансы"
 set "SITEPORT=3000"
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy-to-server.ps1" -Target "%TARGET%" -Port %SITEPORT% %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy-to-server.ps1" -MostServer -Port %SITEPORT% %*
 set "RC=%errorlevel%"
 if %RC%==0 goto :ok
 if %RC%==2 goto :norestart
@@ -26,7 +25,7 @@ if errorlevel 1 goto :elevate
 goto :norestart_manual
 
 :elevate
-powershell -NoProfile -Command "Start-Process -FilePath powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','%~dp0deploy-to-server.ps1','-Target','%TARGET%','-Port','%SITEPORT%'"
+powershell -NoProfile -Command "Start-Process -FilePath powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','%~dp0deploy-to-server.ps1','-MostServer','-Port','%SITEPORT%'"
 echo.
 echo  Запущено в новом окне с запросом прав администратора - подтвердите в диалоге Windows.
 pause

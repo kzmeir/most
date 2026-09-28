@@ -8,9 +8,12 @@ param(
   [string]$Target,
   [int]$Port,
   [string]$RequireBranch = "erp/main",
-  [switch]$DryRun
+  [switch]$DryRun,
+  [switch]$MostServer,   # рабочий сервер: путь задаётся здесь, а не в .bat — cmd портит кириллицу в .bat (28.09.2026 код ушёл в папку «MOST-╨д╨╕…»)
+  [switch]$FirstDeploy   # разрешить выкладку в папку без data\db.sqlite
 )
 $ErrorActionPreference = 'Stop'
+if ($MostServer) { $Target = '\\MostServer\Documents\MOST-Финансы' }
 
 if (-not $Target -or -not $Port) {
   Write-Host "Использование: deploy-to-server.ps1 -Target <путь к серверу> -Port <порт сайта Финансы> [-Source <путь>] [-DryRun]"
@@ -32,6 +35,10 @@ function Fail($msg) {
   exit 1
 }
 
+if (-not $FirstDeploy -and -not (Test-Path -LiteralPath (Join-Path $Target 'data\db.sqlite'))) {
+  Write-Host "ОСТАНОВЛЕНО: в $Target нет data\db.sqlite — это не папка рабочего сервера (опечатка или испорченная кодировка пути). Для первой выкладки добавьте -FirstDeploy."
+  exit 1
+}
 $logDir = Join-Path $Target 'data\logs'
 if (Test-Path (Join-Path $Target 'data')) {
   try { New-Item -ItemType Directory -Force $logDir | Out-Null } catch {}
