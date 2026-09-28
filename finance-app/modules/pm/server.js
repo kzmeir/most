@@ -5,7 +5,7 @@ const PM = require('./domain');
 
 const CONTRACT_FIELDS = ['contractNo', 'contractDate', 'contractTerm', 'contractTermUnit', 'contractStartRule', 'dueNote'];
 const FIELDS = ['name', 'no', 'client', 'address', 'area', 'status', 'risk', 'gipId', 'pmId', 'start', 'due', 'forecast', 'comment', 'projectId', 'members', 'miroUrl', 'folder'].concat(CONTRACT_FIELDS);
-const ITEM_FIELDS_ANY = ['done', 'na', 'due', 'note', 'assigneeId', 'contractor', 'doneNote'];
+const ITEM_FIELDS_ANY = ['done', 'kstatus', 'na', 'due', 'note', 'assigneeId', 'contractor', 'doneNote'];
 const ITEM_FIELDS_MGR = ['title', 'role', 'weeks', 'weeksMax', 'crit', 'stage'];
 const RETRO_FIELDS = ['interpret', 'change', 'sprint'];
 // устав проекта: только известные поля, текст
@@ -27,7 +27,7 @@ function cleanContract(patch, body, p) {
   return patch;
 }
 // история пункта: последние 20 изменений — кто, когда, что (галочки, срок, исполнитель, подрядчик, название, оценка, этап, роль)
-const HIST_FIELDS = ['done', 'na', 'due', 'assigneeId', 'contractor', 'title', 'weeks', 'weeksMax', 'stage', 'role', 'rmStatus'];
+const HIST_FIELDS = ['done', 'na', 'due', 'assigneeId', 'contractor', 'title', 'weeks', 'weeksMax', 'stage', 'role', 'rmStatus', 'kstatus'];
 function logHistory(it, patch, userId, note) {
   const h = Array.isArray(it.history) ? it.history.slice() : []; const at = new Date().toISOString();
   for (const k of HIST_FIELDS) if (k in patch && String(patch[k] == null ? '' : patch[k]) !== String(it[k] == null ? '' : it[k])) h.push(Object.assign({ at, by: userId || '', field: k, from: it[k] == null ? '' : it[k], to: patch[k] == null ? '' : patch[k] }, note ? { note } : {}));
@@ -125,7 +125,7 @@ function rebuildItems(ctx, p, track, keepExtra, userId) {
   const old = db.pmItems.filter(i => i.pid === p.id).sort((a, b) => a.stage - b.stage || (a.order || 0) - (b.order || 0));
   const fresh = PM.itemsFromTemplate(track, p.id, { start: p.start, due: p.due }); const used = new Set();
   const rep = { template: track, version: PM.TEMPLATE_VERSION[track] || '', matched: 0, created: 0, moved: [], deleted: [] };
-  const CARRY = ['done', 'doneAt', 'doneBy', 'doneNote', 'na', 'due', 'assigneeId', 'contractor', 'note', 'history', 'returns', 'rmStatus', 'weeksMax', 'cuId'];
+  const CARRY = ['done', 'doneAt', 'doneBy', 'doneNote', 'na', 'due', 'assigneeId', 'contractor', 'note', 'history', 'returns', 'rmStatus', 'kstatus', 'weeksMax', 'cuId'];
   const hasData = x => !!(x.done || x.na || x.due || x.assigneeId || x.contractor || x.note || (x.history || []).length || x.rmStatus);
   for (const n of fresh) {
     const free = old.filter(x => !used.has(x.id));
@@ -175,7 +175,7 @@ function handle(ctx) {
   const card = p => {
     const items = db.pmItems.filter(i => i.pid === p.id).sort((x, y) => x.stage - y.stage || x.order - y.order);
     const h = PM.health(p, db.pmItems, t);
-    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i), waiting: PM.waitingFor(items, i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [] };
+    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i), waiting: PM.waitingFor(items, i), kcol: PM.itemKanban(i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [] };
     if (staff) { out.staff = true; out.blockers = out.blockers.filter(x => x.ownerId === user.id); out.contractors = []; }
     const hrMod = ctx.modules && ctx.modules.hr; if (hrMod && hrMod.laborHours && !staff) out.hours = hoursOf(ctx, hrMod, p, user, out.canBudget); // вкладка «Часы» — только при включённом модуле hr
     if (out.canBudget) out.throughput = PM.throughput(p, h);
@@ -212,7 +212,7 @@ function handle(ctx) {
     dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }, PM.canBudget(user, r) ? { throughput: PM.throughput(r, r.health) } : {}));
     return ok(Object.assign(dash, { blockersList: blockersIn.map(blockerOut), settings: PM.isLeader(user) ? S : undefined, canSettings: ['owner', 'partner'].includes(user.role), staff, canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
   }
-  if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it), waiting: PM.waitingFor(db.pmItems.filter(x => x.pid === it.pid), it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
+  if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it), waiting: PM.waitingFor(db.pmItems.filter(x => x.pid === it.pid), it), kcol: PM.itemKanban(it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
   if (a === 'finance' && b === 'projects' && method === 'GET') { if (!PM.isLeader(user)) return err(403, 'Только руководитель'); return ok(finProjects()); }
   if (a === 'projects') {
     if (!b && method === 'GET') return ok(db.pmProjects.filter(p => (!ctx.qs.track || p.track === ctx.qs.track) && visibleP(p)).map(p => Object.assign(projOut(PM.summary(p, db.pmItems, db.pmBlockers, t)), { canEdit: PM.isManager(user, p) })));
@@ -273,6 +273,7 @@ function handle(ctx) {
         if (due) patch.due = due; if (st.label !== undefined) patch.rmStatus = st.label;
         if (st.done === true && !it.done) { Object.assign(patch, { done: true, doneAt: due || it.due || t, doneBy: user.id, doneNote: 'по дорожной карте' }); rep.done++; }
         if (st.done === false && it.done) Object.assign(patch, { done: false, doneAt: '', doneBy: '' });
+        if (st.label !== undefined) { const k = PM.rmKanban(st.label); if (k) patch.kstatus = k; } // колонка канбана — по статусу таблицы
         logHistory(it, patch, user.id, 'по дорожной карте'); Object.assign(it, patch, { updatedAt: now(), updatedBy: user.id }); rep.updated++;
       }
       store.save(); store.audit(user.id, 'statuses', 'pmProjects', p.id, rep); return ok(Object.assign({ report: rep }, card(p)));
@@ -298,8 +299,9 @@ function handle(ctx) {
     const it = db.pmItems.find(i => i.id === b); if (!it) return err(404, 'Пункт не найден'); const p = findP(it.pid);
     if (method === 'PUT') {
       if (!PM.canEditItem(user, p, it)) return err(403, 'Этот пункт ведёт другой раздел');
-      const patch = pick(body, staff ? PM.STAFF_ITEM_FIELDS : ITEM_FIELDS_ANY); // сотрудник — только отметка и заметка своего пункта
+      let patch = pick(body, staff ? PM.STAFF_ITEM_FIELDS : ITEM_FIELDS_ANY); // сотрудник — только отметка (и колонка канбана) и заметка своего пункта
       if (PM.isManager(user, p)) Object.assign(patch, pick(body, ITEM_FIELDS_MGR));
+      patch = PM.kanbanPatch(it, patch); // колонка канбана ↔ «сделано»: «Готово» = done, открытая колонка у сделанного — возврат
       if ('done' in patch) { patch.done = !!patch.done && patch.done !== 'false'; if (patch.done && !it.done) { patch.doneAt = t; patch.doneBy = user.id; } if (!patch.done) { if (it.done) patch.returns = (Number(it.returns) || 0) + 1; patch.doneAt = ''; patch.doneBy = ''; } }
       if ('weeksMax' in patch) patch.weeksMax = num(patch.weeksMax) || 0;
       if ('na' in patch) patch.na = !!patch.na && patch.na !== 'false';
@@ -310,7 +312,7 @@ function handle(ctx) {
       logHistory(it, patch, user.id);
       Object.assign(it, patch, { updatedAt: now(), updatedBy: user.id }); store.save(); store.audit(user.id, 'update', 'pmItems', it.id, patch.done !== undefined ? { done: patch.done } : null);
       if (patch.done === true) ctx.emit('pm.item.done', { item: it, project: p });
-      return ok(Object.assign({}, it, { canEdit: true }));
+      return ok(Object.assign({}, it, { canEdit: true, kcol: PM.itemKanban(it) }));
     }
     if (method === 'DELETE') { if (!PM.isManager(user, p)) return err(403, 'Удалять пункты может ГИП/ПМ проекта'); db.pmItems = db.pmItems.filter(i => i.id !== it.id); store.save(); store.audit(user.id, 'delete', 'pmItems', b); return ok({ ok: true }); }
   }

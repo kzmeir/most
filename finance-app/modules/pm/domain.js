@@ -217,7 +217,7 @@
   const memberIds = p => { const m = p && p.members; return Array.isArray(m) ? m.map(String) : m && typeof m === 'object' ? Object.values(m).flat().map(String) : []; };
   // проект виден сотруднику: он участник проекта или исполнитель хотя бы одного пункта
   const staffSees = (u, p, items) => !!u && !!p && (memberIds(p).includes(u.id) || (items || []).some(i => i.pid === p.id && i.assigneeId === u.id));
-  const STAFF_ITEM_FIELDS = ['done', 'doneNote', 'note']; // что сотрудник может менять в своём пункте (срок и исполнителя — нет)
+  const STAFF_ITEM_FIELDS = ['done', 'kstatus', 'doneNote', 'note']; // что сотрудник может менять в своём пункте (срок и исполнителя — нет); kstatus — колонка канбана
   // разделы интерфейса по стадиям: «ЭП» и «РП» — два UI-модуля одного pm. По умолчанию ПМ видит ЭП, ГИП — РП, руководители и руководители разделов — оба;
   // плюс стадии проектов, где пользователь ГИП/ПМ/участник (например, ПМ передал ЭП в РП и остался ГИПом); staff — стадии своих проектов
   const trackPath = t => t === 'rp' ? 'rp' : 'ep';
@@ -592,10 +592,47 @@
     if (/в\s*работе|in\s*progress|progress/i.test(s)) return { done: false, label: 'В РАБОТЕ' };
     return { done: false, label: s.toUpperCase().slice(0, 40) };
   }
+  // ---- канбан ----
+  // проекты: колонки — статусы проекта (STATUS); «Отменён» свёрнут по умолчанию
+  const KANBAN_PROJECT_HIDDEN = ['Отменён'];
+  // пункты: колонки статуса пункта. Новое поле kstatus (todo | doing | review), совместимое со старым done: «Готово» = done.
+  // Если kstatus не задан — по подписи дорожной карты rmStatus (НЕ НАЧАТО → к выполнению, В РАБОТЕ → в работе, У ГАПа / У ЗАКАЗЧИКА → на проверке), иначе «к выполнению».
+  const KANBAN = [['todo', 'К выполнению'], ['doing', 'В работе'], ['review', 'На проверке'], ['done', 'Готово']];
+  const KANBAN_KEYS = KANBAN.map(k => k[0]);
+  const KANBAN_OPEN = ['todo', 'doing', 'review'];
+  function rmKanban(label) {
+    const s = String(label || '').toUpperCase(); if (!s) return '';
+    if (/ГОТОВО/.test(s)) return 'done'; if (/НЕ\s*НАЧАТО/.test(s)) return 'todo'; if (/У\s*ГАП|У\s*ЗАКАЗЧИК/.test(s)) return 'review'; if (/В\s*РАБОТЕ/.test(s)) return 'doing'; return '';
+  }
+  function itemKanban(it) {
+    if (!it) return 'todo'; if (it.done) return 'done';
+    if (KANBAN_OPEN.includes(it.kstatus)) return it.kstatus;
+    const rm = rmKanban(it.rmStatus); return rm && rm !== 'done' ? rm : 'todo';
+  }
+  const truthy = v => v === true || v === 1 || v === '1' || v === 'true';
+  // согласовать правку пункта: kstatus ↔ done. На входе — уже отфильтрованный по правам patch; на выходе — patch с done (boolean) и kstatus.
+  // kstatus 'done' → done: true (то же, что отметка «сделано»); открытая колонка у сделанного пункта → done: false (возврат);
+  // только done: true → kstatus 'done'; done: false у сделанного → kstatus 'doing' (вернули в работу). Неизвестный kstatus отбрасывается.
+  function kanbanPatch(it, patch) {
+    const out = Object.assign({}, patch); it = it || {};
+    if ('kstatus' in out && !KANBAN_KEYS.includes(out.kstatus)) delete out.kstatus;
+    if ('kstatus' in out) {
+      if (out.kstatus === 'done') out.done = true;
+      else if ('done' in out && truthy(out.done)) out.kstatus = 'done'; // явная отметка «сделано» сильнее колонки
+      else if (it.done || 'done' in out) out.done = false;
+    } else if ('done' in out) {
+      const d = truthy(out.done); out.done = d;
+      if (d) out.kstatus = 'done'; else if (it.done || it.kstatus === 'done') out.kstatus = 'doing';
+    }
+    return out;
+  }
+  const canMoveProject = (u, p) => isManager(u, p); // смена статуса перетаскиванием — те же права, что правка карточки
+
   // снимок показателей для ретроспективы
   const retroSnapshot = (h, blockers) => ({ progress: h.progress, zone: h.zone, consumption: h.consumption, curV: h.curV, avgV: h.avgV, addedW: h.addedW, remain: h.remain, forecast: h.forecast, returns: h.returns, blockers: (blockers || []).filter(b => b.status !== 'closed').length });
 
   return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, TEMPLATE_VERSION, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, normCode, depItems, waitingFor, roadmapStatus, PM_ROLES, SETTINGS_DEFAULT, pmSettings, isStaff, memberIds, staffSees, STAFF_ITEM_FIELDS, trackPath, defaultTracks, userTracks, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
     parseCsv, CLICKUP_FIELDS, clickupAutoMap, parseAnyDate, splitList, CLICKUP_DONE, clickupStatus, normTitle, findItemByTitle, matchUser, clickupToProjects, crc32, zipStore, xlsx, registryExport, ZONE_NAME_RU,
-    W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot };
+    W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot,
+    KANBAN, KANBAN_KEYS, KANBAN_OPEN, KANBAN_PROJECT_HIDDEN, rmKanban, itemKanban, kanbanPatch, canMoveProject };
 });
