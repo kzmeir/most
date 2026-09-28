@@ -95,6 +95,21 @@ chk "удаление: надгробие + стрелка a1 отвязана" 
 chk "sync после удаления: надгробие и стрелка" "a1:ok,t1:del" "$(call LEAD GET "/board/boards/$PBID/sync?since=$((REV+1))" | js 'd.items.map(i=>i.id+":"+(i.deleted?"del":"ok")).sort().join()')"
 chk "в карточке удалённых нет" true "$(call OWN GET /board/boards/$PBID | js '!d.items.some(i=>i.id==="t1")')"
 chk "стрелка на несуществующий объект теряет ссылку" "" "$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"upsert","item":{"id":"a8","type":"arrow","x":1,"y":1,"props":{"from":"нет","to":"s1","x2":9,"y2":9}}}]}' | js 'd.items[0].props.from')"
+echo "== рисунки от руки (ink): проверка точек, толщины, прозрачности, права =="
+INK='{"ops":[{"op":"upsert","item":{"id":"k1","type":"ink","x":100,"y":100,"w":60,"h":40,"props":{"points":[[2,2],[30.123,20],[58,38]],"color":"#e53935","width":4,"opacity":0.4}}}]}'
+chk "штрих сохранён: 3 точки, цвет, округление до 0,1" "3/#e53935/30.1/0.4" "$(call PMR POST /board/boards/$PBID/ops "$INK" | js 'd.items[0].props.points.length+"/"+d.items[0].props.color+"/"+d.items[0].props.points[1][0]+"/"+d.items[0].props.opacity')"
+chk "штрих приходит другому пользователю через sync" "ink" "$(call LEAD GET "/board/boards/$PBID/sync?since=0" | js 'd.items.find(i=>i.id==="k1").type')"
+node -e "const p=[];for(let i=0;i<2001;i++)p.push([i,i%7]);require('fs').writeFileSync('$DATA_DIR/ink-big.json',JSON.stringify({ops:[{op:'upsert',item:{id:'k2',type:'ink',x:0,y:0,w:2100,h:10,props:{points:p}}},{op:'upsert',item:{id:'k3',type:'ink',x:0,y:0,props:{points:p.slice(0,2000)}}}]}))"
+chk "больше 2000 точек — отклонено, ровно 2000 — принято" "k3" "$(call PMR POST /board/boards/$PBID/ops "$(cat "$DATA_DIR/ink-big.json")" | js 'd.items.map(i=>i.id).join()')"
+BAD='{"ops":[{"op":"upsert","item":{"id":"b1","type":"ink","props":{"points":[[1,"2"]]}}},{"op":"upsert","item":{"id":"b2","type":"ink","props":{"points":[]}}},{"op":"upsert","item":{"id":"b3","type":"ink","props":{"points":"1,2"}}},{"op":"upsert","item":{"id":"b4","type":"ink","props":{"points":[[1]]}}},{"op":"upsert","item":{"id":"b5","type":"ink","props":{"points":[[1,1e9]]}}},{"op":"upsert","item":{"id":"b6","type":"ink","props":{}}}]}'
+chk "неверные точки (строка, пусто, не массив, одна координата, вне пределов, нет точек) — отклонены все" 0 "$(call PMR POST /board/boards/$PBID/ops "$BAD" | js 'd.items.length')"
+chk "толщина и прозрачность приведены к пределам, мусорный цвет — по умолчанию" "64/0.05/#1f2937" "$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"upsert","item":{"id":"k4","type":"ink","x":0,"y":0,"props":{"points":[[1,1]],"width":999,"opacity":-3,"color":"url(x)"}}}]}' | js 'd.items[0].props.width+"/"+d.items[0].props.opacity+"/"+d.items[0].props.color')"
+chk "текст с auto сохраняет признак, у стикера — нет" "true/undefined" "$(call PMR POST /board/boards/$PBID/ops '{"ops":[{"op":"upsert","item":{"id":"t9","type":"text","x":0,"y":0,"props":{"text":"где угодно","auto":true}}},{"op":"upsert","item":{"id":"s9","type":"sticky","x":0,"y":0,"props":{"auto":true}}}]}' | js 'd.items[0].props.auto+"/"+d.items[1].props.auto')"
+call PMR PUT /board/boards/$PBID '{"editMode":"managers"}' > /dev/null
+chk "режим руководителей: lead штрих — 403, ПМ проекта — 200" "403/200" "$(code LEAD POST /board/boards/$PBID/ops "$INK")/$(code PMR POST /board/boards/$PBID/ops "$INK")"
+call PMR PUT /board/boards/$PBID '{"editMode":"all"}' > /dev/null
+chk "домен: упрощение 5000 точек → ≤2000, рамка охватывает штрих, путь из кривых, cleanItem принимает" "true/true/true/true" "$(node -e "const B=require('./modules/board/domain.js');const p=[];for(let i=0;i<5000;i++)p.push([i*0.3,Math.sin(i/9)*50+(i%2)*0.05]);const g=B.inkFromPoints(p,{width:6});const ok=g.props.points.every(([x,y])=>x>=0&&y>=0&&x<=g.w&&y<=g.h);console.log([g.props.points.length<=2000&&g.props.points.length>2,ok,/Q/.test(B.inkPath(g.props.points)),!!B.cleanItem(Object.assign({type:'ink'},g),'b')].join('/'))")"
+chk "удаление штриха — надгробие" "true" "$(call STAFF POST /board/boards/$PBID/ops '{"ops":[{"op":"delete","id":"k4"}]}' | js 'd.items[0].deleted')"
 chk "шаблон ЭП на свободную доску (12 объектов без заголовка)" 12 "$(call STAFF POST /board/boards/$FB/template '{"template":"ep"}' | js 'd.added')"
 
 echo "== комментарии =="
