@@ -1,22 +1,26 @@
 @echo off
-chcp 65001 >nul
-rem Добавляет адрес http://erp.most на этот компьютер (одна строка в hosts). Запуск двойным щелчком, Windows спросит права администратора.
+rem Adds http://erp.most to this PC (one line in hosts). Double-click; Windows will ask for admin rights.
+rem An old erp.most line (e.g. Wi-Fi 192.168.0.172) is replaced with the office LAN address 192.168.50.94.
+rem ASCII only: cmd breaks Cyrillic in .bat files.
 net session >nul 2>&1
 if errorlevel 1 goto :elevate
-findstr /C:"erp.most" %SystemRoot%\System32\drivers\etc\hosts >nul 2>&1
+set "HOSTS=%SystemRoot%\System32\drivers\etc\hosts"
+findstr /C:"192.168.50.94  erp.most" "%HOSTS%" >nul 2>&1
 if not errorlevel 1 goto :already
-echo.>>%SystemRoot%\System32\drivers\etc\hosts
-echo 192.168.50.94  erp.most>>%SystemRoot%\System32\drivers\etc\hosts
+findstr /V /C:"erp.most" "%HOSTS%" > "%TEMP%\hosts.most.tmp"
+copy /Y "%TEMP%\hosts.most.tmp" "%HOSTS%" >nul
+del "%TEMP%\hosts.most.tmp"
+echo 192.168.50.94  erp.most>>"%HOSTS%"
 ipconfig /flushdns >nul
 echo.
-echo  Готово. Откройте в браузере: http://erp.most
+echo  OK. Open in browser: http://erp.most
 start "" "http://erp.most"
 pause
 exit /b 0
 
 :already
 echo.
-echo  Адрес erp.most уже настроен. Откройте: http://erp.most
+echo  erp.most is already set. Open: http://erp.most
 start "" "http://erp.most"
 pause
 exit /b 0
