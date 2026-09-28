@@ -6,7 +6,7 @@ if errorlevel 1 goto :elevate
 findstr /C:"erp.most" %SystemRoot%\System32\drivers\etc\hosts >nul 2>&1
 if not errorlevel 1 goto :already
 echo.>>%SystemRoot%\System32\drivers\etc\hosts
-echo 192.168.0.172  erp.most>>%SystemRoot%\System32\drivers\etc\hosts
+echo 192.168.50.94  erp.most>>%SystemRoot%\System32\drivers\etc\hosts
 ipconfig /flushdns >nul
 echo.
 echo  Готово. Откройте в браузере: http://erp.most
