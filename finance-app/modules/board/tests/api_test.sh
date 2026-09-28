@@ -7,6 +7,12 @@ set -u
 APP="$(cd "$(dirname "$0")/../../.." && pwd)"; cd "$APP"
 export DATA_DIR="data-dev/board-test"; export PORT=3196; export DEV_USER=owner
 rm -rf "$DATA_DIR"; mkdir -p "$DATA_DIR"
+# «Материалы»: фейковая сетевая папка (корень T:) — только в data-dev, реальные сетевые диски не трогаются
+SH="$DATA_DIR/share"; mkdir -p "$SH/proj/04-Render/textures" "$SH/proj/05-Reference" "$SH/proj/06-PDF" "$SH/outside"
+JPG='\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9'
+printf "$JPG" > "$SH/proj/04-Render/a.jpg"; printf "$JPG" > "$SH/proj/04-Render/b.jpg"; printf "$JPG" > "$SH/proj/04-Render/textures/t.jpg"; printf "$JPG" > "$SH/proj/05-Reference/r.png"
+printf '%%PDF-1.4\n%%%%EOF\n' > "$SH/proj/06-PDF/p.pdf"; printf 'db' > "$SH/proj/05-Reference/Thumbs.db"; printf 'dwg' > "$SH/proj/plan.dwg"; printf "$JPG" > "$SH/outside/secret.jpg"
+SHW="$(cd "$SH" && pwd -W)"; export BOARD_ROOTS="t|T:|$SHW|ep"; export BOARD_RESCAN_MS=0
 node server.js > "$DATA_DIR/server.log" 2>&1 & SP=$!
 for i in 1 2 3 4 5 6 7 8 9 10; do curl -s -o /dev/null http://127.0.0.1:$PORT/api/status && break; sleep 0.5; done
 B=http://127.0.0.1:$PORT/api; BODY="$DATA_DIR/body.json"
@@ -165,6 +171,53 @@ chk "ПМ проекта (не владелец доски) удалить 403" 
 chk "partner удалил доску проекта" 200 "$(code PART DELETE /board/boards/$PBID)"
 chk "доска пропала, файлы удалены" "404/no" "$(code OWN GET /board/boards/$PBID)/$([ -d "$DATA_DIR/board-files/$PBID" ] && echo yes || echo no)"
 chk "владелец удалил свободную" 200 "$(code STAFF DELETE /board/boards/$FB)"
+
+echo "== материалы: папка проекта на «сетевом диске» (фейковый корень T: в data-dev) =="
+MB=$(call OWN POST /board/boards '{"title":"Материалы"}' | js 'd.board.id')
+chk "привязка: «..» — отказ" 400 "$(code OWN PUT /board/boards/$MB/folder '{"path":"T:\\proj\\..\\..\\outside"}')"
+chk "привязка: root+rel с «..» — отказ" 400 "$(code OWN PUT /board/boards/$MB/folder '{"root":"t","rel":"../outside"}')"
+chk "привязка: путь вне корней — отказ" 400 "$(code OWN PUT /board/boards/$MB/folder '{"path":"C:\\Windows"}')"
+chk "привязка: нет такой папки — 404" 404 "$(code OWN PUT /board/boards/$MB/folder '{"path":"T:\\nope"}')"
+chk "привязка: staff (правит, но не руководитель доски) — 403" 403 "$(code STAFF PUT /board/boards/$MB/folder '{"path":"T:\\proj"}')"
+chk "привязка: владелец доски — 200, найдено 4 файла" "4" "$(call OWN PUT /board/boards/$MB/folder '{"path":"T:\\proj"}' | js 'd.files')"
+chk "папка в карточке доски" "T:\\proj" "$(call STAFF GET /board/boards/$MB | js 'd.board.folder.display')"
+M=$(call STAFF GET /board/boards/$MB/materials)
+chk "материалы: категории (textures, Thumbs.db, dwg исключены)" "present,ref,render,render" "$(echo "$M" | js 'd.files.map(f=>f.cat).sort().join()')"
+chk "материалы: первый скан — ничего не «новое»" 0 "$(echo "$M" | js 'd.files.filter(f=>f.isNew).length')"
+FA=$(echo "$M" | js 'd.files.find(f=>f.name==="a.jpg").f'); FP=$(echo "$M" | js 'd.files.find(f=>f.kind==="pdf").f')
+chk "оригинал из папки: 200 и размер" "200/22" "$(curl -s -o /dev/null -w '%{http_code}/%{size_download}' "${STAFF[@]}" $B/board/boards/$MB/materials/raw/$FA)"
+chk "оригинал: Range → 206, 4 байта" "206/4" "$(curl -s -o /dev/null -w '%{http_code}/%{size_download}' "${STAFF[@]}" -H 'Range: bytes=0-3' $B/board/boards/$MB/materials/raw/$FP)"
+chk "оригинал: чужой id — 404" 404 "$(code STAFF GET /board/boards/$MB/materials/raw/0123456789abcdef)"
+chk "оригинал: id с обходом пути — 404" 404 "$(code STAFF GET /board/boards/$MB/materials/raw/..%2F..%2Fouts)"
+chk "миниатюра: не JPEG — 400" 400 "$(code STAFF POST /board/boards/$MB/materials/thumb "{\"f\":\"$FA\",\"data\":\"iVBORw0KGgo=\"}")"
+TK=$(call STAFF POST /board/boards/$MB/materials/thumb "{\"f\":\"$FA\",\"data\":\"/9j/4AAQSkZJRgABAQAAAQABAAD/2Q==\"}" | js 'd.t')
+chk "миниатюра: сохранена и отдаётся" "true/200" "$(call STAFF GET /board/boards/$MB/materials | js 'd.files.find(f=>f.f==="'$FA'").thumb')/$(code STAFF GET /board/boards/$MB/materials/thumb/$TK.jpg)"
+chk "миниатюра: ключ с обходом пути — 404" 404 "$(code STAFF GET /board/boards/$MB/materials/thumb/..%2F..%2Fdb.jpg)"
+chk "копия на доску: сервер копирует файл из папки" "22" "$(call STAFF POST /board/boards/$MB/materials/copy "{\"f\":\"$FA\"}" | js 'd.size')"
+call OWN POST /board/boards/$MB/materials/layout '{}' > "$DATA_DIR/plan.json"
+chk "«Разложить всё»: 3 рамки, 4 ячейки" "3/4" "$(js 'd.frames.filter(x=>x.op==="create").length+"/"+d.places.length' < "$DATA_DIR/plan.json")"
+node -e "const p=JSON.parse(require('fs').readFileSync('$DATA_DIR/plan.json','utf8'));const ops=p.frames.map(x=>({op:'upsert',item:x.item})).concat(p.places.map((q,i)=>({op:'upsert',item:{id:'m'+i,type:q.file.kind==='pdf'?'pdf':'image',x:q.x,y:q.y,w:q.w,h:q.h,props:{name:q.file.name,srcRoot:q.file.root,srcPath:q.file.path,srcSize:q.file.size,srcMtime:q.file.mtime}}})));require('fs').writeFileSync('$DATA_DIR/ops-mat.json',JSON.stringify({ops}))"
+chk "раскладка сохранена операциями (7 объектов)" 7 "$(call OWN POST /board/boards/$MB/ops "$(cat "$DATA_DIR/ops-mat.json")" | js 'd.items.length')"
+chk "связь сохранилась в объекте (srcPath)" "proj/04-Render/a.jpg" "$(call OWN GET /board/boards/$MB | js 'd.items.filter(i=>i.props.srcPath).map(i=>i.props.srcPath).sort()[0]')"
+chk "повторная раскладка: 0 рамок, 0 ячеек, пропущено 4 — без дублей" "0/0/4" "$(call OWN POST /board/boards/$MB/materials/layout '{}' | js 'd.frames.length+"/"+d.places.length+"/"+d.skipped')"
+printf '\xff\xd8\xff\xe0new-render\xff\xd9' > "$SH/proj/04-Render/c.jpg"
+chk "«Обновить»: 5 файлов" 5 "$(call OWN POST /board/boards/$MB/materials/scan '{}' | js 'd.n')"
+chk "новый файл помечен «новое»" "c.jpg" "$(call OWN GET /board/boards/$MB/materials | js 'd.files.filter(f=>f.isNew).map(f=>f.name).join()')"
+chk "раскладка после нового файла: 1 ячейка в существующей рамке «Рендеры», новых рамок нет" "1/0/render" "$(call OWN POST /board/boards/$MB/materials/layout '{}' | js 'd.places.length+"/"+d.frames.filter(x=>x.op==="create").length+"/"+d.places[0].cat')"
+chk "связанные объекты: все совпадают с папкой" "ok" "$(call OWN GET /board/boards/$MB/materials | js '[...new Set(Object.values(d.linked).map(x=>x.state))].join()')"
+sleep 1; printf 'changed' >> "$SH/proj/04-Render/a.jpg"; call OWN POST /board/boards/$MB/materials/scan '{}' > /dev/null
+chk "файл изменён в папке → объект «обновлён в папке»" "changed" "$(call OWN GET /board/boards/$MB/materials | js 'Object.values(d.linked).filter(x=>x.state==="changed").map(x=>x.display.endsWith("a.jpg")?"changed":"?").join()')"
+rm "$SH/proj/05-Reference/r.png"; call OWN POST /board/boards/$MB/materials/scan '{}' > /dev/null
+chk "файл удалён из папки → «нет в папке»" "missing" "$(call OWN GET /board/boards/$MB/materials | js 'Object.values(d.linked).filter(x=>x.state==="missing").map(x=>x.state).join()')"
+chk "права: режим «руководители» — staff видит материалы (200), но не сканирует и не раскладывает (403/403)" "200/403/403" "$(call OWN PUT /board/boards/$MB '{"editMode":"managers"}' >/dev/null; code STAFF GET /board/boards/$MB/materials)/$(code STAFF POST /board/boards/$MB/materials/scan '{}')/$(code STAFF POST /board/boards/$MB/materials/layout '{}')"
+chk "права: staff не копирует файлы на закрытую доску" 403 "$(code STAFF POST /board/boards/$MB/materials/copy "{\"f\":\"$FA\"}")"
+chk "подбор папки: по тексту «proj»" "proj" "$(call OWN GET "/board/boards/$MB/folder/candidates?q=proj" | js 'd.candidates.map(c=>c.rel).join()')"
+chk "корни: видят все, staff менять не может (403)" "200/403" "$(code STAFF GET /board/roots)/$(code STAFF PUT /board/roots '{"roots":[{"id":"q","path":"C:\\"}]}')"
+chk "корни: owner — путь с «..» отклонён" 400 "$(code OWN PUT /board/roots '{"roots":[{"id":"q","path":"C:\\a\\..\\b"}]}')"
+chk "корни: источник — переменная BOARD_ROOTS" "env/t" "$(call PART GET /board/roots | js 'd.source+"/"+d.roots.map(r=>r.id).join()')"
+chk "корни: partner сохранил свой список → источник «настройки»" "settings/t,w" "$(call PART PUT /board/roots "{\"roots\":[{\"id\":\"t\",\"alias\":\"T:\",\"path\":\"$SHW\"},{\"id\":\"w\",\"path\":\"$SHW/proj\"}]}" | js 'd.source+"/"+d.roots.map(r=>r.id).join()')"
+chk "корни: сброс → снова BOARD_ROOTS" "env" "$(call OWN PUT /board/roots '{"reset":true}' | js 'd.source')"
+chk "удаление доски убирает скан материалов" 200 "$(code OWN DELETE /board/boards/$MB)"
 kill $SP 2>/dev/null; wait $SP 2>/dev/null
 
 echo "== два сайта (DEV_SPLIT=1): board на ERP-порту работает, финансы закрыты =="

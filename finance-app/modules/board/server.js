@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const BD = require('./domain');
+const MAT = require('./materials'); // «Материалы»: папка проекта на сетевом диске, миниатюры, связь объектов с файлами
 
 const PRESENCE = new Map(); // boardId → Map('userId|client' → { userId, name, client, at, x, y, sel })
 const PRESENCE_TTL = 12000;
@@ -43,7 +44,7 @@ const onlineUsers = boardId => new Set(presence(boardId).map(p => p.userId)).siz
 
 function boardOut(ctx, b, r) {
   const { db } = ctx; const p = r ? r.project : projectOf(db, b);
-  return { id: b.id, title: b.title, pmProjectId: b.pmProjectId || '', project: p ? { id: p.id, name: p.name, track: p.track || '', status: p.status || '' } : null, ownerId: b.ownerId, ownerName: ctx.userName(b.ownerId) || '', members: b.members || [], memberNames: (b.members || []).map(id => ctx.userName(id) || id), editMode: BD.editMode(b), template: b.template || '', source: b.source || null, createdAt: b.createdAt, updatedAt: b.updatedAt || b.createdAt, updatedByName: ctx.userName(b.updatedBy || b.createdBy) || '', rev: b.rev || 0, itemsN: liveItems(db, b.id).length, openComments: BD.openComments(boardComments(db, b.id)), online: onlineUsers(b.id), canEdit: r ? r.edit : false, canManage: r ? r.manage : false, canDelete: r ? r.del : false };
+  return { id: b.id, title: b.title, pmProjectId: b.pmProjectId || '', project: p ? { id: p.id, name: p.name, track: p.track || '', status: p.status || '' } : null, ownerId: b.ownerId, ownerName: ctx.userName(b.ownerId) || '', members: b.members || [], memberNames: (b.members || []).map(id => ctx.userName(id) || id), editMode: BD.editMode(b), template: b.template || '', source: b.source || null, folder: MAT.folderOut(db, b), createdAt: b.createdAt, updatedAt: b.updatedAt || b.createdAt, updatedByName: ctx.userName(b.updatedBy || b.createdBy) || '', rev: b.rev || 0, itemsN: liveItems(db, b.id).length, openComments: BD.openComments(boardComments(db, b.id)), online: onlineUsers(b.id), canEdit: r ? r.edit : false, canManage: r ? r.manage : false, canDelete: r ? r.del : false };
 }
 // применить операции клиента: одна ревизия на пакет; объекты получают rev пакета и ver+1
 function applyOps(ctx, b, ops) {
@@ -118,6 +119,19 @@ function handle(ctx) {
     bd.updatedAt = t; bd.updatedBy = user.id; if (body.done) { for (const fix of BD.repairArrows(liveItems(db, bd.id))) { const ar = db.boardItems.find(x => x.boardId === bd.id && x.id === fix.id); if (ar) Object.assign(ar, { props: fix.props, rev: bd.rev }); } }
     store.save(); return ok({ boardId: bd.id, added, total: liveItems(db, bd.id).length, board: boardOut(ctx, bd, rights(ctx, bd)) });
   }
+  // --- корни сетевых папок для «Материалов»: видят все, меняют владелец и партнёр ---
+  if (a === 'roots' && !b) {
+    if (method === 'GET') return ok({ roots: MAT.roots(db), source: MAT.rootSource(db), defaults: MAT.DEFAULT_ROOTS, canEdit: BD.isLeader(user, PM) });
+    if (method === 'PUT') {
+      if (!BD.isLeader(user, PM)) return err(403, 'Корни сетевых папок настраивают владелец и партнёр');
+      let cfg = db.boardConfig.find(x => x.id === 'roots'); if (!cfg) { cfg = { id: 'roots' }; db.boardConfig.push(cfg); }
+      const list = body.reset ? [] : (Array.isArray(body.roots) ? body.roots : []).map(MAT.cleanRoot);
+      if (!body.reset && (!list.length || list.some(x => !x))) return err(400, 'Каждый корень: id (латиница/цифры, до 12), путь без «..»');
+      if (new Set(list.map(x => x.id)).size !== list.length) return err(400, 'id корней должны различаться');
+      Object.assign(cfg, { roots: list.slice(0, 20), updatedAt: now(), updatedBy: user.id }); store.save(); audit('roots', 'boardConfig', 'roots', { n: list.length });
+      return ok({ roots: MAT.roots(db), source: MAT.rootSource(db) });
+    }
+  }
   if (a !== 'boards') return err(404, 'Нет такого действия');
 
   // --- список и создание: все доски видны всем ---
@@ -155,7 +169,7 @@ function handle(ctx) {
   }
   if (!c && method === 'DELETE') {
     if (!r.del) return err(403, 'Удалить доску может её владелец, владелец компании или партнёр');
-    db.boardItems = db.boardItems.filter(i => i.boardId !== bd.id); db.boardComments = db.boardComments.filter(x => x.boardId !== bd.id); db.boards = db.boards.filter(x => x.id !== bd.id); PRESENCE.delete(bd.id);
+    db.boardItems = db.boardItems.filter(i => i.boardId !== bd.id); db.boardComments = db.boardComments.filter(x => x.boardId !== bd.id); db.boardMaterials = db.boardMaterials.filter(x => x.id !== bd.id); db.boards = db.boards.filter(x => x.id !== bd.id); PRESENCE.delete(bd.id);
     try { fs.rmSync(filesDir(ctx, bd.id), { recursive: true, force: true }); } catch { }
     store.save(); audit('delete', 'boards', bd.id); return ok({ ok: true });
   }
@@ -202,6 +216,8 @@ function handle(ctx) {
     }
     return err(404, 'Нет такого действия');
   }
+  // --- папка проекта и «Материалы» ---
+  if (c === 'folder' || c === 'materials') return materials(ctx, bd, r, c, d, parts[5]);
   // --- файлы: base64 в JSON → диск; отдача по ключу ---
   if (c === 'files' && !d && method === 'POST') {
     if (!r.edit) return err(403, 'У вас только просмотр этой доски');
@@ -225,4 +241,79 @@ function handle(ctx) {
   return err(404, 'Нет такого действия');
 }
 
-module.exports = { id: 'board', api: 'board', collections: ['boards', 'boardItems', 'boardComments'], handle, boardsOfProject, domain: BD };
+// ---- папка проекта и «Материалы» (modules/board/materials.js): привязка — руководитель доски, скан и раскладка — кто правит, просмотр — все ----
+function materials(ctx, bd, r, c, d, e) {
+  return materialsAsync(ctx, bd, r, c, d, e).catch(x => { if (!ctx.res.headersSent) ctx.err(x.status || 500, x.status ? x.message : 'Ошибка чтения папки: ' + x.message); if (!x.status) console.error('[board] materials:', x); });
+}
+const sameFolder = (doc, bd) => !!(doc && bd.folder && doc.folderKey === bd.folder.root + ':' + bd.folder.rel);
+async function materialsAsync(ctx, bd, r, c, d, e) {
+  const { method, body, qs, db, store, ok, err, user } = ctx; const audit = (action, extra) => store.audit(user.id, action, 'boards', bd.id, extra);
+  if (c === 'folder') {
+    if (d === 'candidates' && method === 'GET') { // подбор папки: по проекту доски (номер, название) или по тексту q
+      if (!r.edit) return err(403, 'У вас только просмотр этой доски');
+      const q = String(qs.q || '').trim().slice(0, 200); if (!q && !r.project) return ok({ candidates: [], hint: 'Свободная доска: введите часть названия папки' });
+      return ok({ candidates: await MAT.candidates(ctx, r.project, q), project: r.project ? { name: r.project.name, no: r.project.no || '', track: r.project.track || '' } : null });
+    }
+    if (d) return err(404, 'Нет такого действия');
+    if (method === 'PUT') {
+      if (!r.manage) return err(403, 'Папку проекта привязывает руководитель доски: владелец доски, ПМ/ГИП проекта, владелец или партнёр');
+      const list = MAT.roots(db); const rel = body.root ? BD.cleanRel(body.rel) : null;
+      const pp = body.root ? (BD.ROOT_ID_RE.test(String(body.root)) && rel !== null ? { root: String(body.root), rel } : null) : MAT.parseUserPath(list, body.path);
+      if (!pp || !list.some(x => x.id === pp.root)) return err(400, 'Путь вне разрешённых сетевых папок (или содержит «..»). Разрешены: ' + list.map(x => x.alias || x.path).join(', '));
+      const abs = MAT.absOf(list, pp.root, pp.rel); if (!abs) return err(400, 'Путь вне разрешённых сетевых папок');
+      let st = null; try { st = await fs.promises.stat(abs); } catch { } if (!st || !st.isDirectory()) return err(404, `Папка не найдена: ${MAT.displayPath(list, pp.root, pp.rel)}`);
+      if (!(await MAT.insideReal(list, pp.root, abs))) return err(400, 'Папка ведёт за пределы разрешённых сетевых папок (ссылка)');
+      bd.folder = { root: pp.root, rel: pp.rel, setAt: now(), setBy: user.id }; bd.updatedAt = now(); bd.updatedBy = user.id; store.save(); audit('folder', { root: pp.root, rel: pp.rel });
+      let scan = null; if (body.scan !== false) { try { scan = await MAT.rescan(ctx, bd); } catch (x) { scan = { error: x.message }; } }
+      return ok({ folder: MAT.folderOut(db, bd), files: scan && scan.files ? scan.files.length : 0, error: (scan && scan.error) || '' });
+    }
+    if (method === 'DELETE') { if (!r.manage) return err(403, 'Папку проекта отвязывает руководитель доски'); delete bd.folder; db.boardMaterials = db.boardMaterials.filter(x => x.id !== bd.id); bd.updatedAt = now(); store.save(); audit('folder-off'); return ok({ folder: null }); }
+    return err(404, 'Нет такого действия');
+  }
+  if (!d && method === 'GET') { // список материалов; ?auto=1 — пересканировать, если скан устарел (только у тех, кто правит)
+    let doc = MAT.docOf(db, bd.id); let scanError = '';
+    const stale = bd.folder && (!sameFolder(doc, bd) || Date.now() - Date.parse(doc.scannedAt) > MAT.STALE_MS);
+    if (qs.auto === '1' && stale && r.edit) { try { doc = await MAT.rescan(ctx, bd); } catch (x) { scanError = x.message; } }
+    if (!sameFolder(doc, bd)) doc = null;
+    return ok({ folder: MAT.folderOut(db, bd), files: MAT.filesOut(ctx, doc), cats: BD.MAT_CATS, scannedAt: doc ? doc.scannedAt : '', truncated: doc ? doc.truncated || '' : '', deep: doc ? doc.deep || 0 : 0, errors: doc ? doc.errors || [] : [], scanError, linked: await MAT.linkedState(ctx, bd, doc), canScan: r.edit, canBind: r.manage, limits: MAT.LIMITS, roots: MAT.roots(db).map(x => ({ id: x.id, alias: x.alias, path: x.path, label: x.label })) });
+  }
+  if (d === 'scan' && method === 'POST') { // «Обновить» — не чаще раза в 15 с на доску
+    if (!r.edit) return err(403, 'Обновлять материалы может тот, кто правит доску'); if (!bd.folder) return err(400, 'Папка проекта не привязана');
+    const doc = MAT.docOf(db, bd.id); const throttled = sameFolder(doc, bd) && Date.now() - Date.parse(doc.scannedAt) < MAT.RESCAN_MIN_MS && !MAT.SCANS.has(bd.id);
+    const cur = throttled ? doc : await MAT.rescan(ctx, bd);
+    return ok({ scannedAt: cur.scannedAt, n: cur.files.length, throttled: !!throttled, truncated: cur.truncated || '' });
+  }
+  if (d === 'raw' && e && (method === 'GET' || method === 'HEAD')) { // оригинал из папки: миниатюры, лист PDF, уменьшенная копия на доску
+    const f = MAT.findFile(ctx, bd, e); if (!f || BD.excludedFile(f.name)) return err(404, 'Файл не найден'); const abs = MAT.absOf(MAT.roots(db), f.root, f.path); if (!abs) return err(404, 'Файл не найден');
+    return MAT.sendRaw(ctx, abs, f.name);
+  }
+  if (d === 'thumb' && e && method === 'GET') {
+    const m = /^([0-9a-f]{24})\.jpg$/.exec(e); if (!m) return err(404, 'Нет миниатюры'); const file = path.join(MAT.thumbsDir(store), m[1] + '.jpg'); if (!fs.existsSync(file)) return err(404, 'Нет миниатюры');
+    return ctx.send(200, fs.readFileSync(file), { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' });
+  }
+  if (d === 'thumb' && !e && method === 'POST') { // миниатюру делает браузер (canvas / pdf.js), сервер кэширует; ключ — файл + размер + время изменения
+    const doc = MAT.docOf(db, bd.id); const f = sameFolder(doc, bd) && doc.files.find(x => x.f === String(body.f || '')); if (!f) return err(404, 'Файл не найден в материалах');
+    const data = Buffer.from(String(body.data || ''), 'base64'); if (!data.length || data.length > MAT.THUMB_MAX) return err(400, 'Миниатюра пустая или больше 400 КБ'); if (data.length < 4 || data.readUInt16BE(0) !== 0xffd8) return err(400, 'Миниатюра должна быть JPEG');
+    const dir = MAT.thumbsDir(store); fs.mkdirSync(dir, { recursive: true }); const key = MAT.thumbKey(f.root, f.path, f.size, f.mtime); fs.writeFileSync(path.join(dir, key + '.jpg'), data); return ok({ t: key });
+  }
+  if (d === 'copy' && method === 'POST') { // копия оригинала в хранилище доски: сервер сам читает папку (до 20 МБ), браузер файл не гоняет
+    if (!r.edit) return err(403, 'У вас только просмотр этой доски'); const f = MAT.findFile(ctx, bd, String(body.f || '')); if (!f) return err(404, 'Файл не найден');
+    const abs = MAT.absOf(MAT.roots(db), f.root, f.path); if (!abs) return err(404, 'Файл не найден'); let st; try { st = await fs.promises.stat(abs); } catch { return err(404, 'Файл не найден в папке'); }
+    if (!BD.matKind(f.name)) return err(400, 'Тип файла не поддерживается');
+    if (st.size > BD.MAX_FILE) return err(413, `Файл больше ${Math.round(BD.MAX_FILE / 1048576)} МБ`);
+    // тип — по содержимому, не по расширению (в папках встречаются PNG с расширением .pdf)
+    const data = await fs.promises.readFile(abs); const ext = MAT.sniff(data); if (!ext) return err(400, 'Файл не похож на картинку или PDF');
+    const dir = filesDir(ctx, bd.id); fs.mkdirSync(dir, { recursive: true }); const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`; fs.writeFileSync(path.join(dir, key), data);
+    audit('file', { key, size: data.length, from: f.path.slice(-160) }); return ok({ key, size: data.length, srcSize: st.size, srcMtime: Math.round(st.mtimeMs), name: f.name });
+  }
+  if (d === 'layout' && method === 'POST') { // «Разложить всё»: план — рамки-категории и ячейки только для файлов, которых ещё нет на доске
+    if (!r.edit) return err(403, 'Раскладывать материалы может тот, кто правит доску'); const doc = MAT.docOf(db, bd.id); if (!sameFolder(doc, bd)) return err(400, 'Сначала привяжите папку и обновите материалы');
+    const cats = Array.isArray(body.cats) ? body.cats : null; const files = MAT.filesOut(ctx, doc).filter(f => !cats || cats.includes(f.cat));
+    const plan = BD.layoutPlan(files, liveItems(db, bd.id), { maxPlace: Math.max(1, Math.min(BD.LAYOUT.maxPlace, Number(body.max) || BD.LAYOUT.maxPlace)) });
+    const byF = new Map(files.map(f => [f.f, f])); for (const p of plan.places) p.file = byF.get(p.f);
+    return ok(plan);
+  }
+  return err(404, 'Нет такого действия');
+}
+
+module.exports = { id: 'board', api: 'board', collections: ['boards', 'boardItems', 'boardComments', 'boardMaterials', 'boardConfig'], handle, boardsOfProject, domain: BD };

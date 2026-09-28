@@ -35,6 +35,15 @@
 <li><b>Экспорт</b> (⤓ в шапке): вся доска или выделенная рамка с содержимым — в PNG или PDF, рисуется в браузере.</li>
 <li><b>Поиск</b> (Ctrl+F): по тексту стикеров, фигур, заголовкам рамок и именам файлов; Enter или ↓ — к следующему совпадению.</li>
 </ul>`, 'board'],
+    ['Материалы из папки проекта', `
+<p>Доска показывает визуальный материал из папки проекта на сетевом диске (Y: — концепции, ЭП, архив; Z: — РП): рендеры, референсы, презентации и PDF, ИРД. Папка только читается — на диске ничего не создаётся и не меняется.</p>
+<ul>
+<li><b>🗂 в шапке доски</b> — панель «Материалы». Первый раз руководитель доски (владелец доски, ПМ/ГИП проекта, владелец или партнёр) привязывает папку: для доски проекта система сама предлагает похожие папки по номеру и названию проекта — выберите нужную и нажмите «Привязать», или вставьте путь (например <code>Y:\\Concept Projects EP\\111-2025-…</code>).</li>
+<li>Файлы разложены по категориям по имени подпапки: Рендеры (Render), Референсы (Reference), Презентации / PDF (Презентация, PDF, Градсовет), ИРД / Документы (ИРД, Задания), Прочее. Служебные папки (textures, maps, backup, AutoSave) не показываются. Новые файлы — с пометкой «новое», изменённые — «изм.».</li>
+<li>Папка пересматривается при открытии панели (если прошло больше 5 минут) и по кнопке <b>⟳ Обновить</b>.</li>
+<li><b>Перетащите</b> картинку или PDF из панели на холст (или «+» на плитке) — на доске появится копия (доска работает и без сети) со связью с файлом 🔗. Если файл в папке изменится, на объекте появится «⟳ обновлён в папке» и кнопка ⟳ «Обновить на доске». 📁 у выделенного объекта — путь к файлу для Проводника.</li>
+<li><b>▦ Разложить всё</b> — весь материал папки (или выбранной категории) раскладывается сеткой по рамкам-категориям с подписями-именами файлов. Повторный запуск добавляет только новые файлы; за раз — до 150 файлов.</li>
+</ul>`, 'board'],
   ],
   onNav(ui, id) { if (id !== 'board') document.body.classList.remove('bd-full'); },
   init(ui) {
@@ -79,6 +88,16 @@
 .bd-th{padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}.bd-th:hover{background:var(--panel-2)}.bd-th .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bd-th .m{font-size:12px;color:var(--ink-soft)}.bd-th.res .t{color:var(--ink-faint);text-decoration:line-through}
 .bd-row{cursor:pointer}.bd-mem{display:flex;flex-wrap:wrap;gap:6px;max-height:220px;overflow:auto}.bd-mem label{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;border:1px solid var(--line);border-radius:999px;padding:3px 9px;cursor:pointer}.bd-mem label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}.bd-mem input{width:auto;margin:0}
 .bd-empty{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;color:var(--ink-faint);pointer-events:none;font-size:14px;max-width:360px}
+/* материалы из папки проекта */
+.bd-side.mat{width:400px}.bd-mhead{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px}.bd-mhead .path{flex:1 1 100%;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--ink-soft);word-break:break-all;cursor:copy}
+.bd-mcats{display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px;border-bottom:1px solid var(--line)}.bd-mcats button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 9px;font-size:12px;cursor:pointer;color:var(--ink)}.bd-mcats button.on{background:var(--accent);border-color:var(--accent);color:#fff}.bd-mcats input{flex:1;min-width:90px;padding:3px 8px;font-size:12px}
+.bd-mgrid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:max-content;gap:8px;padding:10px 12px;align-content:start}.bd-mt{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel-2);cursor:grab;display:flex;flex-direction:column}.bd-mt:hover{border-color:var(--accent)}
+.bd-mt .im{flex:none;height:84px;display:grid;place-items:center;background:#e9e9e7;color:#78909c;font-size:12px;font-weight:700;overflow:hidden}.bd-mt .im img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}.bd-mt .nm{font-size:11px;padding:3px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-soft)}
+.bd-mt .bdg{position:absolute;left:4px;top:4px;display:flex;gap:3px}.bd-mt .bdg span{font-size:10px;font-weight:700;border-radius:999px;padding:0 6px;line-height:16px;color:#fff;background:#2e7d32}.bd-mt .bdg .chg{background:#ef6c00}.bd-mt .bdg .on{background:rgba(0,0,0,.55)}
+.bd-mt .add{position:absolute;right:4px;top:4px;width:24px;height:24px;border-radius:50%;border:0;background:var(--accent);color:#fff;font-size:15px;line-height:24px;cursor:pointer;display:none}.bd-mt:hover .add{display:block}
+.bd-mgrp{grid-column:1/-1;font-weight:700;font-size:12.5px;margin-top:4px;color:var(--ink-soft)}.bd-mnote{padding:8px 12px;font-size:12px;color:var(--ink-soft)}.bd-mnote.warn{color:#ef6c00}
+.bd-link{position:absolute;right:6px;top:6px;font-size:max(11px,calc(11px / var(--z,1)));background:rgba(0,0,0,.55);color:#fff;padding:1px 7px;border-radius:999px;white-space:nowrap;pointer-events:none}.bd-link.changed{background:#ef6c00}.bd-link.missing{background:#9e9e9e}
+.bd-cand{display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px}.bd-cand .p{flex:1;word-break:break-all}.bd-cand .s{font-size:11px;color:var(--ink-faint)}
 @media(max-width:700px){.bd-tools{flex-direction:row;left:8px;top:8px;right:auto}.bd-tools button{width:32px;height:32px}.bd-top .faint,.bd-find,.bd-mini{display:none}.bd-side{right:0;top:0;bottom:0;width:100%;max-width:none;border-radius:0}}
 </style>`);
 
@@ -150,13 +169,13 @@
       async load() {
         const d = await api(`/board/boards/${encodeURIComponent(this.boardId)}?client=${this.client}`);
         this.board = d.board; this.rev = d.rev; this.canEdit = !!d.board.canEdit; this.me = d.me; this.modes = d.modes || BD.EDIT_MODES; for (const it of d.items) this.items.set(it.id, it); for (const c of d.comments || []) this.comments.set(c.id, c);
-        this.build(); this.renderAll(); this.zoomFit(); this.presence(d.presence);
+        this.linked = {}; this.mat = null; this.build(); this.renderAll(); this.zoomFit(); this.presence(d.presence); if (this.board.folder) this.loadMat(true);
         this.timer = setInterval(() => this.poll(), 1000); this.onHide = () => { if (document.hidden) this.flush(true); }; document.addEventListener('visibilitychange', this.onHide); window.addEventListener('pagehide', this.onHide);
       }
-      destroy() { this.dead = true; clearInterval(this.timer); document.removeEventListener('visibilitychange', this.onHide); window.removeEventListener('pagehide', this.onHide); document.removeEventListener('keydown', this.onKey); document.removeEventListener('keyup', this.onKeyUp); document.removeEventListener('paste', this.onPaste); document.removeEventListener('pointerdown', this.onDocDown); }
+      destroy() { this.dead = true; clearInterval(this.timer); if (this.matObs) this.matObs.disconnect(); document.removeEventListener('visibilitychange', this.onHide); window.removeEventListener('pagehide', this.onHide); document.removeEventListener('keydown', this.onKey); document.removeEventListener('keyup', this.onKeyUp); document.removeEventListener('paste', this.onPaste); document.removeEventListener('pointerdown', this.onDocDown); }
       build() {
         const b = this.board; const r = this.root;
-        r.innerHTML = `<div class="bd-top">${this.o.full ? '<a class="btn sm" href="#/boards">← Доски</a>' : ''}<span class="bd-title" title="${b.canManage ? 'Переименовать' : ''}">${esc(b.title)}</span>${b.project ? `<a class="faint" href="#/pmp?id=${encodeURIComponent(b.project.id)}">${esc(b.project.name)} · ${esc(TRACK[b.project.track] || '')}</a>` : '<span class="faint">свободная доска</span>'}${b.editMode !== 'all' ? chip(b.editMode, MODE_CHIP) : ''}${b.source && b.source.url ? `<a class="faint" href="${esc(b.source.url)}" target="_blank" rel="noopener" title="Перенесено из Miro ${esc(when(b.source.at))}">Источник: Miro ↗</a>` : ''}<span class="bd-find"><input placeholder="Поиск по доске (Ctrl+F)" class="bd-q"><span class="n"></span><button data-a="findPrev" title="Предыдущее">↑</button><button data-a="findNext" title="Следующее">↓</button></span><span class="grow"></span><span class="bd-pres"></span><button class="bd-ic" data-a="comments" title="Комментарии">💬<span class="bd-cmn"></span></button><span class="bd-exp"><button class="bd-ic" data-a="export" title="Экспорт в PNG / PDF">⤓</button><div class="bd-menu" hidden></div></span><span class="bd-status"></span>${b.canManage ? '<button class="bd-ic" data-a="settings" title="Название, проект, «Кто правит», участники">⚙</button>' : ''}${this.o.full ? '' : `<a class="btn sm" href="#/board?id=${encodeURIComponent(b.id)}" title="На весь экран">⤢</a>`}</div>
+        r.innerHTML = `<div class="bd-top">${this.o.full ? '<a class="btn sm" href="#/boards">← Доски</a>' : ''}<span class="bd-title" title="${b.canManage ? 'Переименовать' : ''}">${esc(b.title)}</span>${b.project ? `<a class="faint" href="#/pmp?id=${encodeURIComponent(b.project.id)}">${esc(b.project.name)} · ${esc(TRACK[b.project.track] || '')}</a>` : '<span class="faint">свободная доска</span>'}${b.editMode !== 'all' ? chip(b.editMode, MODE_CHIP) : ''}${b.source && b.source.url ? `<a class="faint" href="${esc(b.source.url)}" target="_blank" rel="noopener" title="Перенесено из Miro ${esc(when(b.source.at))}">Источник: Miro ↗</a>` : ''}<span class="bd-find"><input placeholder="Поиск по доске (Ctrl+F)" class="bd-q"><span class="n"></span><button data-a="findPrev" title="Предыдущее">↑</button><button data-a="findNext" title="Следующее">↓</button></span><span class="grow"></span><span class="bd-pres"></span><button class="bd-ic" data-a="mat" title="Материалы из папки проекта: рендеры, референсы, презентации">🗂<span class="bd-cmn bd-matn"></span></button><button class="bd-ic" data-a="comments" title="Комментарии">💬<span class="bd-cmn"></span></button><span class="bd-exp"><button class="bd-ic" data-a="export" title="Экспорт в PNG / PDF">⤓</button><div class="bd-menu" hidden></div></span><span class="bd-status"></span>${b.canManage ? '<button class="bd-ic" data-a="settings" title="Название, проект, «Кто правит», участники">⚙</button>' : ''}${this.o.full ? '' : `<a class="btn sm" href="#/board?id=${encodeURIComponent(b.id)}" title="На весь экран">⤢</a>`}</div>
           <div class="bd-main"><div class="bd-tools">${TOOLS.map(([id, ic, t]) => `<button data-tool="${id}" title="${esc(t)}"${this.canEdit || id === 'select' || id === 'hand' || id === 'comment' ? '' : ' disabled'}>${ic}</button>`).join('')}<button data-a="undo" title="Отменить (Ctrl+Z)"${this.canEdit ? '' : ' disabled'}>↶</button><button data-a="redo" title="Повторить (Ctrl+Y)"${this.canEdit ? '' : ' disabled'}>↷</button></div>
           <div class="bd-vp"><div class="bd-world"><div class="bd-layer bd-frames"></div><div class="bd-layer bd-items"></div><svg class="bd-svg" xmlns="http://www.w3.org/2000/svg"><defs><marker id="bd-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#37474f"/></marker><marker id="bd-head-sel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#ff4d23"/></marker></defs><g class="bd-arrows"></g></svg><div class="bd-layer bd-cursors"></div><div class="bd-layer bd-cms"></div><div class="bd-sel" hidden></div></div><div class="bd-band" hidden></div><div class="bd-ctx" hidden></div><div class="bd-empty" hidden></div></div>
           <div class="bd-side" hidden></div><canvas class="bd-mini" width="200" height="140"${this.miniOn ? '' : ' hidden'}></canvas>
@@ -171,7 +190,7 @@
         vp.addEventListener('pointerdown', e => this.down(e)); vp.addEventListener('pointermove', e => this.move(e)); vp.addEventListener('pointerup', e => this.up(e)); vp.addEventListener('pointercancel', e => this.up(e));
         vp.addEventListener('wheel', e => this.wheel(e), { passive: false }); vp.addEventListener('dblclick', e => this.dbl(e)); vp.addEventListener('contextmenu', e => e.preventDefault());
         vp.addEventListener('dragover', e => { e.preventDefault(); vp.classList.add('drop'); }); vp.addEventListener('dragleave', () => vp.classList.remove('drop'));
-        vp.addEventListener('drop', e => { e.preventDefault(); vp.classList.remove('drop'); if (!this.canEdit) return toast('У вас только просмотр'); const at = this.toWorld(e.clientX, e.clientY); let k = 0; for (const f of e.dataTransfer.files) this.upload(f, { x: at.x + k * 40, y: at.y + k++ * 40 }); });
+        vp.addEventListener('drop', e => { e.preventDefault(); vp.classList.remove('drop'); if (!this.canEdit) return toast('У вас только просмотр'); const at = this.toWorld(e.clientX, e.clientY); const mf = e.dataTransfer.getData('application/x-most-mat'); if (mf) return this.placeMat(mf, at); let k = 0; for (const f of e.dataTransfer.files) this.upload(f, { x: at.x + k * 40, y: at.y + k++ * 40 }); });
         this.sideEl.addEventListener('pointerdown', e => e.stopPropagation()); this.sideEl.addEventListener('wheel', e => e.stopPropagation());
         this.mini.addEventListener('pointerdown', e => { e.stopPropagation(); this.miniDrag = true; this.miniGo(e); }); this.mini.addEventListener('pointermove', e => { if (this.miniDrag) this.miniGo(e); }); this.mini.addEventListener('pointerup', () => { this.miniDrag = false; }); this.mini.addEventListener('pointerleave', () => { this.miniDrag = false; });
         this.onKey = e => this.key(e); this.onKeyUp = e => { if (e.code === 'Space') { this.space = false; this.vp.classList.toggle('hand', this.tool === 'hand'); } }; this.onPaste = e => this.paste(e); this.onDocDown = e => { const m = this.root.querySelector('.bd-menu'); if (m && !m.hidden && !e.target.closest('.bd-exp')) m.hidden = true; };
@@ -226,13 +245,14 @@
         if (it.type === 'arrow') return;
         let el = this.elOf(it.id); const layer = it.type === 'frame' ? this.lFrames : this.lItems;
         if (!el) { el = document.createElement('div'); el.dataset.id = it.id; layer.appendChild(el); el._sig = ''; } else if (el.parentNode !== layer) layer.appendChild(el);
-        const sig = JSON.stringify([it.type, it.props, it.w, it.h]);
+        const ls = it.props.srcPath ? (this.linked[it.id] || {}).state || '' : ''; const sig = JSON.stringify([it.type, it.props, it.w, it.h, ls]);
         if (el._sig !== sig) {
-          el._sig = sig; el.className = `bd-it bd-${it.type === 'pdf' ? 'img' : it.type}${it.props.locked ? ' locked' : ''}`; el.style.background = ''; el.style.borderColor = '';
+          el._sig = sig; el.className = `bd-it bd-${it.type === 'pdf' || it.type === 'image' ? 'img' : it.type}${it.props.locked ? ' locked' : ''}`; el.style.background = ''; el.style.borderColor = '';
           if (it.type === 'sticky' || it.type === 'rect') { el.style.background = fill(it.props.color); el.innerHTML = '<div class="bd-txt"></div>'; const t = el.firstChild; t.textContent = it.props.text; t.style.fontSize = `max(${it.props.size}px, calc(11px / var(--z, 1)))`; }
           else if (it.type === 'text') { el.innerHTML = '<div class="bd-txt"></div>'; const t = el.firstChild; t.textContent = it.props.text; t.style.fontSize = `max(${it.props.size}px, calc(11px / var(--z, 1)))`; if (it.props.color) t.style.color = fill(it.props.color); el.classList.toggle('empty', !it.props.text); }
           else if (it.type === 'frame') { el.style.background = fill(it.props.color) + '1f'; el.style.borderColor = fill(it.props.color); el.innerHTML = '<div class="bd-ftitle"></div>'; el.firstChild.textContent = it.props.title; el.firstChild.style.background = fill(it.props.color); }
-          else { el.innerHTML = `<img alt="" draggable="false">${it.type === 'pdf' ? `<span class="bd-badge">PDF · стр. ${it.props.page}${it.props.pages > 1 ? ' из ' + it.props.pages : ''}</span>` : ''}`; const img = el.firstChild; if (it.props.src) img.src = fileUrl(this.boardId, it.props.src); else { img.remove(); el.textContent = 'файл не найден'; } }
+          else { el.innerHTML = `<img alt="" draggable="false">${it.type === 'pdf' ? `<span class="bd-badge">PDF · стр. ${it.props.page}${it.props.pages > 1 ? ' из ' + it.props.pages : ''}</span>` : ''}`; const img = el.firstChild; if (it.props.src) img.src = fileUrl(this.boardId, it.props.src); else { img.remove(); el.insertAdjacentText('afterbegin', it.props.srcPath ? 'файл в папке проекта' : 'файл не найден'); }
+            if (it.props.srcPath) { const b = document.createElement('span'); b.className = 'bd-link' + (ls === 'changed' || ls === 'missing' ? ' ' + ls : ''); b.textContent = ls === 'changed' ? '⟳ обновлён в папке' : ls === 'missing' ? 'нет в папке' : '🔗'; el.appendChild(b); } }
         }
         el.style.transform = `translate(${it.x}px, ${it.y}px)${it.rot ? ` rotate(${it.rot}deg)` : ''}`; el.style.width = it.w + 'px'; el.style.height = it.h + 'px'; el.style.zIndex = String(Math.round(it.z || 0) + 100000);
         el.title = it.updatedByName ? `${it.updatedByName} · ${when(it.updatedAt)}` : ''; // история: кто менял последним
@@ -269,6 +289,7 @@
           (hasText ? `<select data-size title="Размер текста">${BD.SIZES.map(s => `<option value="${s}"${s === size ? ' selected' : ''}>${s}</option>`).join('')}</select><span class="sep"></span>` : '') +
           (arrows.length ? `<button data-a="head" title="Наконечник">${arrows[0].props.head ? '→' : '—'}</button><button data-a="label" title="Подпись">Aa</button><span class="sep"></span>` : '') +
           (pdf ? `<a class="btn sm" href="${fileUrl(this.boardId, pdf.props.pdf)}" target="_blank" rel="noopener" title="Открыть оригинал PDF">PDF ↗</a><span class="sep"></span>` : '') +
+          (items.length === 1 && first.props.srcPath ? `<button data-a="matPath" title="Открыть в папке: путь к файлу">📁</button>${E && (this.linked[first.id] || {}).state === 'changed' ? '<button data-a="matRefresh" title="Файл в папке изменился — обновить на доске">⟳</button>' : ''}<span class="sep"></span>` : '') +
           `<button data-a="cmItem" title="Комментарий к объекту">💬</button>${items.length === 1 && first.type === 'frame' ? '<button data-a="expFrame" title="Экспорт рамки в PNG / PDF">⤓</button>' : ''}` +
           (E ? `<span class="sep"></span><button data-a="front" title="На передний план">⤒</button><button data-a="back" title="На задний план">⤓</button><button data-a="dup" title="Дублировать (Ctrl+D)">⧉</button><button data-a="lock" title="${first.props.locked ? 'Разблокировать' : 'Закрепить'}">${first.props.locked ? '🔓' : '🔒'}</button><button data-a="del" title="Удалить (Delete)">✕</button>` : '');
         c.querySelectorAll('.sw').forEach(s => s.onclick = () => this.setProp('color', s.dataset.c));
@@ -326,6 +347,9 @@
         if (a === 'mini') { this.miniOn = !this.miniOn; this.mini.hidden = !this.miniOn; this.root.querySelector('[data-a=mini]').classList.toggle('on', this.miniOn); try { localStorage.setItem('bd-mini', this.miniOn ? '1' : '0'); } catch { } return this.miniSoon(); }
         if (a === 'settings') return this.settings();
         if (a === 'comments') return this.side.mode === 'list' ? this.closeSide() : this.openList();
+        if (a === 'mat') return this.side.mode === 'mat' ? this.closeSide() : this.openMat();
+        if (a === 'matPath') { const it = this.selItems()[0]; if (it) this.showPath(it); return; }
+        if (a === 'matRefresh') { const it = this.selItems()[0]; if (it) this.refreshLinked(it); return; }
         if (a === 'cmItem') { const it = this.selItems()[0]; if (it) this.openNew(it.id, it.x + it.w, it.y); return; }
         if (a === 'export') return this.exportMenu();
         if (a === 'expFrame') return this.exportMenu(this.selItems()[0]);
@@ -456,15 +480,15 @@
         for (const t of ths) { if (t.resolved && !this.showResolved && this.side.id !== t.id) continue; keep.add(t.id); let el = layer.querySelector(`[data-id="${CSS.escape(t.id)}"]`); if (!el) { el = document.createElement('div'); el.dataset.id = t.id; el.addEventListener('pointerdown', ev => ev.stopPropagation()); el.onclick = ev => { ev.stopPropagation(); this.openThread(t.id); }; layer.appendChild(el); }
           el.className = 'bd-cm' + (t.resolved ? ' res' : '') + (this.side.id === t.id ? ' on' : ''); el.innerHTML = `💬${t.replies.length ? `<b>${t.replies.length + 1}</b>` : ''}`; el.title = `${t.userName}: ${t.text.slice(0, 80)}`; const a = BD.commentAnchor(t, get); el.style.setProperty('--x', a.x + 'px'); el.style.setProperty('--y', a.y + 'px'); }
         for (const el of [...layer.children]) if (!keep.has(el.dataset.id)) el.remove();
-        const n = BD.openComments([...this.comments.values()]); const cn = this.root.querySelector('.bd-cmn'); if (cn) cn.textContent = n ? String(n) : '';
+        const n = BD.openComments([...this.comments.values()]); const cn = this.root.querySelector('[data-a=comments] .bd-cmn'); if (cn) cn.textContent = n ? String(n) : '';
         if (this.side.mode === 'thread' || this.side.mode === 'list') this.renderSide();
       }
       openNew(itemId, x, y) { this.side = { mode: 'new', id: '', itemId, x, y }; this.renderSide(); const ta = this.sideEl.querySelector('textarea'); if (ta) ta.focus(); }
       openThread(id) { this.side = { mode: 'thread', id }; this.renderSide(); this.renderComments(); const c = this.comments.get(id); if (c) { const a = BD.commentAnchor(c, i => this.items.get(i) || null); const vb = this.viewBox(); if (!BD.intersects(vb, { x: a.x, y: a.y, w: 1, h: 1 })) this.focusPoint(a.x, a.y); } }
       openList() { this.side = { mode: 'list', id: '' }; this.renderSide(); }
-      closeSide() { const was = this.side.id; this.side = { mode: '', id: '' }; this.sideEl.hidden = true; this.sideEl.innerHTML = ''; if (was) this.renderComments(); }
+      closeSide() { const was = this.side.id; this.side = { mode: '', id: '' }; this.sideEl.hidden = true; this.sideEl.innerHTML = ''; this.sideEl.classList.remove('mat'); if (this.matObs) { this.matObs.disconnect(); this.matObs = null; } if (was) this.renderComments(); }
       renderSide() {
-        const s = this.side; const el = this.sideEl; if (!s.mode) return; el.hidden = false; const all = [...this.comments.values()]; const get = id => this.items.get(id) || null; const canDel = c => c.userId === this.me || this.board.canManage;
+        const s = this.side; const el = this.sideEl; if (!s.mode) return; el.hidden = false; el.classList.toggle('mat', s.mode === 'mat'); if (s.mode === 'mat') return this.renderMat(); const all = [...this.comments.values()]; const get = id => this.items.get(id) || null; const canDel = c => c.userId === this.me || this.board.canManage;
         const msg = c => `<div class="bd-msg" data-id="${esc(c.id)}"><div class="who">${avatar(c.userId, c.userName)}<span class="grow"><b>${esc(c.userName)}</b> · ${esc(when(c.createdAt))}</span>${canDel(c) ? `<button class="icon-btn" data-del="${esc(c.id)}" title="Удалить">✕</button>` : ''}</div><div class="tx">${esc(c.text)}</div></div>`;
         if (s.mode === 'list') {
           const ths = BD.threads(all).filter(t => this.showResolved || !t.resolved);
@@ -537,6 +561,185 @@
       settings() { boardSettings(this.board, () => api(`/board/boards/${encodeURIComponent(this.boardId)}`).then(d => { this.board = d.board; this.canEdit = !!d.board.canEdit; this.build(); this.renderAll(); this.applyView(); }), () => { location.hash = '#/boards'; }); }
     }
 
+    // ================= «Материалы»: папка проекта на сетевом диске =================
+    // Сервер только читает папку (скан, отдача оригинала с Range). Миниатюры 400 px и уменьшенные копии для доски делает браузер
+    // (canvas / createImageBitmap, листы PDF — pdf.js), миниатюры кэшируются на сервере (DATA_DIR/board-thumbs, ключ — файл + размер + время изменения).
+    const mp = (id, tail) => `/board/boards/${encodeURIComponent(id)}/materials${tail || ''}`;
+    const rawUrl = (id, f) => '/api' + mp(id, '/raw/' + encodeURIComponent(f));
+    const thumbUrl = (id, t) => '/api' + mp(id, '/thumb/' + t + '.jpg');
+    const canvasBlob = (cv, type, q) => new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('Не удалось сжать картинку')), type, q));
+    const fmtSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ';
+    const lower = s => String(s || '').toLowerCase();
+    async function fetchRaw(id, f, method) { const r = await fetch(rawUrl(id, f), { method: method || 'GET', credentials: 'same-origin' }); if (!r.ok) { let m = 'Файл недоступен (' + r.status + ')'; try { m = (await r.json()).error || m; } catch { } throw new Error(m); } return r; }
+    const metaOf = r => ({ size: Number(r.headers.get('X-File-Size')) || 0, mtime: Number(r.headers.get('X-File-Mtime')) || 0 });
+    // уменьшить картинку / canvas до max px по большей стороне (белый фон — для PNG с прозрачностью в JPEG)
+    async function drawScaled(src, max) {
+      const w = src.width, h = src.height; const k = Math.min(1, max / Math.max(w, h)); const cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k)); let bmp = src;
+      try { if (k < 0.5 && window.createImageBitmap) bmp = await createImageBitmap(src, { resizeWidth: cw, resizeHeight: ch, resizeQuality: 'high' }); } catch { bmp = src; }
+      const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cw, ch); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, cw, ch); if (bmp !== src && bmp.close) bmp.close(); return cv;
+    }
+    // PDF из папки: pdf.js читает кусками по Range — для первой страницы не нужно качать всю презентацию
+    // тяжёлые PDF (сотни МБ, огромные картинки внутри) не должны вешать очередь: ограничение по времени, задача pdf.js при этом закрывается
+    const withTimeout = (p, ms, onTimeout) => new Promise((res, rej) => { const t = setTimeout(() => { try { onTimeout && onTimeout(); } catch { } rej(new Error('PDF читается слишком долго')); }, ms); p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); }); });
+    async function pdfOpen(id, f, ms) { const lib = await pdfjs(); const task = lib.getDocument({ url: rawUrl(id, f), disableAutoFetch: true, disableStream: true, rangeChunkSize: 524288 }); return withTimeout(task.promise, ms || 30000, () => task.destroy()); }
+    async function pdfPage(doc, n, width) { const page = await doc.getPage(Math.min(Math.max(1, n), doc.numPages)); const v1 = page.getViewport({ scale: 1 }); const vp = page.getViewport({ scale: Math.min(4, width / v1.width) }); const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height); const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); await page.render({ canvasContext: g, viewport: vp, intent: 'print' }).promise; return { cv, w1: v1.width, h1: v1.height }; } // intent print — без requestAnimationFrame: рисует и в фоновой вкладке
+
+    Object.assign(Editor.prototype, {
+      async loadMat(auto) {
+        if (this.matLoading) return this.matLoading;
+        this.matLoading = (async () => {
+          try { const d = await api(mp(this.boardId, auto ? '?auto=1' : '')); if (!this.alive()) return; this.mat = d; this.matErr = ''; this.board.folder = d.folder; this.setLinked(d.linked || {}); this.matBadge(); if (this.side.mode === 'mat') this.renderMat(); if (d.scanError) toast('Материалы: ' + d.scanError, 5000); }
+          catch (e) { this.matErr = e.message; if (this.side.mode === 'mat') this.renderMat(); }
+          finally { this.matLoading = null; }
+        })(); return this.matLoading;
+      },
+      setLinked(map) { const prev = this.linked || {}; this.linked = map; for (const id of new Set([...Object.keys(prev), ...Object.keys(map)])) if ((prev[id] || {}).state !== (map[id] || {}).state) { const it = this.items.get(id); if (it) this.draw(it); } if (this.sel.size) this.renderSel(); },
+      matBadge() { const el = this.root.querySelector('.bd-matn'); if (!el) return; const n = this.mat ? this.mat.files.filter(f => f.isNew || f.changed).length : 0; const ch = Object.values(this.linked || {}).filter(x => x.state === 'changed').length; el.textContent = n + ch ? String(n + ch) : ''; const bt = el.parentNode; if (bt) bt.title = `Материалы из папки проекта${n ? ` · новых файлов: ${n}` : ''}${ch ? ` · обновлены в папке: ${ch} объект(ов) на доске` : ''}`; },
+      openMat() { this.side = { mode: 'mat', id: '' }; this.matLimit = 150; this.renderMat(); this.loadMat(true); },
+      matFile(fid) { return (this.mat && this.mat.files.find(f => f.f === fid)) || null; },
+      renderMat() {
+        const el = this.sideEl; const m = this.mat; if (this.side.mode !== 'mat') return; el.hidden = false; el.classList.add('mat'); if (this.matObs) { this.matObs.disconnect(); this.matObs = null; }
+        const scroll = (el.querySelector('.bd-mgrid') || {}).scrollTop || 0;
+        const hd = `<div class="hd"><span class="grow">🗂 Материалы</span>${m && m.folder && m.canScan && !this.matBind ? `<button class="btn sm" data-m="scan" title="Пересканировать папку (не чаще раза в 15 с)">⟳ Обновить</button><button class="btn sm primary" data-m="layout" title="Разложить весь визуальный материал по рамкам-категориям; повторный запуск добавляет только новые файлы">▦ Разложить всё</button>` : ''}<button class="icon-btn" data-close>✕</button></div>`;
+        if (!m) { el.innerHTML = hd + `<div class="bd-mnote">${this.matErr ? esc(this.matErr) : 'Загрузка… (первый просмотр папки на сетевом диске занимает несколько секунд)'}</div>`; return this.bindMat(); }
+        if (!m.folder || this.matBind) { el.innerHTML = hd + this.bindHtml(); this.bindMat(); if (m.canBind && this.board.project && !this.matCandDone) { this.matCandDone = true; this.findCand(''); } return; }
+        const files = m.files; const q = lower(this.matQ); const order = Object.fromEntries(BD.MAT_CAT_IDS.map((c, i) => [c, i]));
+        const list = files.filter(f => (!this.matCat || f.cat === this.matCat) && (!this.matNew || f.isNew || f.changed) && (!q || lower(f.rel).includes(q))).sort((a, b) => order[a.cat] - order[b.cat] || ((b.isNew || b.changed) - (a.isNew || a.changed)) || b.mtime - a.mtime || a.name.localeCompare(b.name, 'ru', { numeric: true }));
+        const onBoard = new Set([...this.items.values()].filter(it => it.props.srcPath).map(it => BD.linkKey(it.props.srcRoot, it.props.srcPath)));
+        const nNew = files.filter(f => f.isNew || f.changed).length; const show = list.slice(0, this.matLimit || 150); const E = this.canEdit;
+        const tile = f => `<div class="bd-mt" data-f="${esc(f.f)}"${E ? ' draggable="true"' : ''} title="${esc(f.rel)} · ${fmtSize(f.size)}${E ? '\nПеретащите на доску или нажмите +' : ''}"><div class="im">${f.thumb ? `<img src="${thumbUrl(this.boardId, f.t)}" alt="" loading="lazy">` : f.kind === 'pdf' ? 'PDF' : '···'}</div><div class="nm">${esc(f.name)}</div><div class="bdg">${f.isNew ? '<span>новое</span>' : ''}${f.changed ? '<span class="chg">изм.</span>' : ''}${onBoard.has(BD.linkKey(f.root, f.path)) ? '<span class="on">на доске</span>' : ''}</div>${E ? '<button class="add" title="Положить в центр экрана">+</button>' : ''}</div>`;
+        let grid = ''; let cat = '';
+        for (const f of show) { if (!this.matCat && f.cat !== cat) { cat = f.cat; grid += `<div class="bd-mgrp">${esc(BD.MAT_LABEL[cat])}</div>`; } grid += tile(f); }
+        const cats = m.cats.filter(([id]) => files.some(f => f.cat === id));
+        const why = { files: `показаны первые ${m.limits.files} файлов`, dirs: `просмотрено не больше ${m.limits.dirs} папок`, time: 'сканирование остановлено по времени' }[m.truncated];
+        el.innerHTML = hd + `<div class="bd-mhead"><span class="path" data-m="copy" title="Щёлкните — скопировать путь">${esc(m.folder.display)}</span><span class="faint">${files.length} файлов${m.scannedAt ? ' · обновлено ' + esc(when(m.scannedAt)) : ''}</span><span class="grow"></span>${m.canBind ? '<button class="btn sm" data-m="rebind">Сменить папку</button>' : ''}</div>` +
+          (why ? `<div class="bd-mnote warn">Папка большая: ${esc(why)}. Привяжите папку поглубже (например, раздел проекта), чтобы видеть всё.</div>` : '') + (m.deep ? `<div class="bd-mnote">Вложенность глубже ${m.limits.depth} уровней не просматривается (${m.deep} папок).</div>` : '') + (m.errors && m.errors.length ? `<div class="bd-mnote warn" title="${esc(m.errors.join('\n'))}">Не прочитано папок: ${m.errors.length}</div>` : '') +
+          `<div class="bd-mcats"><button data-cat="" class="${this.matCat ? '' : 'on'}">Все ${files.length}</button>${cats.map(([id, l]) => `<button data-cat="${id}" class="${this.matCat === id ? 'on' : ''}">${esc(l)} ${files.filter(f => f.cat === id).length}</button>`).join('')}${nNew ? `<button data-new class="${this.matNew ? 'on' : ''}">новое ${nNew}</button>` : ''}<input class="bd-mq" placeholder="Имя файла" value="${esc(this.matQ || '')}"></div>` +
+          `<div class="bd-msgs bd-mgrid">${grid || `<div class="faint" style="grid-column:1/-1">${files.length ? 'Ничего не найдено' : 'В папке нет картинок (JPG, PNG, WebP) и PDF'}</div>`}${list.length > show.length ? `<button class="btn sm" data-m="more" style="grid-column:1/-1">Показать ещё ${list.length - show.length}</button>` : ''}</div>`;
+        this.bindMat(); const g = el.querySelector('.bd-mgrid'); if (g) g.scrollTop = scroll;
+        // миниатюры — только для видимых плиток, по две одновременно
+        const need = [...el.querySelectorAll('.bd-mt')].filter(t => { const f = this.matFile(t.dataset.f); return f && !f.thumb; });
+        if (need.length && window.IntersectionObserver) { this.matObs = new IntersectionObserver(ents => { for (const en of ents) if (en.isIntersecting) { this.matObs.unobserve(en.target); const f = this.matFile(en.target.dataset.f); if (f) this.queueThumb(f); } }, { root: g }); need.forEach(t => this.matObs.observe(t)); }
+      },
+      bindHtml() {
+        const m = this.mat; const cur = m.folder;
+        if (!m.canBind) return `<div class="bd-mnote">Папка проекта не привязана. Привязывает руководитель доски: владелец доски, ПМ/ГИП проекта, владелец или партнёр компании.</div>`;
+        return `<div class="bd-msgs"><p class="faint" style="margin-top:0">Папка проекта на сетевом диске: доска покажет из неё рендеры, референсы, презентации и документы. Папка только читается — на диске ничего не создаётся и не меняется.</p><div class="field"><label>Путь к папке (или часть названия для поиска)</label><input class="bd-fpath" placeholder="Y:\\Concept Projects EP\\111-2025-…" value="${esc(cur ? cur.display : '')}"></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn primary sm" data-m="bind">Привязать путь</button><button class="btn sm" data-m="cand">Найти папку проекта</button>${cur ? '<button class="btn sm" data-m="unbind">Отвязать</button><button class="btn sm" data-m="cancel">Отмена</button>' : ''}</div><div class="bd-cands" style="margin-top:10px"></div><p class="faint" style="font-size:12px">Разрешённые сетевые папки: ${m.roots.map(r => esc(r.alias ? `${r.alias} = ${r.path}` : r.path)).join('; ')}. Настраивают владелец и партнёр (список досок → «Сетевые папки»).</p></div>`;
+      },
+      async findCand(q) {
+        const box = this.sideEl.querySelector('.bd-cands'); if (!box) return; box.innerHTML = '<div class="faint">Ищу папку проекта на сетевых дисках…</div>';
+        try {
+          const d = await api(`/board/boards/${encodeURIComponent(this.boardId)}/folder/candidates?${qsOf({ q })}`); if (!this.sideEl.contains(box)) return;
+          box.innerHTML = (d.project && !q ? `<div class="faint" style="margin-bottom:4px">Проект: <b>${esc(d.project.name)}</b>${d.project.no ? ' · № ' + esc(d.project.no) : ''} — похожие папки (подтвердите нужную):</div>` : '') + (d.candidates.length ? d.candidates.map(c => `<div class="bd-cand"><span class="p">${esc(c.display)}<div class="s">совпало: ${esc(c.why.join(', '))} · ${c.score}</div></span><button class="btn sm" data-root="${esc(c.root)}" data-rel="${esc(c.rel)}">Привязать</button></div>`).join('') : `<div class="faint">${esc(d.hint || 'Похожих папок не найдено — вставьте путь вручную')}</div>`);
+          box.querySelectorAll('[data-root]').forEach(bt => bt.onclick = () => this.bindFolder({ root: bt.dataset.root, rel: bt.dataset.rel }));
+        } catch (e) { box.innerHTML = `<div class="faint">${esc(e.message)}</div>`; }
+      },
+      async bindFolder(body) {
+        try { this.status('Читаю папку…'); const r = await api(`/board/boards/${encodeURIComponent(this.boardId)}/folder`, { method: 'PUT', body }); this.board.folder = r.folder; this.matBind = false; this.matCat = ''; toast(r.error ? `Папка привязана, но не прочитана: ${r.error}` : `Папка привязана: ${r.files} файлов`, 5000); this.status('Сохранено'); await this.loadMat(false); }
+        catch (e) { this.status('Сохранено'); toast(e.message, 6000); }
+      },
+      bindMat() {
+        const el = this.sideEl; const cl = el.querySelector('[data-close]'); if (cl) cl.onclick = () => this.closeSide();
+        const on = (sel, fn) => el.querySelectorAll(sel).forEach(x => x.onclick = ev => { ev.stopPropagation(); fn(x, ev); });
+        on('[data-m=scan]', () => this.rescanMat()); on('[data-m=layout]', () => this.layoutAll()); on('[data-m=more]', () => { this.matLimit = (this.matLimit || 150) + 300; this.renderMat(); });
+        on('[data-m=rebind]', () => { this.matBind = true; this.matCandDone = false; this.renderMat(); }); on('[data-m=cancel]', () => { this.matBind = false; this.renderMat(); });
+        on('[data-m=copy]', () => { const t = this.mat.folder.display; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Путь скопирован: ' + t), () => window.prompt('Путь к папке', t)); });
+        on('[data-m=cand]', () => { const v = (el.querySelector('.bd-fpath') || {}).value || ''; this.findCand(/[\\/]/.test(v) ? '' : v.trim()); });
+        on('[data-m=bind]', () => { const v = ((el.querySelector('.bd-fpath') || {}).value || '').trim(); if (!v) return toast('Вставьте путь к папке'); this.bindFolder({ path: v }); });
+        on('[data-m=unbind]', async () => { if (!confirm('Отвязать папку? Объекты на доске останутся, связь с файлами — тоже (по пути).')) return; try { await api(`/board/boards/${encodeURIComponent(this.boardId)}/folder`, { method: 'DELETE' }); this.board.folder = null; this.matBind = false; await this.loadMat(false); } catch (e) { toast(e.message, 4000); } });
+        on('[data-cat]', x => { this.matCat = x.dataset.cat; this.matLimit = 150; this.renderMat(); }); on('[data-new]', () => { this.matNew = !this.matNew; this.renderMat(); });
+        const q = el.querySelector('.bd-mq'); if (q) { q.onkeydown = ev => ev.stopPropagation(); q.oninput = () => { clearTimeout(this.matQT); this.matQT = setTimeout(() => { this.matQ = q.value; this.renderMat(); const n = this.sideEl.querySelector('.bd-mq'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 300); }; }
+        const fp = el.querySelector('.bd-fpath'); if (fp) fp.onkeydown = ev => { ev.stopPropagation(); if (ev.key === 'Enter') el.querySelector('[data-m=bind]').click(); };
+        el.querySelectorAll('.bd-mt').forEach(t => {
+          t.ondragstart = ev => { ev.dataTransfer.setData('application/x-most-mat', t.dataset.f); ev.dataTransfer.effectAllowed = 'copy'; };
+          const add = t.querySelector('.add'); if (add) add.onclick = ev => { ev.stopPropagation(); this.placeMat(t.dataset.f, this.center()); };
+          t.ondblclick = () => { if (this.canEdit) this.placeMat(t.dataset.f, this.center()); };
+        });
+      },
+      async rescanMat() {
+        try { this.status('Сканирую папку…'); const r = await api(mp(this.boardId, '/scan'), { method: 'POST', body: {} }); if (r.throttled) toast('Папка обновлялась только что — показан последний результат'); await this.loadMat(false); this.status('Сохранено'); }
+        catch (e) { this.status('Ошибка чтения папки', true); toast(e.message, 5000); }
+      },
+      // ---- миниатюры: браузер уменьшает до 400 px, сервер хранит ----
+      queueThumb(f) { this.thq = this.thq || []; this.thSeen = this.thSeen || new Set(); this.thBusy = this.thBusy || 0; if (this.thSeen.has(f.f)) return; this.thSeen.add(f.f); this.thq.push(f); this.pumpThumbs(); },
+      pumpThumbs() { while (this.thBusy < 2 && this.thq.length && this.alive()) { const f = this.thq.shift(); this.thBusy++; this.makeThumb(f).catch(e => console.warn('[board] миниатюра', f.name, e.message)).finally(() => { this.thBusy--; this.pumpThumbs(); }); } },
+      // настоящий тип «PDF»-файла по первым байтам (в папках встречаются PNG с расширением .pdf)
+      async realKind(f) {
+        if (f.kind !== 'pdf' || f.real) return f.real || f.kind;
+        try { const r = await fetch(rawUrl(this.boardId, f.f), { headers: { Range: 'bytes=0-7' }, credentials: 'same-origin' }); const head = new TextDecoder('latin1').decode(await r.arrayBuffer()); f.real = head.startsWith('%PDF') ? 'pdf' : 'image'; } catch { f.real = 'pdf'; }
+        return f.real;
+      },
+      async makeThumb(f) {
+        if (await this.realKind(f) === 'pdf') { const doc = await pdfOpen(this.boardId, f.f); try { await this.postThumb(f, (await withTimeout(pdfPage(doc, 1, 400), 45000)).cv); } finally { doc.destroy(); } return; }
+        const blob = await (await fetchRaw(this.boardId, f.f)).blob(); const bmp = await createImageBitmap(blob); try { await this.postThumb(f, bmp); } finally { if (bmp.close) bmp.close(); }
+      },
+      async postThumb(f, src) {
+        const cv = await drawScaled(src, 400); const blob = await canvasBlob(cv, 'image/jpeg', 0.8); const r = await api(mp(this.boardId, '/thumb'), { method: 'POST', body: { f: f.f, data: await readB64(blob) } }); f.thumb = true; f.t = r.t;
+        const im = this.sideEl.querySelector(`.bd-mt[data-f="${CSS.escape(f.f)}"] .im`); if (im) im.innerHTML = `<img src="${thumbUrl(this.boardId, r.t)}" alt="">`;
+      },
+      // ---- файл из папки → копия в хранилище доски + объект со ссылкой на оригинал (props.srcPath) ----
+      // картинка до 3 МБ и 2560 px копируется сервером как есть; больше — браузер уменьшает до 2400 px (JPEG), чтобы доска не тяжелела;
+      // PDF — лист (по умолчанию 1-й) рисуется pdf.js в 1600 px, оригинал до 20 МБ копируется сервером («PDF ↗»)
+      async prepFile(f, page) {
+        const id = this.boardId; const upload = async (blob, name) => (await api(`/board/boards/${encodeURIComponent(id)}/files`, { method: 'POST', body: { name, type: 'image/jpeg', data: await readB64(blob), client: this.client } })).key;
+        const link = meta => ({ srcRoot: f.root, srcPath: f.path, srcSize: meta.size || f.size || 0, srcMtime: meta.mtime || f.mtime || 0 });
+        if (await this.realKind(f) === 'pdf') {
+          const meta = metaOf(await fetchRaw(id, f.f, 'HEAD')); const doc = await pdfOpen(id, f.f, 60000);
+          try {
+            const n = Math.min(Math.max(1, page || 1), doc.numPages); const pg = await withTimeout(pdfPage(doc, n, 1600), 120000); const src = await upload(await canvasBlob(pg.cv, 'image/jpeg', 0.88), `${f.name} · стр. ${n}.jpg`);
+            if (!f.thumb && n === 1) this.postThumb(f, pg.cv).catch(() => { });
+            let orig = null; try { orig = await api(mp(id, '/copy'), { method: 'POST', body: { f: f.f } }); } catch { } // больше 20 МБ — оригинал только в папке
+            return { type: 'pdf', w: pg.w1, h: pg.h1, props: Object.assign({ src, pdf: orig ? orig.key : '', name: f.name, page: n, pages: doc.numPages }, link(orig ? { size: orig.srcSize, mtime: orig.srcMtime } : meta)) };
+          } finally { doc.destroy(); }
+        }
+        const res = await fetchRaw(id, f.f); const meta = metaOf(res); const blob = await res.blob(); const bmp = await createImageBitmap(blob); const w = bmp.width, h = bmp.height;
+        try {
+          let key; if (blob.size <= 3 * 1048576 && Math.max(w, h) <= 2560) key = (await api(mp(id, '/copy'), { method: 'POST', body: { f: f.f } })).key;
+          else key = await upload(await canvasBlob(await drawScaled(bmp, 2400), 'image/jpeg', 0.88), f.name.replace(/\.[^.]+$/, '') + '.jpg');
+          if (!f.thumb) await this.postThumb(f, bmp).catch(() => { });
+          return { type: 'image', w, h, props: Object.assign({ src: key, name: f.name }, link(meta)) };
+        } finally { if (bmp.close) bmp.close(); }
+      },
+      async placeMat(fid, at) {
+        if (!this.canEdit) return toast('У вас только просмотр'); const f = this.matFile(fid); if (!f) return toast('Файл не найден в материалах');
+        try { this.status('Кладу на доску: ' + f.name + '…'); const p = await this.prepFile(f); const fit = BD.fitBox(p.w, p.h, 600, 600); this.create(p.type, at.x - fit.w / 2, at.y - fit.h / 2, { geom: fit, props: p.props }); this.status('Сохранено'); if (this.side.mode === 'mat') this.renderMat(); }
+        catch (e) { this.status('Ошибка', true); toast(`${f.name}: ${e.message}`, 5000); }
+      },
+      async refreshLinked(it) {
+        const L = this.linked[it.id]; if (!L || !L.f || !this.canEdit) return;
+        const f = Object.assign({ f: L.f, root: it.props.srcRoot, path: it.props.srcPath, name: it.props.srcPath.split('/').pop(), kind: it.type === 'pdf' ? 'pdf' : 'image', thumb: true }, this.matFile(L.f) || {});
+        try {
+          this.status('Обновляю из папки…'); const p = await this.prepFile(f, it.props.page); const cur = this.items.get(it.id); if (!cur) return; const before = [clone(cur)]; const c = clone(cur);
+          c.type = p.type; c.props = Object.assign({}, cur.props, p.props); c.h = Math.max(8, Math.round(c.w * p.h / (p.w || 1)));
+          this.linked = Object.assign({}, this.linked, { [it.id]: Object.assign({}, L, { state: 'ok' }) }); this.apply([c]); this.commit(before, [c]); this.matBadge(); this.status('Сохранено'); toast('Обновлено из папки');
+        } catch (e) { this.status('Ошибка', true); toast(e.message, 5000); }
+      },
+      showPath(it) {
+        const L = this.linked[it.id] || {}; const disp = L.display || it.props.srcPath; const unc = L.unc || '';
+        modal('Файл в папке проекта', `<p class="faint" style="margin-top:0">Браузер не открывает сетевые папки по ссылке — скопируйте путь и вставьте в адресную строку Проводника (Win+E).</p>${[['Путь', disp], ['Сетевой путь', unc]].filter(x => x[1]).map(([l, v], i) => `<div class="field"><label>${l}</label><div style="display:flex;gap:6px"><input readonly value="${esc(v)}" data-p="${i}" style="font-family:ui-monospace,Consolas,monospace;font-size:12px"><button class="btn" type="button" data-cp="${i}">Копировать</button></div></div>`).join('')}<p class="faint">Состояние: ${{ ok: 'совпадает с файлом в папке', changed: 'файл в папке изменён после размещения', missing: 'файла нет по этому пути', unknown: 'не проверено' }[L.state] || 'проверяется при открытии «Материалов»'}${it.props.srcSize ? ` · на доске версия ${fmtSize(it.props.srcSize)}${it.props.srcMtime ? ' от ' + esc(when(new Date(it.props.srcMtime).toISOString())) : ''}` : ''}</p>${L.f && this.canEdit && L.state !== 'missing' ? '<button class="btn primary block" type="button" data-rf>⟳ Обновить на доске из папки</button>' : ''}`);
+        document.querySelectorAll('#modal [data-cp]').forEach(bt => bt.onclick = () => { const inp = document.querySelector(`#modal [data-p="${bt.dataset.cp}"]`); inp.select(); (navigator.clipboard ? navigator.clipboard.writeText(inp.value) : Promise.reject()).then(() => toast('Скопировано'), () => document.execCommand('copy')); });
+        const rf = document.querySelector('#modal [data-rf]'); if (rf) rf.onclick = () => { ui.closeModal(); this.refreshLinked(it); };
+      },
+      // ---- «Разложить всё»: рамки-категории, сетка, подписи; повторно — только новые файлы ----
+      async layoutAll() {
+        if (!this.canEdit || this.laying) return; await this.flush(); let plan;
+        try { plan = await api(mp(this.boardId, '/layout'), { method: 'POST', body: this.matCat ? { cats: [this.matCat] } : {} }); } catch (e) { return toast(e.message, 5000); }
+        if (!plan.places.length) return toast(plan.skipped ? `Всё уже на доске (${plan.skipped} файлов)` : 'В папке нет картинок и PDF', 4000);
+        const nFr = plan.frames.filter(x => x.op === 'create').length; const scope = this.matCat ? ` из категории «${BD.MAT_LABEL[this.matCat]}»` : '';
+        if (!confirm(`Разложить на доске ${plan.places.length} файлов${scope}${nFr ? ` (новых рамок: ${nFr})` : ' в существующие рамки'}?${plan.skipped ? `\nУже на доске: ${plan.skipped}.` : ''}${plan.rest ? `\nЕщё ${plan.rest} — следующим запуском.` : ''}\nОригиналы в папке не меняются; копии сохраняются в хранилище доски.`)) return;
+        this.laying = true; const before = []; const created = [];
+        for (const fr of plan.frames) { const cur = this.items.get(fr.item.id); if (cur) before.push(clone(cur)); const it = Object.assign({ boardId: this.boardId }, fr.item); this.apply([it]); this.send([it]); if (!cur) created.push(it); }
+        let done = 0, fail = 0; const queue = plan.places.slice(); const total = queue.length;
+        const worker = async () => { while (queue.length && this.alive()) { const p = queue.shift(); const f = this.matFile(p.f) || p.file; try { const r = await this.prepFile(f); const fit = BD.fitBox(r.w, r.h, p.w, p.h); const it = this.newItem(r.type, p.x + (p.w - fit.w) / 2, p.y + (p.h - fit.h), { geom: fit, props: r.props }); const lb = this.newItem('text', p.x, p.labelY, { geom: { w: p.w, h: 44 }, props: { text: f.name, size: 14 } }); this.apply([it, lb]); this.send([it, lb]); created.push(it, lb); done++; } catch (e) { fail++; console.warn('[board] раскладка', f && f.name, e.message); } this.status(`Раскладка: ${done + fail} из ${total}…`); } };
+        try { await Promise.all([worker(), worker()]); } finally { this.laying = false; }
+        const grown = plan.frames.filter(x => x.op === 'grow').map(x => this.items.get(x.item.id)).filter(Boolean).map(clone);
+        if (created.length || grown.length) { this.undoS.push({ before, after: created.map(c => clone(this.items.get(c.id) || c)).concat(grown), removed: [] }); this.redoS = []; }
+        this.status('Сохранено'); toast(`Разложено: ${done}${fail ? `, не удалось: ${fail} (см. консоль)` : ''}${plan.rest ? ` · ещё ${plan.rest} — нажмите «Разложить всё» снова` : ''}`, 6000);
+        const all = plan.frames.map(x => this.items.get(x.item.id)).filter(Boolean); const box = BD.bbox(all); if (box) { const r = this.vp.getBoundingClientRect(); const z = Math.min(1, Math.max(0.05, Math.min((r.width - 120) / box.w, (r.height - 120) / box.h))); this.focusPoint(box.x + box.w / 2, box.y + box.h / 2, z); }
+        if (this.side.mode === 'mat') this.renderMat();
+      },
+    });
+
     // ---- форма доски: название, проект, «Кто правит», участники ----
     function boardForm(b, projects, modes) {
       const chosen = new Set(b && b.members || []); const others = people().filter(p => p.id !== me().id && (!b || p.id !== b.ownerId));
@@ -561,7 +764,7 @@
       document.body.classList.remove('bd-full'); const u = params(); const q = (u.get('q') || '').trim(), pid = u.get('pid') || '', mine = u.get('mine') === '1';
       const d = await api('/board/boards?' + qsOf({ q, pid, mine: mine ? '1' : '' }));
       const leader = BD.isLeader(me(), window.MostPM);
-      main.innerHTML = head('Доски', `${d.boards.length} досок · своя доска вместо Miro: файлы и данные на нашем сервере, видят и правят все`, (leader ? '<button class="btn" data-act="bdMiro" title="JSON от modules/board/tools/miro_import.js">⇪ Импорт из Miro</button> ' : '') + '<button class="btn" data-act="bdNewEp">+ Из шаблона ЭП</button> <button class="btn primary" data-act="bdNew">+ Доска</button>') +
+      main.innerHTML = head('Доски', `${d.boards.length} досок · своя доска вместо Miro: файлы и данные на нашем сервере, видят и правят все`, (leader ? '<button class="btn" data-act="bdRoots" title="Какие сетевые папки доски могут читать («Материалы»)">📁 Сетевые папки</button> <button class="btn" data-act="bdMiro" title="JSON от modules/board/tools/miro_import.js">⇪ Импорт из Miro</button> ' : '') + '<button class="btn" data-act="bdNewEp">+ Из шаблона ЭП</button> <button class="btn primary" data-act="bdNew">+ Доска</button>') +
         `<div class="filters"><input id="bd-q" placeholder="Поиск: название, проект" value="${esc(q)}">${sel('bd-pid', [['', 'Все проекты'], ...d.projects.map(p => [p.id, p.name])], pid)}<label class="fl"><input type="checkbox" id="bd-mine"${mine ? ' checked' : ''}> мои</label></div>` +
         (d.boards.length ? tbl([{ t: 'Доска' }, { t: 'Проект' }, { t: 'Кто правит' }, { t: 'Объектов', cls: 'amt' }, { t: 'Комментарии', cls: 'amt' }, { t: 'Изменена' }, { t: 'На доске' }, { t: '' }], d.boards.map(b => `<tr class="bd-row" data-id="${esc(b.id)}"><td><b>${esc(b.title)}</b>${b.template ? ' <span class="chip neutral">шаблон ЭП</span>' : ''}<div class="faint">${esc(b.ownerName)}${b.members.length ? ' + ' + b.members.length : ''}${b.canEdit ? '' : ' · только просмотр'}</div></td><td>${b.project ? `<a href="#/pmp?id=${encodeURIComponent(b.project.id)}">${esc(b.project.name)}</a> <span class="faint">${esc(TRACK[b.project.track] || '')}</span>` : '<span class="faint">свободная</span>'}</td><td>${chip(b.editMode, MODE_CHIP)}</td><td class="amt num">${b.itemsN}</td><td class="amt">${b.openComments ? `<span class="chip warn" title="нерешённых">💬 ${b.openComments}</span>` : '<span class="faint">—</span>'}</td><td class="nowrap">${fdate(String(b.updatedAt).slice(0, 10))}<div class="faint">${esc(b.updatedByName)}</div></td><td>${b.online ? `<span class="chip ok">сейчас ${b.online}</span>` : '<span class="faint">—</span>'}</td><td><div class="actions">${b.canManage ? `<button class="btn sm" data-act="bdSet" data-id="${esc(b.id)}" title="Настройки">⚙</button>` : ''}${b.canDelete ? `<button class="btn sm danger" data-act="bdDel" data-id="${esc(b.id)}" title="Удалить">✕</button>` : ''}</div></td></tr>`)) : empty(q || pid || mine ? 'Ничего не найдено' : 'Досок пока нет — создайте первую'));
       const nav = () => { location.hash = '#/boards?' + qsOf({ q: $('#bd-q').value.trim(), pid: $('#bd-pid').value, mine: $('#bd-mine').checked ? '1' : '' }); }; $('#bd-q').onkeydown = e => { if (e.key === 'Enter') nav(); }; $('#bd-pid').onchange = nav; $('#bd-mine').onchange = nav;
@@ -575,6 +778,14 @@
         for (let i = 0; i < Math.max(1, items.length); i += chunk) { const r = await api('/board/import', { method: 'POST', body: { boardId, title: v.title || data.title, pmProjectId: v.pmProjectId || data.pmProjectId || '', sourceUrl: data.sourceUrl || '', items: items.slice(i, i + chunk), done: i + chunk >= items.length } }); boardId = r.boardId; added += r.added; toast(`Перенесено ${added} из ${items.length}…`, 2000); }
         toast(`Готово: перенесено ${added} объектов`, 6000); location.hash = `#/board?id=${encodeURIComponent(boardId)}`;
       });
+      // корни сетевых папок для «Материалов» (владелец и партнёр): строка «id | алиас | путь | стадии»
+      ui.ACT.bdRoots = async () => {
+        const r = await api('/board/roots'); const line = x => [x.id, x.alias || '', x.path, (x.tracks || []).join(',')].join(' | ');
+        modal('Сетевые папки для «Материалов»', `<form><p class="faint" style="margin-top:0">Доски читают картинки и PDF только из этих папок (только чтение). Строка: <code>id | буква диска | сетевой путь | стадии</code>, например <code>y | Y: | \\\\SynologyMost\\MOST-2025 | ep,concept</code>. Сервер должен видеть сетевой путь (в Docker — путь подключённого тома). Сейчас: ${esc({ settings: 'из настроек', env: 'из переменной BOARD_ROOTS', default: 'по умолчанию' }[r.source] || r.source)}.</p><div class="field"><label>Корни</label><textarea name="roots" rows="6" style="font-family:ui-monospace,Consolas,monospace;font-size:12px">${esc(r.roots.map(line).join('\n'))}</textarea></div><label class="fl" style="margin-bottom:10px"><input type="checkbox" name="reset" style="width:auto"> сбросить к стандартным (${esc(r.defaults.map(x => x.alias || x.id).join(', '))})</label><div class="error"></div><button class="btn primary block" type="submit">Сохранить</button></form>`, async v => {
+          const roots = String(v.roots || '').split('\n').map(s => s.trim()).filter(Boolean).map(s => { const [id, alias, path, tracks] = s.split('|').map(x => (x || '').trim()); return { id, alias, path, tracks, label: `${alias || id} — ${path}` }; });
+          await api('/board/roots', { method: 'PUT', body: v.reset ? { reset: true } : { roots } }); toast('Сетевые папки сохранены');
+        });
+      };
       ui.ACT.bdDel = async ({ id }) => { const b = d.boards.find(x => x.id === id); if (!confirm(`Удалить доску «${b.title}» со всеми объектами, комментариями и файлами?`)) return; await api(`/board/boards/${encodeURIComponent(id)}`, { method: 'DELETE' }); toast('Удалено'); route(); };
       bind(main);
     };

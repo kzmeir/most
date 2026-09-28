@@ -61,6 +61,9 @@
     if (raw.type === 'arrow') { props.from = String(p.from || '').slice(0, 40); props.to = String(p.to || '').slice(0, 40); props.x2 = clamp(p.x2, -1e6, 1e6); props.y2 = clamp(p.y2, -1e6, 1e6); props.head = !(p.head === false || p.head === 'false' || p.head === 0); props.text = String(p.text || '').slice(0, 200); }
     if (p.group) props.group = String(p.group).slice(0, 40);
     if (p.locked) props.locked = true;
+    // связь с файлом в папке проекта (материалы): корень + путь от корня + версия файла на момент размещения
+    if ((raw.type === 'image' || raw.type === 'pdf') && p.srcPath) { const rel = cleanRel(p.srcPath); if (rel && ROOT_ID_RE.test(String(p.srcRoot || ''))) { props.srcRoot = String(p.srcRoot); props.srcPath = rel.slice(0, 1000); props.srcSize = Math.max(0, Math.round(num(p.srcSize))); props.srcMtime = Math.max(0, Math.round(num(p.srcMtime))); } }
+    if (raw.type === 'frame' && MAT_CAT_IDS.includes(p.matCat)) props.matCat = p.matCat; // рамка-категория «Разложить всё»
     it.props = props; return it;
   }
   // комментарий с клиента → чистый (текст обязателен)
@@ -145,6 +148,94 @@
     return out;
   }
 
+  // ---- материалы из папки проекта (сетевые диски): пути, категории, исключения, подбор папки, раскладка ----
+  const ROOT_ID_RE = /^[a-z0-9]{1,12}$/;
+  const MAT_EXT = { jpg: 'image', jpeg: 'image', png: 'image', webp: 'image', pdf: 'pdf' };
+  const MAT_CATS = [['render', 'Рендеры', 'orange'], ['ref', 'Референсы', 'yellow'], ['present', 'Презентации / PDF', 'blue'], ['docs', 'ИРД / Документы', 'green'], ['other', 'Прочее', 'gray']];
+  const MAT_CAT_IDS = MAT_CATS.map(c => c[0]);
+  const MAT_LABEL = Object.fromEntries(MAT_CATS.map(c => [c[0], c[1]]));
+  // путь внутри корня: прямые слэши, без пустых и «.»; «..», NUL, «:» (диск / поток NTFS) и управляющие символы — отказ (null)
+  function cleanRel(s) {
+    s = String(s == null ? '' : s); if (s.length > 1000 || /[\x00-\x1f]/.test(s)) return null;
+    const segs = s.replace(/\\/g, '/').split('/').map(x => x.trim()).filter(x => x && x !== '.');
+    if (segs.some(x => x.includes(':') || /^\.+$/.test(x))) return null;
+    return segs.join('/');
+  }
+  const low = s => String(s || '').toLowerCase().replace(/ё/g, 'е');
+  // границы слова для кириллицы (\b в JS её не понимает)
+  const word = stems => new RegExp(`(^|[^a-zа-я0-9])(${stems})([^a-zа-я]|$)`);
+  const CAT_RULES = [
+    ['render', /render|рендер|визуал|visual|cgi|ракурс|(^|[^a-z])viz([^a-z]|$)/],
+    ['ref', /refer|референс|аналог|analog|inspir|moodboard|мудборд|примеры/],
+    ['present', /презент|present|градсовет|альбом|буклет|(^|[^a-zа-я])pdf([^a-zа-я]|$)/],
+    ['docs', /исходн|задани|госакт|гос акт|техусл|договор|документ|топосъем|топо съем/],
+    ['docs', word('ирд|ird|апз|ту|docs?|топо')],
+  ];
+  const catOf = name => { const s = low(name); for (const [cat, re] of CAT_RULES) if (re.test(s)) return cat; return ''; };
+  // категория файла: по папкам сверху вниз (раздел проекта «04-Render», «05-Reference»…), затем по имени файла; PDF без подсказок — «Презентации / PDF»
+  function matCategory(rel) {
+    const segs = String(rel || '').split('/'); const name = segs.pop();
+    for (const d of segs) { const c = catOf(d); if (c) return c; }
+    const c = catOf(name.replace(/\.[^.]+$/, '')); if (c) return c;
+    return /\.pdf$/i.test(name) ? 'present' : 'other';
+  }
+  const matKind = name => MAT_EXT[String(name || '').split('.').pop().toLowerCase()] || '';
+  // что не сканируем: служебные папки (textures, maps, backup, AutoSave, корзины Synology/Windows, скрытые) и файлы (Thumbs.db, ~$, скрытые)
+  const EXCL_DIR = word('textures?|текстур[а-я]*|maps?|backups?|бэкап[а-я]*|autosave|thumbs?|@eadir|#recycle|\\$recycle\\.bin');
+  const excludedDir = name => { const n = low(name); return !n || /^[.#@$~]/.test(n) || EXCL_DIR.test(n); };
+  const excludedFile = name => { const n = low(name); return !n || /^[.~]/.test(n) || n === 'thumbs.db' || n === 'desktop.ini' || !matKind(n); };
+
+  // подбор папки проекта: номер (NNN-ГГГГ-…) и слова названия; редкие слова весят больше частых («Эверест» — у многих)
+  // слова сравниваются в латинице: «Эверест Парк» находит «Everest park», «Хаят» — «HAYAT»
+  const TR = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ж: 'zh', з: 'z', и: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sh', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya', қ: 'k', ғ: 'g', ү: 'u', ұ: 'u', ә: 'a', ө: 'o', һ: 'h', і: 'i', ң: 'n' };
+  const latin = t => t.replace(/[а-яқғүұәөһің]/g, ch => TR[ch] !== undefined ? TR[ch] : ch);
+  const tokens = s => (low(s).match(/[a-zа-яқғүұәөһің0-9]+/g) || []).filter(t => t.length >= 3 && !/^\d+$/.test(t) && !/^(очередь|оч|жк|эп|рп)$/.test(t)).map(latin);
+  const stem = t => t.slice(0, Math.max(4, Math.min(6, t.length - 1)));
+  const folderNo = name => { const m = String(name || '').match(/^(\d{2,4})[-_ .]/); return m ? Number(m[1]) : null; };
+  function scoreCandidates(project, dirs, o) {
+    o = o || {}; const pno = project && project.no ? Number(String(project.no).replace(/\D/g, '')) || null : null; const pt = [...new Set(tokens(project && project.name).map(stem))];
+    const df = new Map(); const dirStems = dirs.map(d => { const s = new Set(tokens(d.name).map(stem)); for (const t of s) df.set(t, (df.get(t) || 0) + 1); return s; });
+    const hit = (s, t) => s.has(t) || [...s].some(x => x.startsWith(t) || t.startsWith(x));
+    const out = [];
+    dirs.forEach((d, i) => {
+      let score = 0; const why = [];
+      if (pno && folderNo(d.name) === pno) { score += 1; why.push('номер'); }
+      if (pt.length) { let w = 0, tot = 0; for (const t of pt) { const wt = 1 / Math.log2(2 + (df.get(t) || 0)); tot += wt; if (hit(dirStems[i], t)) w += wt; } if (w) { score += 0.9 * w / tot; why.push('название'); } }
+      if (score && o.track && d.tracks && d.tracks.includes(o.track)) score += 0.05;
+      if (score >= (o.min || 0.3)) out.push(Object.assign({}, d, { score: Math.round(score * 100) / 100, why }));
+    });
+    return out.sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name), 'ru')).slice(0, o.limit || 8);
+  }
+
+  // «Разложить всё»: рамки-категории (props.matCat) и сетка ячеек; файлы, уже лежащие на доске (props.srcRoot:srcPath), пропускаются,
+  // существующие рамки дополняются в свободные ячейки (рамка растёт вниз), новые рамки — ниже содержимого доски слева направо
+  const LAYOUT = { cellW: 440, cellH: 380, imgW: 400, imgH: 300, pad: 50, gap: 240, maxCols: 6, maxPlace: 150 };
+  const linkKey = (root, rel) => `${root}:${rel}`;
+  function layoutPlan(files, items, o) {
+    o = Object.assign({}, LAYOUT, o || {}); const live = (items || []).filter(it => !it.deleted);
+    const onBoard = new Set(live.filter(it => (it.type === 'image' || it.type === 'pdf') && it.props && it.props.srcPath).map(it => linkKey(it.props.srcRoot, it.props.srcPath)));
+    const todo = files.filter(f => !onBoard.has(linkKey(f.root, f.path)));
+    const box = bbox(live); let nx = box ? box.x : 0; const ny = box ? box.y + box.h + 300 : 0;
+    const frames = []; const places = []; let left = o.maxPlace; let z = live.reduce((m, it) => Math.min(m, num(it.z)), 0);
+    for (const [cat, title, color] of MAT_CATS) {
+      const list = todo.filter(f => f.cat === cat).slice(0, Math.max(0, left)); if (!list.length) continue; left -= list.length;
+      let fr = live.find(it => it.type === 'frame' && it.props.matCat === cat); let op = 'grow';
+      if (!fr) { const cols = Math.max(2, Math.min(o.maxCols, Math.ceil(Math.sqrt(list.length * 1.6)))); fr = { id: newId(), type: 'frame', x: nx, y: ny, w: o.pad * 2 + cols * o.cellW - (o.cellW - o.imgW), h: o.pad * 2 + o.cellH, z: --z, rot: 0, props: { title, color, matCat: cat } }; op = 'create'; nx += fr.w + o.gap; }
+      else fr = JSON.parse(JSON.stringify(fr));
+      const cols = Math.max(1, Math.floor((fr.w - o.pad * 2 + (o.cellW - o.imgW)) / o.cellW));
+      const others = live.filter(it => it.id !== fr.id && it.type !== 'frame' && it.type !== 'arrow');
+      let i = 0; let maxY = fr.y + fr.h;
+      for (const f of list) {
+        for (; ; i++) { const cell = { x: fr.x + o.pad + (i % cols) * o.cellW, y: fr.y + o.pad + Math.floor(i / cols) * o.cellH, w: o.imgW, h: o.cellH - 20 }; if (i > 5000 || !others.some(it => intersects(cell, rectOf(it)))) { places.push({ f: f.f, cat, frameId: fr.id, x: cell.x, y: cell.y, w: o.imgW, h: o.imgH, labelY: cell.y + o.imgH + 6 }); maxY = Math.max(maxY, cell.y + o.cellH + o.pad - 20); i++; break; } }
+      }
+      if (op === 'create') { fr.h = Math.max(fr.h, maxY - fr.y); frames.push({ op, item: fr }); } else if (maxY > fr.y + fr.h) { fr.h = maxY - fr.y; frames.push({ op, item: fr }); }
+    }
+    return { frames, places, skipped: files.length - todo.length, rest: Math.max(0, todo.length - places.length) };
+  }
+  // вписать картинку (w×h) в ячейку cw×ch с сохранением пропорций
+  const fitBox = (w, h, cw, ch) => { w = num(w) || cw; h = num(h) || ch; const k = Math.min(cw / w, ch / h); return { w: Math.max(8, Math.round(w * k)), h: Math.max(8, Math.round(h * k)) }; };
+
   return { TYPES, COLORS, COLOR_KEYS, SIZES, DEFAULTS, FILE_TYPES, MAX_FILE, MAX_TEXT, MAX_TITLE, MAX_COMMENT, KEY_RE, newId, EDIT_MODES, LEADERS, isLeader, editMode, isBoardManager, canView, canEdit, canManage, canDelete, canComment, canCreateProjectBoard,
-    cleanItem, cleanComment, threads, openComments, commentAnchor, rectOf, center, intersects, contains, bbox, arrowBox, anchor, arrowEnds, insideFrame, maxZ, detachArrows, repairArrows, itemText, itemLabel, search, EP_FRAMES, epTemplate, num };
+    cleanItem, cleanComment, threads, openComments, commentAnchor, rectOf, center, intersects, contains, bbox, arrowBox, anchor, arrowEnds, insideFrame, maxZ, detachArrows, repairArrows, itemText, itemLabel, search, EP_FRAMES, epTemplate, num,
+    ROOT_ID_RE, MAT_EXT, MAT_CATS, MAT_CAT_IDS, MAT_LABEL, cleanRel, matCategory, matKind, excludedDir, excludedFile, tokens, folderNo, scoreCandidates, LAYOUT, linkKey, layoutPlan, fitBox };
 });
