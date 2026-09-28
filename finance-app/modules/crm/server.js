@@ -2,9 +2,36 @@
 // Модуль «Коммерция»: /api/crm/*. Поток C. Контракт модулей — docs/ARCHITECTURE.md, задачи — modules/crm/README.md.
 // Лиды и воронка (crmLeads), график платежей по договору (crmPayments), шаблоны документов (crmTemplates).
 // КП и договоры ядра (db.proposals, db.contracts) только читаем и отдаём отсюда по правам модуля — на сайте ERP финансовых API нет.
+// Файлы готовых КП (внешние редакции) — на диске DATA_DIR/crm-files/<id лида>/, в базе только ключи (как board/office).
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const C = require('./domain');
 const KP = require('./kp');
 const KPDOCX = require('./kpdocx');
+
+const KP_FILE_TYPES = {
+  pdf: { type: 'application/pdf', sig: b => b.slice(0, 5).toString('latin1') === '%PDF-' },
+  docx: { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sig: b => b.length > 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 3 && b[3] === 4 },
+};
+const KP_MAX_FILE = 20 * 1024 * 1024, KP_MAX_FILES = 4;
+const KP_KEY_RE = /^[a-z0-9]+-[a-z0-9]+\.(pdf|docx)$/;
+const kpDir = (ctx, leadId) => path.join(ctx.store.DATA_DIR, 'crm-files', String(leadId).replace(/[^\w-]/g, ''));
+// файлы из запроса [{ name, data: base64 }] → проверенные буферы (ничего не пишет на диск)
+function kpFilesIn(list) {
+  if (!Array.isArray(list) || !list.length) return { error: 'Приложите готовое КП: PDF и/или DOCX' };
+  if (list.length > KP_MAX_FILES) return { error: `Не больше ${KP_MAX_FILES} файлов` };
+  const out = [];
+  for (const f of list) {
+    const name = String((f && f.name) || '').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 200); const ext = (name.match(/\.([a-z0-9]+)$/i) || [])[1];
+    const t = ext && KP_FILE_TYPES[ext.toLowerCase()]; if (!t) return { error: `Можно только PDF и DOCX: ${name || 'файл без имени'}` };
+    const b64 = String((f && f.data) || '').replace(/^data:[^,]*,/, ''); if (b64.length * 3 / 4 > KP_MAX_FILE + 4) return { error: `Файл больше 20 МБ: ${name}` };
+    const data = Buffer.from(b64, 'base64'); if (!data.length) return { error: `Пустой файл: ${name}` };
+    if (!t.sig(data)) return { error: `Содержимое файла не совпадает с расширением: ${name}` };
+    out.push({ name, kind: ext.toLowerCase(), type: t.type, data, sha: crypto.createHash('sha256').update(data).digest('hex') });
+  }
+  return { files: out };
+}
 
 const LEAD_FIELDS = ['client', 'bin', 'contact', 'phone', 'object', 'address', 'objectType', 'track', 'area', 'rate', 'sum', 'vatIncluded', 'source', 'respId', 'nextDate', 'nextStep', 'note', 'proposalId', 'contractId', 'company', 'contractNo', 'contractDate', 'reason', 'reasonNote'];
 const PAY_FIELDS = ['name', 'share', 'sum', 'stage', 'due', 'status', 'actDate', 'paidDate', 'note'];
@@ -80,7 +107,9 @@ function handle(ctx) {
   };
   const history = (l, status, note) => { (l.history = l.history || []).push({ at: now(), by: user.id, status, note: note || '' }); };
   const saveAudit = (action, col, id, extra) => { store.save(); store.audit(user.id, action, col, id, extra); };
-  const kpBrief = x => x ? { v: x.v, no: x.no, date: x.date, at: x.at, byName: ctx.userName ? ctx.userName(x.by) : '', area: x.area, rate: x.rate, vatIncluded: x.vatIncluded, cost: x.cost, net: x.net, vat: x.vat, gross: x.gross } : null;
+  const kpBrief = x => x ? Object.assign({ v: x.v, no: x.no, date: x.date, at: x.at, byName: ctx.userName ? ctx.userName(x.by) : '', source: x.source || 'erp', area: x.area, rate: x.rate, vatIncluded: x.vatIncluded, cost: x.cost, net: x.net, vat: x.vat, gross: x.gross },
+    x.source === 'external' ? { vatPct: x.vatPct, extraNet: x.extraNet || 0, extraGross: x.extraGross || 0, comment: x.comment || '', files: (x.files || []).map(f => ({ key: f.key, name: f.name, kind: f.kind, size: f.size })) } : {}) : null;
+  const lastV = vs => (vs || []).reduce((m, x) => Math.max(m, C.num(x.v)), 0);
   const nextNo = () => db.crmLeads.reduce((m, x) => Math.max(m, C.num(x.no)), 0) + 1;
 
   // ---- счётчики в меню ----
@@ -141,6 +170,7 @@ function handle(ctx) {
     if (l && !c && method === 'DELETE') {
       if (!leader) return err(403, 'Удалять лиды может только руководитель');
       db.crmLeads.splice(db.crmLeads.indexOf(l), 1); const ps = paysOf(l.id); for (const p of ps) db.crmPayments.splice(db.crmPayments.indexOf(p), 1);
+      try { fs.rmSync(kpDir(ctx, l.id), { recursive: true, force: true }); } catch { } // файлы готовых КП
       saveAudit('delete', 'crmLeads', l.id, { payments: ps.length }); return ok({ ok: true });
     }
     // «Договор подписан»: реквизиты договора, проект в pm (новый или существующий), график платежей, событие crm.contract.signed
@@ -188,11 +218,11 @@ function handle(ctx) {
         if (!editor) return err(403, 'КП готовят руководители и секретарь');
         if (!body.params || (body.params.vatIncluded !== true && body.params.vatIncluded !== false && body.params.vatIncluded !== 'true' && body.params.vatIncluded !== 'false')) return err(400, 'Укажите явно: ставка с НДС или без НДС');
         const p = KP.kpParams(l, body.params); const calc = KP.kpCalc(p); if (calc.problems.length) return err(400, 'Нельзя сформировать КП: ' + calc.problems.join('; '));
-        const vs = l.kpVersions = l.kpVersions || []; const last = vs[vs.length - 1]; const same = last && JSON.stringify(last.params) === JSON.stringify(p);
+        const vs = l.kpVersions = l.kpVersions || []; const last = vs[vs.length - 1]; const same = last && last.params && JSON.stringify(last.params) === JSON.stringify(p);
         let ver = last;
         if (!same) {
           if (!l.kpNo) l.kpNo = KP.nextKpNo(db.crmLeads, t);
-          ver = { v: vs.length + 1, no: l.kpNo, date: t, at: now(), by: user.id, params: p, area: calc.area, rate: p.rate, vatIncluded: p.vatIncluded, cost: calc.cost, net: calc.net, vat: calc.vat, gross: calc.gross };
+          ver = { v: lastV(vs) + 1, source: 'erp', no: l.kpNo, date: t, at: now(), by: user.id, params: p, area: calc.area, rate: p.rate, vatIncluded: p.vatIncluded, cost: calc.cost, net: calc.net, vat: calc.vat, gross: calc.gross };
           vs.push(ver); l.kp = p; l.kpDate = t; if (!l.kpAt) l.kpAt = t;
           Object.assign(l, { area: calc.area, rate: p.rate, sum: calc.cost, vatIncluded: p.vatIncluded, company: l.company || p.company });
           history(l, l.status, `КП ${l.kpNo} ред. ${ver.v}: ${C.moneyStr(calc.cost)} ₸ ${calc.vatTag}`);
@@ -200,8 +230,54 @@ function handle(ctx) {
         }
         return ok(Object.assign(kpBrief(ver), { reused: !!same, lead: leadOut(l) }));
       }
+      // готовое КП, подготовленное вне ERP (генераторы директора): файлы PDF/DOCX + итоговые цифры → редакция source: 'external'
+      if (d === 'external' && !v && method === 'POST') {
+        if (!editor) return err(403, 'Загружать КП могут руководители и секретарь');
+        const r = C.kpExternal(body, vat); if (r.error) return err(400, r.error);
+        const fl = kpFilesIn(body.files); if (fl.error) return err(400, fl.error);
+        const x = r.v; const vs = l.kpVersions = l.kpVersions || [];
+        if (!x.no) x.no = l.kpNo || KP.nextKpNo(db.crmLeads, x.date);
+        const other = db.crmLeads.find(o => o !== l && (o.kpNo === x.no || (o.kpVersions || []).some(q => q.no === x.no))); if (other) return err(409, `Номер ${x.no} уже у лида № ${other.no} (${other.client || other.object || ''})`);
+        // повтор той же публикации (скрипт запущен ещё раз) новую редакцию не создаёт
+        const last = vs[vs.length - 1]; const shas = fl.files.map(f => f.sha).sort().join(',');
+        if (last && last.source === 'external' && ['no', 'date', 'area', 'rate', 'net', 'vat', 'gross', 'extraNet', 'extraGross', 'comment'].every(k => last[k] === x[k]) && (last.files || []).map(f => f.sha).sort().join(',') === shas) return ok(Object.assign(kpBrief(last), { reused: true, lead: leadOut(l) }));
+        const dir = kpDir(ctx, l.id); fs.mkdirSync(dir, { recursive: true });
+        const files = fl.files.map(f => { const key = `${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}.${f.kind}`; fs.writeFileSync(path.join(dir, key), f.data); return { key, name: f.name, kind: f.kind, type: f.type, size: f.data.length, sha: f.sha }; });
+        const ver = Object.assign({ v: lastV(vs) + 1, source: 'external', at: now(), by: user.id, vatIncluded: false, cost: x.net }, x, { files });
+        vs.push(ver);
+        Object.assign(l, { kpNo: x.no, kpDate: x.date, sum: x.net, vatIncluded: false }, x.area ? { area: x.area, rate: x.rate } : {}); if (!l.kpAt) l.kpAt = x.date;
+        if (body.track) l.track = C.normTrack(body.track);
+        const note = `КП ${x.no} ред. ${ver.v} (готовый файл): ${C.moneyStr(x.net)} ₸ без НДС, ${C.moneyStr(x.gross)} ₸ с НДС` + (x.extraNet ? `; сопутствующие вне КП ${C.moneyStr(x.extraNet)} ₸ без НДС` : '');
+        const toSent = body.markSent !== false && body.markSent !== 'false' && ['Новый', 'Расчёт'].includes(l.status);
+        if (toSent) { l.status = 'КП отправлено'; if (!l.kpAt) l.kpAt = x.date; }
+        history(l, l.status, note); l.updatedAt = now(); l.updatedBy = user.id;
+        saveAudit('kp-external', 'crmLeads', l.id, { v: ver.v, no: x.no, net: x.net, gross: x.gross, files: files.length });
+        return ok(Object.assign(kpBrief(ver), { reused: false, lead: leadOut(l) }));
+      }
+      // файл внешней редакции (PDF/DOCX) — видят все, кому виден лид
+      if (d && /^\d+$/.test(d) && v === 'files' && parts[6] && method === 'GET') {
+        const ver = (l.kpVersions || []).find(x => x.v === Number(d)); const f = ver && (ver.files || []).find(x => x.key === parts[6]);
+        if (!f || !KP_KEY_RE.test(f.key)) return err(404, 'Файл не найден');
+        const file = path.join(kpDir(ctx, l.id), f.key); if (!fs.existsSync(file)) return err(404, 'Файл не найден');
+        store.audit(user.id, 'kp-file', 'crmLeads', l.id, { v: ver.v, key: f.key });
+        return ctx.send(200, fs.readFileSync(file), { 'Content-Type': f.type, 'Content-Disposition': `${f.kind === 'pdf' ? 'inline' : 'attachment'}; filename="kp.${f.kind}"; filename*=UTF-8''${encodeURIComponent(f.name)}`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store' });
+      }
+      // удалить ошибочно загруженную внешнюю редакцию (руководитель); редакции из ERP не удаляются
+      if (d && /^\d+$/.test(d) && !v && method === 'DELETE') {
+        if (!leader) return err(403, 'Удалять редакции КП может только руководитель');
+        const vs = l.kpVersions || []; const ver = vs.find(x => x.v === Number(d)); if (!ver) return err(404, 'Нет такой редакции КП');
+        if (ver.source !== 'external') return err(409, 'Редакции, собранные в ERP, не удаляются');
+        for (const f of ver.files || []) if (KP_KEY_RE.test(f.key)) { try { fs.unlinkSync(path.join(kpDir(ctx, l.id), f.key)); } catch { } }
+        const wasLast = vs[vs.length - 1] === ver; vs.splice(vs.indexOf(ver), 1);
+        const nl = vs[vs.length - 1];
+        if (wasLast && nl) Object.assign(l, { kpNo: nl.no, kpDate: nl.date, sum: nl.cost, vatIncluded: !!nl.vatIncluded }, nl.area ? { area: nl.area, rate: nl.rate } : {}, nl.params ? { kp: nl.params } : {});
+        if (!nl) l.kpNo = '';
+        history(l, l.status, `удалена редакция КП ${ver.no} ред. ${ver.v} (готовый файл)`);
+        saveAudit('kp-delete', 'crmLeads', l.id, { v: ver.v, no: ver.no }); return ok(leadOut(l));
+      }
       if (d && /^\d+$/.test(d) && v === 'docx' && method === 'GET') {
         const ver = (l.kpVersions || []).find(x => x.v === Number(d)); if (!ver) return err(404, 'Нет такой редакции КП');
+        if (ver.source === 'external') { const f = (ver.files || []).find(x => x.kind === 'docx'); if (!f) return err(404, 'У этой редакции нет Word — скачайте PDF'); return ctx.send(302, '', { Location: `/api/crm/leads/${encodeURIComponent(l.id)}/kp/${ver.v}/files/${f.key}` }); }
         const buf = KPDOCX.build(ver.params, KP.kpCalc(ver.params), { no: ver.no, date: ver.date, version: ver.v });
         const name = `${ver.no} ${l.client || ''} ${l.object || ''}`.replace(/[\\/:*?"<>|\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) + (ver.v > 1 ? ` ред.${ver.v}` : '') + '.docx';
         store.audit(user.id, 'kp-docx', 'crmLeads', l.id, { v: ver.v });
