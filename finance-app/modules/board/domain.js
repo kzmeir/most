@@ -7,7 +7,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-  const TYPES = ['sticky', 'text', 'frame', 'rect', 'arrow', 'image', 'pdf'];
+  const TYPES = ['sticky', 'text', 'frame', 'rect', 'arrow', 'image', 'pdf', 'ink'];
   // цвета стикеров и фигур (ключ → заливка); стикер — плотный цвет, рамка — лёгкая подложка
   const COLORS = { yellow: '#fff59d', green: '#c8e6c9', blue: '#bbdefb', pink: '#f8bbd0', orange: '#ffe0b2', purple: '#e1bee7', gray: '#eceff1', white: '#ffffff' };
   const COLOR_KEYS = Object.keys(COLORS);
@@ -20,7 +20,13 @@
     image: { w: 400, h: 300, props: { src: '', name: '' } },
     pdf: { w: 560, h: 400, props: { src: '', pdf: '', name: '', page: 1, pages: 1 } },
     arrow: { w: 0, h: 0, props: { from: '', to: '', x2: 0, y2: 0, head: true, text: '' } }, // x,y — начало (если from пуст), x2,y2 — конец (если to пуст)
+    ink: { w: 8, h: 8, props: { points: [], color: '#1f2937', width: 4, opacity: 1 } }, // штрих пера/маркера: точки относительно x,y; x,y,w,h — рамка штриха
   };
+  // перо и маркер: насыщенные цвета (пастель стикеров на белом не видна) и по три толщины
+  const INK_COLORS = ['#1f2937', '#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#fdd835', '#ffffff'];
+  const INK_WIDTHS = { pen: [2, 4, 8], marker: [12, 20, 32] };
+  const INK_OPACITY = { pen: 1, marker: 0.4 };
+  const MAX_INK_POINTS = 2000, MAX_INK_BYTES = 48000;
   const FILE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'application/pdf': 'pdf' };
   const MAX_FILE = 20 * 1024 * 1024; // ядро принимает JSON до 32 МБ; base64 20 МБ ≈ 27 МБ
   const MAX_TEXT = 5000, MAX_TITLE = 200, MAX_COMMENT = 3000;
@@ -64,8 +70,58 @@
     // связь с файлом в папке проекта (материалы): корень + путь от корня + версия файла на момент размещения
     if ((raw.type === 'image' || raw.type === 'pdf') && p.srcPath) { const rel = cleanRel(p.srcPath); if (rel && ROOT_ID_RE.test(String(p.srcRoot || ''))) { props.srcRoot = String(p.srcRoot); props.srcPath = rel.slice(0, 1000); props.srcSize = Math.max(0, Math.round(num(p.srcSize))); props.srcMtime = Math.max(0, Math.round(num(p.srcMtime))); } }
     if (raw.type === 'frame' && MAT_CAT_IDS.includes(p.matCat)) props.matCat = p.matCat; // рамка-категория «Разложить всё»
+    if (raw.type === 'text' && p.auto) props.auto = true; // ширина текста растёт по содержимому (до TEXT_AUTO_MAX), пока его не растянули вручную
+    if (raw.type === 'ink') { // штрих: точки обязательны и корректны, иначе объект отклоняется целиком
+      const pts = cleanPoints(p.points); if (!pts) return null;
+      props.points = pts; props.width = Math.round(clamp(p.width == null ? d.props.width : p.width, 0.5, 64) * 2) / 2; props.opacity = Math.round(clamp(p.opacity == null ? 1 : p.opacity, 0.05, 1) * 100) / 100;
+      if (JSON.stringify(pts).length > MAX_INK_BYTES) return null;
+    }
     it.props = props; return it;
   }
+  // точки штриха: [[x,y],…], 1…MAX_INK_POINTS, числа конечные и в пределах; округление до 0,1
+  function cleanPoints(list) {
+    if (!Array.isArray(list) || !list.length || list.length > MAX_INK_POINTS) return null; const out = [];
+    for (const q of list) {
+      if (!Array.isArray(q) || q.length < 2 || typeof q[0] !== 'number' || typeof q[1] !== 'number' || !Number.isFinite(q[0]) || !Number.isFinite(q[1]) || Math.abs(q[0]) > 2e5 || Math.abs(q[1]) > 2e5) return null;
+      out.push([Math.round(q[0] * 10) / 10, Math.round(q[1] * 10) / 10]);
+    }
+    return out;
+  }
+  // упрощение ломаной (Рамер — Дуглас — Пекер, без рекурсии): точки ближе tol к хорде выбрасываются
+  function simplify(pts, tol) {
+    if (!Array.isArray(pts) || pts.length < 3) return (pts || []).slice(); const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1; const st = [[0, pts.length - 1]]; const t2 = tol * tol;
+    while (st.length) {
+      const [a, b] = st.pop(); const [ax, ay] = pts[a], [bx, by] = pts[b]; const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy; let md = -1, mi = -1;
+      for (let i = a + 1; i < b; i++) { const [px, py] = pts[i]; let dd; if (!L) dd = (px - ax) ** 2 + (py - ay) ** 2; else { const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)); dd = (px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2; } if (dd > md) { md = dd; mi = i; } }
+      if (mi > 0 && md > t2) { keep[mi] = 1; st.push([a, mi], [mi, b]); }
+    }
+    return pts.filter((_, i) => keep[i]);
+  }
+  // абсолютные точки → объект-штрих: упрощение, не больше MAX_INK_POINTS, рамка с запасом на толщину, точки относительно x,y
+  function inkFromPoints(abs, o) {
+    o = o || {}; const width = num(o.width) || 4; let tol = o.tol || 0.5; let pts = simplify(abs, tol);
+    while (pts.length > MAX_INK_POINTS) { tol *= 1.6; pts = simplify(abs, tol); }
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity; for (const [x, y] of pts) { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); }
+    const pad = width / 2 + 1; const x = x1 - pad, y = y1 - pad;
+    return { x, y, w: Math.max(8, x2 - x1 + pad * 2), h: Math.max(8, y2 - y1 + pad * 2), props: { points: pts.map(([px, py]) => [Math.round((px - x) * 10) / 10, Math.round((py - y) * 10) / 10]), color: o.color || DEFAULTS.ink.props.color, width, opacity: o.opacity == null ? 1 : o.opacity } };
+  }
+  // SVG-путь штриха: квадратичные кривые через середины отрезков (плавная линия); одна точка — точка (круглый конец)
+  function inkPath(pts) {
+    const f = v => Math.round(v * 10) / 10; if (!pts || !pts.length) return ''; const [x0, y0] = pts[0];
+    if (pts.length === 1) return `M${f(x0)} ${f(y0)}L${f(x0 + 0.1)} ${f(y0)}`;
+    if (pts.length === 2) return `M${f(x0)} ${f(y0)}L${f(pts[1][0])} ${f(pts[1][1])}`;
+    let d = `M${f(x0)} ${f(y0)}`; for (let i = 1; i < pts.length - 1; i++) { const [x, y] = pts[i], [nx, ny] = pts[i + 1]; d += `Q${f(x)} ${f(y)} ${f((x + nx) / 2)} ${f((y + ny) / 2)}`; }
+    const [lx, ly] = pts[pts.length - 1]; return d + `L${f(lx)} ${f(ly)}`;
+  }
+  // расстояние от точки мира до штриха (ластик)
+  function inkDist(it, pt) {
+    const pts = (it.props && it.props.points) || []; const px = pt.x - it.x, py = pt.y - it.y; let best = Infinity;
+    for (let i = 0; i < pts.length; i++) { const [ax, ay] = pts[i]; const [bx, by] = pts[Math.min(i + 1, pts.length - 1)]; const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy; const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0; best = Math.min(best, Math.hypot(px - ax - t * dx, py - ay - t * dy)); }
+    return best;
+  }
+  // растянуть штрих под новую рамку (изменение размера)
+  const inkScale = (points, kx, ky) => points.map(([x, y]) => [Math.round(x * kx * 10) / 10, Math.round(y * ky * 10) / 10]);
+  const TEXT_AUTO_MAX = 640;
   // комментарий с клиента → чистый (текст обязателен)
   function cleanComment(raw, boardId) {
     if (!raw || typeof raw !== 'object') return null; const text = String(raw.text == null ? '' : raw.text).trim().slice(0, MAX_COMMENT); if (!text) return null;
@@ -124,8 +180,8 @@
     return out;
   }
   // текст объекта для поиска и подписей
-  const itemText = it => !it ? '' : it.type === 'frame' ? it.props.title || '' : it.type === 'image' || it.type === 'pdf' ? it.props.name || '' : it.props.text || '';
-  const itemLabel = it => { const t = itemText(it).replace(/\s+/g, ' ').trim(); const kind = { sticky: 'Стикер', text: 'Текст', frame: 'Рамка', rect: 'Фигура', arrow: 'Стрелка', image: 'Картинка', pdf: 'PDF' }[it.type] || ''; return t ? `${kind}: ${t.length > 40 ? t.slice(0, 39) + '…' : t}` : kind; };
+  const itemText = it => !it || it.type === 'ink' ? '' : it.type === 'frame' ? it.props.title || '' : it.type === 'image' || it.type === 'pdf' ? it.props.name || '' : it.props.text || '';
+  const itemLabel = it => { const t = itemText(it).replace(/\s+/g, ' ').trim(); const kind = { sticky: 'Стикер', text: 'Текст', frame: 'Рамка', rect: 'Фигура', arrow: 'Стрелка', image: 'Картинка', pdf: 'PDF', ink: 'Рисунок' }[it.type] || ''; return t ? `${kind}: ${t.length > 40 ? t.slice(0, 39) + '…' : t}` : kind; };
   function search(items, q) { q = String(q || '').trim().toLowerCase(); if (!q) return []; return items.filter(it => itemText(it).toLowerCase().includes(q)).sort((a, b) => a.y - b.y || a.x - b.x); }
 
   // ---- шаблон доски для ЭП: рамки разделов ----
@@ -235,7 +291,7 @@
   // вписать картинку (w×h) в ячейку cw×ch с сохранением пропорций
   const fitBox = (w, h, cw, ch) => { w = num(w) || cw; h = num(h) || ch; const k = Math.min(cw / w, ch / h); return { w: Math.max(8, Math.round(w * k)), h: Math.max(8, Math.round(h * k)) }; };
 
-  return { TYPES, COLORS, COLOR_KEYS, SIZES, DEFAULTS, FILE_TYPES, MAX_FILE, MAX_TEXT, MAX_TITLE, MAX_COMMENT, KEY_RE, newId, EDIT_MODES, LEADERS, isLeader, editMode, isBoardManager, canView, canEdit, canManage, canDelete, canComment, canCreateProjectBoard,
+  return { TYPES, COLORS, COLOR_KEYS, SIZES, DEFAULTS, INK_COLORS, INK_WIDTHS, INK_OPACITY, MAX_INK_POINTS, MAX_INK_BYTES, TEXT_AUTO_MAX, cleanPoints, simplify, inkFromPoints, inkPath, inkDist, inkScale,FILE_TYPES, MAX_FILE, MAX_TEXT, MAX_TITLE, MAX_COMMENT, KEY_RE, newId, EDIT_MODES, LEADERS, isLeader, editMode, isBoardManager, canView, canEdit, canManage, canDelete, canComment, canCreateProjectBoard,
     cleanItem, cleanComment, threads, openComments, commentAnchor, rectOf, center, intersects, contains, bbox, arrowBox, anchor, arrowEnds, insideFrame, maxZ, detachArrows, repairArrows, itemText, itemLabel, search, EP_FRAMES, epTemplate, num,
     ROOT_ID_RE, MAT_EXT, MAT_CATS, MAT_CAT_IDS, MAT_LABEL, cleanRel, matCategory, matKind, excludedDir, excludedFile, tokens, folderNo, scoreCandidates, LAYOUT, linkKey, layoutPlan, fitBox };
 });
