@@ -179,6 +179,63 @@ chk "ПМ: свой лид — скачать можно" 200 "$(code PMR GET /c
 chk "ПМ: сформировать КП нельзя" 403 "$(code PMR POST /crm/leads/$L1ID/kp '{"params":{"vatIncluded":false}}')"
 chk "бухгалтеру — нет доступа" 403 "$(code ACC GET /crm/leads/$LK/kp)"
 
+echo "== готовое КП (внешняя редакция: PDF/DOCX + итоговые цифры) =="
+# тело с файлами собирает node из файла-скрипта (кириллица в аргументах Git Bash портится): kpbody '<JSON полей>' имя:вид …  (вид: pdf | docx | exe)
+cat > "$DATA_DIR/kpbody.js" <<'EOF'
+const f = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
+const mk = { pdf: Buffer.from('%PDF-1.4\n% КП тест\n%%EOF\n'), docx: Buffer.concat([Buffer.from([0x50, 0x4b, 3, 4]), Buffer.from('word/document.xml')]), exe: Buffer.from('MZ\x90\x00 not a pdf') };
+const names = { hotel: 'КП_Жамакаев_Отель_РП_28-09-2026' };
+f.files = process.argv.slice(3).map(s => { const [n, k, ext] = s.split(':'); return { name: (names[n] || n) + '.' + (ext || k), data: mk[k].toString('base64') }; });
+process.stdout.write(JSON.stringify(f));
+EOF
+kpbody() { printf '%s' "$1" > "$DATA_DIR/fields.json"; node "$DATA_DIR/kpbody.js" "$DATA_DIR/fields.json" "${@:2}" > "$BODY"; }
+kpost() { local -n R=$1; curl -s "${R[@]}" "${H[@]}" -X POST "$B$2" -d @"$BODY"; }
+kpostc() { local -n R=$1; curl -s -o /dev/null -w '%{http_code}' "${R[@]}" "${H[@]}" -X POST "$B$2" -d @"$BODY"; }
+HN=$([ "$YY" = 26 ] && echo 003 || echo 001)  # КП-26-001/002 уже выданы выше, если тест идёт в 2026 г.
+LH=$(call SEC POST /crm/leads '{"client":"Radisson Hotel Almaty","object":"Гостиница с подземным паркингом, ул. Жамакаева/Шукшина","objectType":"Гостиница","track":"rp"}' | js 'd.id')
+HOTEL='{"date":"28.09.2026","area":9455,"net":159979625,"vat":25596740,"gross":185576365,"extraNet":20500000,"extraGross":23780000,"comment":"РП по ставке + фиксированные разделы; изыскания и КазНИИСА — вне КП"}'
+kpbody "$HOTEL"; chk "ПМ не загружает (чужой лид)" 404 "$(kpostc PMR /crm/leads/$LH/kp/external)"
+kpbody "$HOTEL" hotel:pdf; chk "ПМ не загружает и в свой лид" 403 "$(kpostc PMR /crm/leads/$L1ID/kp/external)"
+chk "бухгалтеру — нет доступа" 403 "$(kpostc ACC /crm/leads/$LH/kp/external)"
+kpbody "$HOTEL"; chk "без файлов — 400" 400 "$(kpostc SEC /crm/leads/$LH/kp/external)"
+kpbody "$HOTEL" x:exe; chk "EXE — 400" 400 "$(kpostc SEC /crm/leads/$LH/kp/external)"
+kpbody "$HOTEL" x:exe:pdf; chk "подделка под PDF — 400" 400 "$(kpostc SEC /crm/leads/$LH/kp/external)"
+kpbody '{"net":100,"vat":16,"gross":120}' hotel:pdf; chk "итог не сходится — 400" 400 "$(kpostc SEC /crm/leads/$LH/kp/external)"
+kpbody '{"area":100}' hotel:pdf; chk "без суммы — 400" 400 "$(kpostc SEC /crm/leads/$LH/kp/external)"
+chk "до загрузки лид в статусе «Новый»" "Новый" "$(call OWN GET /crm/leads/$LH | js 'd.status')"
+kpbody "$HOTEL" hotel:pdf hotel:docx; X=$(kpost SEC /crm/leads/$LH/kp/external)
+chk "редакция 1: готовый файл, следующий номер КП-26" "1/external/КП-26-$HN/false" "$(echo "$X" | js 'd.v+"/"+d.source+"/"+d.no+"/"+d.reused')"
+chk "итог КП: без НДС / НДС 16 % / с НДС" "159979625/25596740/16/185576365" "$(echo "$X" | js 'd.net+"/"+d.vat+"/"+d.vatPct+"/"+d.gross')"
+chk "сопутствующие вне КП без/с НДС" "20500000/23780000" "$(echo "$X" | js 'd.extraNet+"/"+d.extraGross')"
+chk "ставка ₸/м² без НДС = итог / площадь" "9455/16920" "$(echo "$X" | js 'd.area+"/"+d.rate')"
+chk "файлы PDF и DOCX с именами" "pdf:КП_Жамакаев_Отель_РП_28-09-2026.pdf,docx:КП_Жамакаев_Отель_РП_28-09-2026.docx" "$(echo "$X" | js 'd.files.map(f=>f.kind+":"+f.name).join(",")')"
+LHD=$(call OWN GET /crm/leads/$LH)
+chk "в лид: №, дата, сумма без НДС (сопутствующие не входят), площадь, КП отправлено" "КП-26-$HN/2026-09-28/159979625/false/9455/КП отправлено/2026-09-28" "$(echo "$LHD" | js 'd.kpNo+"/"+d.kpDate+"/"+d.sum+"/"+d.vatIncluded+"/"+d.area+"/"+d.status+"/"+d.kpAt')"
+chk "в лиде: ставка без НДС и сумма с НДС" "16920/185576365" "$(echo "$LHD" | js 'd.calc.rateNoVat+"/"+d.calc.withVat')"
+chk "в истории — запись о готовом КП" 1 "$(echo "$LHD" | js '+d.history.some(h=>/готовый файл/.test(h.note)&&/20 500 000/.test(h.note))')"
+chk "sha и путь на диске наружу не отдаются" "undefined/undefined" "$(echo "$LHD" | js 'd.kpVersions[0].files[0].sha+"/"+d.kpVersions[0].files[0].type')"
+chk "повтор той же публикации — редакция не множится" "true/1/1" "$(kpbody "$HOTEL" hotel:pdf hotel:docx; kpost SEC /crm/leads/$LH/kp/external | js 'd.reused+"/"+d.v+"/"+d.lead.kpVersions.length')"
+FKEY=$(echo "$LHD" | js 'd.kpVersions[0].files[0].key'); DKEY=$(echo "$LHD" | js 'd.kpVersions[0].files[1].key')
+curl -s "${OWN[@]}" -D "$DATA_DIR/kpxh.txt" -o "$DATA_DIR/kpx.pdf" "$B/crm/leads/$LH/kp/1/files/$FKEY"
+chk "скачать PDF: тип и содержимое" "1/%PDF-" "$(grep -ci 'content-type: application/pdf' "$DATA_DIR/kpxh.txt")/$(head -c 5 "$DATA_DIR/kpx.pdf")"
+chk "имя файла в UTF-8" 1 "$(grep -c "filename\*=UTF-8''%D0%9A%D0%9F_" "$DATA_DIR/kpxh.txt")"
+chk "файл лежит в DATA_DIR/crm-files/<лид>/" yes "$([ -f "$DATA_DIR/crm-files/$LH/$FKEY" ] && echo yes || echo no)"
+chk "…/kp/1/docx внешней редакции → её DOCX" "302" "$(code SEC GET /crm/leads/$LH/kp/1/docx)"
+chk "чужой ключ / мусор — 404" "404/404" "$(code OWN GET /crm/leads/$LH/kp/1/files/..%2F..%2Fdb.sqlite)/$(code OWN GET /crm/leads/$LK/kp/1/files/$FKEY)"
+chk "ПМ: чужой лид — файл не скачать" 404 "$(code PMR GET /crm/leads/$LH/kp/1/files/$FKEY)"
+F2=$(call OWN GET /crm/funnel)
+chk "аналитика: ставка «Гостиница» по КП = 16 920 ₸/м² без НДС" "16920/1" "$(echo "$F2" | js 'd.rates.find(r=>r.type==="Гостиница").kp.rate+"/"+d.rates.find(r=>r.type==="Гостиница").kp.n')"
+chk "аналитика: лид в работе на сумму КП без НДС" 1 "$(echo "$F2" | js '+(d.byStatus.find(s=>s.status==="КП отправлено").sum>=159979625)')"
+kpbody "{\"no\":\"КП-26-$HN\",\"net\":1000000}" hotel:pdf; chk "номер КП другого лида — 409" 409 "$(kpostc SEC /crm/leads/$L1ID/kp/external)"
+kpbody '{"net":170000000,"area":9455,"date":"2026-09-29"}' hotel:pdf; X2=$(kpost SEC /crm/leads/$LH/kp/external)
+chk "новая редакция: тот же номер, НДС досчитан, ред. 2" "2/КП-26-$HN/197200000" "$(echo "$X2" | js 'd.v+"/"+d.no+"/"+d.gross')"
+chk "КП из ERP после готового — ред. 3, номер тот же" "3/КП-26-$HN/erp" "$(call SEC POST /crm/leads/$LH/kp '{"params":{"vatIncluded":false,"rate":16000}}' | js 'd.v+"/"+d.no+"/"+d.source')"
+chk "секретарь не удаляет редакцию" 403 "$(code SEC DELETE /crm/leads/$LH/kp/2)"
+chk "редакцию из ERP не удалить" 409 "$(code OWN DELETE /crm/leads/$LH/kp/3)"
+K2KEY=$(call OWN GET /crm/leads/$LH | js 'd.kpVersions[1].files[0].key')
+chk "owner удалил ред. 2 — файл удалён, остались 1 и 3" "1,3/no" "$(call OWN DELETE /crm/leads/$LH/kp/2 | js 'd.kpVersions.map(v=>v.v).join(",")')/$([ -f "$DATA_DIR/crm-files/$LH/$K2KEY" ] && echo yes || echo no)"
+chk "удалили лид — папка файлов удалена" "200/no" "$(code OWN DELETE /crm/leads/$LH)/$([ -d "$DATA_DIR/crm-files/$LH" ] && echo yes || echo no)"
+
 echo "== удаление =="
 chk "секретарь не удаляет" 403 "$(code SEC DELETE /crm/leads/$L2ID)"
 chk "owner удаляет" 200 "$(code OWN DELETE /crm/leads/$L2ID)"

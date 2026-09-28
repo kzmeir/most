@@ -32,6 +32,7 @@
 <li>Кнопки статусов переводят лид по воронке; для <b>отказа</b> обязательна причина — из них строится аналитика.</li>
 <li><b>Договор подписан</b> (руководитель): № и дата договора, компания, сумма, связь с договором из реестра «Финансов» (если он уже заведён). Затем — создать новый проект в «Проектах» (стадия берётся из лида, назначьте ПМ/ГИП и даты) или привязать существующий. Автоматически создаётся график платежей по шаблону стадии.</li>
 <li><b>📄 КП (.docx)</b> — коммерческое предложение в Word по шаблону MOST: шапка компании, объект, база расчёта (площади и коэффициенты), стоимость со ставкой ₸/м², НДС — <b>как выбрано явно</b> (ставка с НДС или без), этапы и доли оплаты (ЭП — концепт-проект 20 % / ЭП 80 %, РП — 30/30/30/10), что не входит, состав работ, сроки, условия, подпись директора без печати — место «М.П.». «Пересчитать» показывает итог без сохранения; «Сохранить и скачать» присваивает номер (КП-26-015), пишет дату, площадь, ставку и сумму в лид и сохраняет редакцию — все редакции видны в карточке и скачиваются повторно.</li>
+<li><b>⬆ Загрузить готовое КП</b> — если КП собрано вне ERP (сложное: несколько позиций, фиксированные строки, разбивка по разделам): приложите PDF и/или DOCX и перенесите итог — номер (пусто — присвоится следующий КП-26-NNN), дата, площадь, итог без НДС, НДС и с НДС (пустые досчитаются по ставке НДС), ставка ₸/м² без НДС (пусто — итог / площадь), отдельно <b>сопутствующие работы вне КП</b> и комментарий. Редакция помечается «готовый файл», файлы скачиваются из карточки; итог без НДС и площадь идут в лид и аналитику (ставка ₸/м², конверсия КП → договор), сопутствующие — нет. Новый лид переводится в «КП отправлено». Ошибочную загрузку руководитель удаляет кнопкой ✕ у редакции.</li>
 <li>После подписания в карточке виден график платежей и ссылка на проект. «Коммерция» работает на сайте «Финансы», а карточка проекта открывается в новой вкладке на сайте MOST ERP.</li>
 </ul>`],
     ['График платежей', `
@@ -65,7 +66,7 @@
 .crm-deal{padding:0;margin-bottom:14px}.crm-deal>.h{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}.crm-deal>.h .grow{flex:1;min-width:200px}.crm-deal .tbl{border:0;box-shadow:none;border-radius:0 0 var(--r) var(--r)}
 .crm-sched td input,.crm-sched td select{width:100%;min-width:60px}.crm-sched td{padding:4px}
 .crm-bars .r{display:grid;grid-template-columns:130px 1fr 110px;gap:8px;align-items:center;font-size:13px;margin-bottom:6px}
-.crm-kpv{font-size:12.5px;margin-bottom:4px}.crm-fields{font-size:12px;color:var(--ink-soft);columns:2;margin:6px 0 10px}.crm-fields code{font-size:11.5px}
+.crm-kpv{font-size:12.5px;margin-bottom:6px}.crm-kpv .chip{font-size:11px;padding:0 6px}.crm-kpf{margin-top:2px}.crm-fields{font-size:12px;color:var(--ink-soft);columns:2;margin:6px 0 10px}.crm-fields code{font-size:11.5px}
 </style>`);
 
     // ---- общие помощники ----
@@ -130,7 +131,42 @@
         areas: cols(v.areas).map(([name, area, k]) => ({ name, area: numv(area), k: numv(k) || 1 })), stages: cols(v.stages).map(([name, share, term]) => ({ name, share: numv(share), term: term || '' })),
         terms: cols(v.terms).map(([name, term]) => ({ name, term: term || '' })), termsNote: v.termsNote || '', scope, excluded: cols(v.excluded).map(([a, b]) => [a, b || '']), conditions: lines(v.conditions) }; };
     const kpHref = (l, v) => `/api/crm/leads/${encodeURIComponent(l.id)}/kp/${v}/docx`;
-    const kpVersions = (l, vs) => vs && vs.length ? vs.slice().reverse().map(v => `<div class="crm-kpv"><a href="${kpHref(l, v.v)}" title="Скачать эту редакцию">⬇ ${esc(v.no)} ред. ${v.v}</a> · ${fdate(v.date)} · ${money(v.cost)} ${v.vatIncluded ? 'с НДС' : 'без НДС'} <span class="faint">(с НДС ${money(v.gross)}; ${mln(v.area)} м² × ${mln(v.rate)} ₸)</span></div>`).join('') : '<div class="faint">КП ещё не формировалось</div>';
+    const kpFileHref = (l, v, f) => `/api/crm/leads/${encodeURIComponent(l.id)}/kp/${v.v}/files/${encodeURIComponent(f.key)}`;
+    // редакции КП: собранные в ERP (Word пересобирается) и готовые файлы из генераторов директора (source: 'external')
+    const kpVersions = (l, vs, canDel) => vs && vs.length ? vs.slice().reverse().map(v => v.source === 'external'
+      ? `<div class="crm-kpv"><b>${esc(v.no)} ред. ${v.v}</b> ${chip('x', { x: ['neutral', 'готовый файл'] })} · ${fdate(v.date)} · ${money(v.net)} без НДС <span class="faint">(НДС ${v.vatPct != null ? v.vatPct + ' % ' : ''}${money(v.vat)}; с НДС ${money(v.gross)}${v.area ? `; ${mln(v.area)} м² × ${mln(v.rate)} ₸ без НДС` : ''})</span>
+${v.extraNet ? `<div class="faint">сопутствующие работы вне КП: ${money(v.extraNet)} без НДС / ${money(v.extraGross)} с НДС</div>` : ''}${v.comment ? `<div class="faint">${esc(v.comment)}</div>` : ''}
+<div class="crm-kpf">${(v.files || []).map(f => `<div><a href="${kpFileHref(l, v, f)}" target="_blank" rel="noopener">⬇ ${f.kind.toUpperCase()}</a> <span class="faint">${esc(f.name)} · ${Math.max(1, Math.round(f.size / 1024))} КБ</span></div>`).join('')}${canDel ? `<button type="button" class="btn sm danger" data-act="crmKpDel" data-v="${v.v}" title="Удалить ошибочно загруженную редакцию">✕</button>` : ''}</div></div>`
+      : `<div class="crm-kpv"><a href="${kpHref(l, v.v)}" title="Скачать эту редакцию">⬇ ${esc(v.no)} ред. ${v.v}</a> ${chip('e', { e: ['accent', 'из ERP'] })} · ${fdate(v.date)} · ${money(v.cost)} ${v.vatIncluded ? 'с НДС' : 'без НДС'} <span class="faint">(с НДС ${money(v.gross)}; ${mln(v.area)} м² × ${mln(v.rate)} ₸)</span></div>`).join('') : '<div class="faint">КП ещё не формировалось</div>';
+    // «Загрузить готовое КП»: файлы PDF/DOCX + итоговые цифры → редакция лида
+    const readB64 = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = () => rej(new Error('Не удалось прочитать ' + file.name)); r.readAsDataURL(file); });
+    const kpUpload = async l => {
+      const m = await meta(); const vr = m.vatRate >= 1 ? m.vatRate / 100 : m.vatRate; const pctv = Math.round(vr * 1000) / 10;
+      const inp = (name, label, val, attrs) => `<div class="field"><label>${label}</label><input name="${name}" value="${esc(val == null ? '' : val)}" ${attrs || ''}></div>`;
+      modal(`Готовое КП · ${l.client || l.object}`, `<form>
+<p class="sub">КП собрано вне ERP (генератор Word/PDF). Приложите файлы и перенесите итоговые цифры — они пойдут в лид и аналитику (ставка ₸/м² без НДС, конверсия КП → договор). Сопутствующие работы вне КП в сумму лида не входят.</p>
+<div class="field"><label>Файлы КП — PDF и/или DOCX <b class="crit-text">*</b></label><input type="file" id="crm-kpx-files" accept=".pdf,.docx" multiple required></div>
+<div class="form-row">${inp('no', 'Номер КП', '', `placeholder="${esc(l.kpNo || 'пусто — присвоится КП-' + today().slice(2, 4) + '-NNN')}"`)}${inp('date', 'Дата КП', today(), 'type="date" required')}${`<div class="field"><label>Стадия</label>${sel('crm-kpx-track', Object.entries(m.tracks), l.track)}</div>`}</div>
+<div class="form-row">${inp('area', 'Площадь, м²', l.area || '', 'type="number" step="any"')}${inp('net', 'Итог КП без НДС, ₸ <b class="crit-text">*</b>', '', 'type="number" step="any" required')}${inp('rate', 'Ставка ₸/м² без НДС', '', 'type="number" step="any" placeholder="пусто — сумма / площадь"')}</div>
+<div class="form-row">${inp('vat', `НДС, ₸`, '', `type="number" step="any" placeholder="пусто — ${pctv} %"`)}${inp('gross', 'Итог КП с НДС, ₸', '', 'type="number" step="any" placeholder="пусто — без НДС + НДС"')}</div>
+<div class="form-row">${inp('extraNet', 'Сопутствующие работы вне КП, без НДС', '', 'type="number" step="any"')}${inp('extraGross', 'Сопутствующие вне КП, с НДС', '', `type="number" step="any" placeholder="пусто — + ${pctv} %"`)}</div>
+<div class="field"><label>Комментарий</label><textarea name="comment" rows="2" placeholder="Например: РП + фиксированные разделы, изыскания и КазНИИСА — вне КП"></textarea></div>
+${['Новый', 'Расчёт'].includes(l.status) ? `<label class="check"><input type="checkbox" name="markSent" checked> перевести лид в «КП отправлено»</label>` : ''}
+<p class="sub" id="crm-kpx-sum"></p><div class="error"></div><button class="btn primary block" type="submit">Загрузить КП</button></form>`);
+      $('#modal .modal-card').style.maxWidth = '760px';
+      const form = $('#modal-body form'); const val = n => form.querySelector(`[name=${n}]`).value; const nv = n => Number(String(val(n)).replace(',', '.')) || 0;
+      const upd = () => { const net = nv('net'), area = nv('area'); const vat = val('vat') !== '' ? nv('vat') : val('gross') !== '' ? nv('gross') - net : Math.round(net * vr); const gross = val('gross') !== '' ? nv('gross') : net + vat;
+        $('#crm-kpx-sum').innerHTML = net ? `Без НДС <b>${money(net)}</b> + НДС ${money(vat)} = <b class="${Math.abs(net + vat - gross) > 1 ? 'crit-text' : ''}">${money(gross)}</b> с НДС${area ? ` · <b>${mln(val('rate') !== '' ? nv('rate') : Math.round(net / area))} ₸/м²</b> без НДС` : ''}` : ''; };
+      form.querySelectorAll('input[type=number]').forEach(i => i.oninput = upd);
+      form.onsubmit = async e => { e.preventDefault(); const er = form.querySelector('.error'); const btn = form.querySelector('[type=submit]');
+        try { const list = [...$('#crm-kpx-files').files]; if (!list.length) throw new Error('Приложите файлы КП');
+          const big = list.find(f => f.size > 20 * 1024 * 1024); if (big) throw new Error('Файл больше 20 МБ: ' + big.name);
+          btn.disabled = true; btn.textContent = 'Загрузка…';
+          const files = await Promise.all(list.map(async f => ({ name: f.name, data: await readB64(f) })));
+          const body = Object.assign(Object.fromEntries(['no', 'date', 'area', 'net', 'rate', 'vat', 'gross', 'extraNet', 'extraGross', 'comment'].map(k => [k, val(k)])), { track: $('#crm-kpx-track').value, files, markSent: !!(form.querySelector('[name=markSent]') || {}).checked });
+          const r = await api(`/crm/leads/${encodeURIComponent(l.id)}/kp/external`, { method: 'POST', body }); closeModal(); toast(r.reused ? `Без изменений — это уже редакция ${r.v}` : `${r.no} ред. ${r.v} загружено`, 4000); rerender();
+        } catch (x) { er.textContent = x.message; btn.disabled = false; btn.textContent = 'Загрузить КП'; } };
+    };
     const kpCalcHtml = c => `<div class="card" style="margin:8px 0">${c.problems.length ? `<div class="crit-text" style="margin-bottom:6px">${esc(c.problems.join('; '))}</div>` : ''}<div class="kv"><span>Площадь</span><b>${mln(c.area)} м²</b><span>Стоимость ${esc(c.vatTag)}</span><b>${money(c.cost)}</b><span>Без НДС / НДС</span><b>${money(c.net)} / ${money(c.vat)}</b><span>Итого с НДС</span><b>${money(c.gross)}</b>${c.stages.map(x => `<span>${esc(x.name)} — ${x.share} %</span><b>${money(x.gross)} с НДС</b>`).join('')}</div></div>`;
     const kpDialog = async l => {
       const d = await api(`/crm/leads/${encodeURIComponent(l.id)}/kp`); const f = kpToForm(d.params); const hasKp = (d.versions || []).length > 0; // НДС в первый раз выбирается явно, дальше — как в прошлой редакции
@@ -256,7 +292,7 @@ ${ta('scope', 'Состав работ', 8, '# группа, далее пунк
       const names = l.stageNames || []; DEALS = { [l.id]: { deal: l, names } };
       const kv = (k, v) => v ? `<b>${esc(k)}</b><span>${v}</span>` : '';
       const next = m.statuses.filter(s => s !== l.status && s !== 'Договор');
-      const btns = [l.canEdit ? `<button class="btn" data-act="crmEditLead">✎ Изменить</button>` : '', l.canEdit ? `<button class="btn" data-act="crmKp" title="Коммерческое предложение в Word по шаблону MOST">📄 КП (.docx)</button>` : '', m.rights.docs ? `<a class="btn" href="#/crmdocs?lead=${encodeURIComponent(l.id)}">📝 Документы</a>` : '', m.rights.sign && l.status !== 'Договор' ? `<button class="btn primary" data-act="crmSign">✓ Договор подписан</button>` : ''].join('');
+      const btns = [l.canEdit ? `<button class="btn" data-act="crmEditLead">✎ Изменить</button>` : '', l.canEdit ? `<button class="btn" data-act="crmKp" title="Коммерческое предложение в Word по шаблону MOST">📄 КП (.docx)</button>` : '', l.canEdit ? `<button class="btn" data-act="crmKpUp" title="КП подготовлено вне ERP: приложить PDF/DOCX и итоговые цифры">⬆ Загрузить готовое КП</button>` : '', m.rights.docs ? `<a class="btn" href="#/crmdocs?lead=${encodeURIComponent(l.id)}">📝 Документы</a>` : '', m.rights.sign && l.status !== 'Договор' ? `<button class="btn primary" data-act="crmSign">✓ Договор подписан</button>` : ''].join('');
       const stBtns = l.canEdit && (l.status !== 'Договор' || m.rights.leader) ? `<div class="actions" style="margin:0 0 14px;flex-wrap:wrap">${next.map(s => `<button class="btn sm${s === 'Отказ' ? ' danger' : ''}" data-act="crmSt" data-st="${esc(s)}">→ ${esc(s)}</button>`).join('')}</div>` : '';
       main.innerHTML = head(`${l.client || '—'} · ${l.object || ''}`, `Лид № ${l.no} · ${chip(l.status, ST_CHIP)} · ${esc(TRACK(l.track))} · <a href="#/crmleads">← к воронке</a>`, btns) + stBtns +
         `<div class="grid g2"><div class="card"><div class="crm-kv">
@@ -267,9 +303,11 @@ ${kv('Источник', esc(l.source))}${kv('Ответственный', esc(l
 ${kv('Отказ', l.status === 'Отказ' ? esc([l.reason, l.reasonNote].filter(Boolean).join(': ')) : '')}${kv('КП', l.proposal ? `${esc(l.proposal.title)} · ${money(l.proposal.sum)} · ${esc(l.proposal.status)}` : '')}
 ${kv('Договор', l.contractNo || l.contract ? `№ ${esc(l.contractNo || '—')} от ${fdate(l.contractDate)} · ${esc(l.company || '')}${l.contract ? ` <span class="faint">(реестр: ${esc(l.contract.name)})</span>` : ''}` : '')}
 ${kv('Проект', l.pm ? `${pmpLink(l.pm.id, `${esc(TRACK(l.pm.track))} · ${esc(l.pm.name)}`)} · ${esc(l.pm.status)}` : '')}${kv('Заметка', esc(l.note))}
-</div></div><div class="card"><div class="label">Коммерческое предложение${l.kpNo ? ' · ' + esc(l.kpNo) : ''}</div>${kpVersions(l, l.kpVersions)}<div class="label" style="margin-top:12px">История</div><ol class="crm-hist">${(l.history || []).slice().reverse().map(h => `<li>${fdate(h.at)} · <b>${esc(h.status)}</b>${h.note ? ' — ' + esc(h.note) : ''} <span class="faint">${esc(h.byName || '')}</span></li>`).join('') || '<li>—</li>'}</ol></div></div>` +
+</div></div><div class="card"><div class="label">Коммерческое предложение${l.kpNo ? ' · ' + esc(l.kpNo) : ''}</div>${kpVersions(l, l.kpVersions, m.rights.leader)}<div class="label" style="margin-top:12px">История</div><ol class="crm-hist">${(l.history || []).slice().reverse().map(h => `<li>${fdate(h.at)} · <b>${esc(h.status)}</b>${h.note ? ' — ' + esc(h.note) : ''} <span class="faint">${esc(h.byName || '')}</span></li>`).join('') || '<li>—</li>'}</ol></div></div>` +
         (m.rights.payments && (l.status === 'Договор' || (l.payments || []).length) ? `<h2>График платежей</h2><div class="actions" style="margin-bottom:8px"><button class="btn sm" data-act="crmSched" data-id="${l.id}">Изменить график</button><button class="btn sm" data-act="crmPayAdd" data-id="${l.id}">+ платёж</button><button class="btn sm" data-act="crmLink" data-id="${l.id}">Проект…</button>${m.rights.leader ? '<button class="btn sm danger" data-act="crmDelLead">Удалить лид</button>' : ''}</div>` + payTable(l, names) : (m.rights.leader ? `<div class="actions" style="margin-top:14px"><button class="btn sm danger" data-act="crmDelLead">Удалить лид</button></div>` : ''));
-      ui.ACT.crmKp = () => kpDialog(l); ui.ACT.crmEditLead = () => editLead(l); ui.ACT.crmSt = ({ st }) => setStatus(l, st); ui.ACT.crmSign = () => signLead(l);
+      ui.ACT.crmKp = () => kpDialog(l); ui.ACT.crmKpUp = () => kpUpload(l);
+      ui.ACT.crmKpDel = async ({ v }) => { if (!confirm(`Удалить редакцию ${v} (готовый файл) вместе с файлами?`)) return; await api(`/crm/leads/${encodeURIComponent(l.id)}/kp/${v}`, { method: 'DELETE' }); toast('Редакция удалена'); rerender(); };
+ui.ACT.crmEditLead = () => editLead(l); ui.ACT.crmSt = ({ st }) => setStatus(l, st); ui.ACT.crmSign = () => signLead(l);
       ui.ACT.crmDelLead = async () => { if (!confirm('Удалить лид вместе с графиком платежей?')) return; await api('/crm/leads/' + l.id, { method: 'DELETE' }); toast('Удалено'); location.hash = '#/crmleads'; };
       bind(main);
     };

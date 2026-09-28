@@ -16,7 +16,7 @@
   const normTrack = t => t === 'concept' ? 'ep' : TRACKS[t] ? t : 'rp';
   const trackName = t => TRACKS[normTrack(t)];
   const SOURCES = ['Повторный заказчик', 'Рекомендация', 'Входящий звонок', 'Сайт / соцсети', 'Тендер', 'Прочее'];
-  const OBJECT_TYPES = ['ЖК', 'Бизнес-центр / офисы', 'Коммерция / ТРЦ', 'Виллы / коттеджи', 'Социальный объект', 'Интерьер', 'Прочее'];
+  const OBJECT_TYPES = ['ЖК', 'Бизнес-центр / офисы', 'Коммерция / ТРЦ', 'Виллы / коттеджи', 'Гостиница', 'Социальный объект', 'Интерьер', 'Прочее'];
   const REASONS = ['Цена', 'Сроки', 'Выбрали другого', 'Проект заморожен', 'Нет ответа', 'Не наш профиль', 'Прочее'];
   const PAY_STATUS = ['Ожидается', 'Акт выставлен', 'Оплачен'];
   const COMPANIES = ['ТОО MOST Project', 'ТОО MOST Architects', 'ИП MOST Design', 'ИП PANA Design'];
@@ -233,7 +233,29 @@
   }
   const row1c = (kind, d) => ({ 'Вид': kind, 'Дата': d['дата'], 'Организация': d['компания'], 'Контрагент': d['заказчик'], 'БИН': d['бин'], 'Договор': d['номер_договора'], 'Дата договора': d['дата_договора'], 'Содержание': `Проектные работы, ${d['стадия']}, ${d['этап']} (${d['доля']} %), ${d['объект']}`, 'Сумма': d['сумма_этапа'].replace(/\s/g, ''), 'НДС': d['ндс_этапа'].replace(/\s/g, ''), 'Сумма без НДС': d['сумма_этапа_без_ндс'].replace(/\s/g, '') });
 
+  // ---- внешняя редакция КП (готовые PDF/DOCX из генератора директора): итоговые цифры, всё в ₸ ----
+  // КП = сумма без НДС + НДС = с НДС; «сопутствующие работы вне КП» в сумму КП, воронку и ставку не входят.
+  // Пустые НДС / сумма с НДС досчитываются по ставке НДС; если заданы все три — должны сходиться (±1 ₸).
+  const blank = v => v == null || String(v).trim() === '';
+  const isoDate = v => { const s = String(v || '').trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''; };
+  function kpExternal(b, vatRate) {
+    b = b || {}; const vr = vatRate == null ? 0.16 : num(vatRate) >= 1 ? num(vatRate) / 100 : num(vatRate);
+    const net = Math.round(num(b.net)); if (!(net > 0)) return { error: 'Укажите сумму КП без НДС' };
+    const area = num(b.area); if (area < 0) return { error: 'Площадь не может быть отрицательной' };
+    let vat = blank(b.vat) ? null : Math.round(num(b.vat)), gross = blank(b.gross) ? null : Math.round(num(b.gross));
+    if (vat == null && gross == null) vat = Math.round(net * vr);
+    if (vat == null) vat = gross - net; if (gross == null) gross = net + vat;
+    if (vat < 0) return { error: 'Сумма с НДС меньше суммы без НДС' };
+    if (Math.abs(net + vat - gross) > 1) return { error: `Не сходится: ${moneyStr(net)} + НДС ${moneyStr(vat)} ≠ ${moneyStr(gross)} с НДС` };
+    const rate = blank(b.rate) ? (area ? Math.round(net / area) : 0) : Math.round(num(b.rate));
+    const extraNet = Math.round(num(b.extraNet)); const extraGross = blank(b.extraGross) ? Math.round(extraNet * (1 + vr)) : Math.round(num(b.extraGross));
+    if (extraNet < 0 || extraGross < extraNet) return { error: 'Сопутствующие работы: сумма с НДС меньше суммы без НДС' };
+    const date = blank(b.date) ? today() : isoDate(b.date); if (!date) return { error: 'Дата КП в формате ГГГГ-ММ-ДД или ДД.ММ.ГГГГ' };
+    const no = String(b.no == null ? '' : b.no).replace(/\s+/g, ' ').trim().slice(0, 40);
+    return { v: { no, date, area, rate, net, vat, gross, vatPct: Math.round(vat / net * 1000) / 10, extraNet, extraGross, comment: String(b.comment == null ? '' : b.comment).trim().slice(0, 2000) } };
+  }
+
   return { stageCodes, STATUSES, OPEN, KP_STAGE, TRACKS, normTrack, trackName, SOURCES, OBJECT_TYPES, REASONS, PAY_STATUS, COMPANIES, PAY_TEMPLATES, FIELDS, DEFAULT_TEMPLATES, KP_STATUS,
     isLeader, canOpen, canEditLeads, canPayments, canDocs, canEditTemplates, canSign, canSeeLead, ownLead,
-    stageByName, leadCalc, funnel, leadOverdue, leadFromProposal, schedule, stageState, paymentState, expected, words, inWords, moneyStr, fdate, docData, fill, docPage, csv1c, row1c, num, today, addDays, days };
+    kpExternal, isoDate, stageByName, leadCalc, funnel, leadOverdue, leadFromProposal, schedule, stageState, paymentState, expected, words, inWords, moneyStr, fdate, docData, fill, docPage, csv1c, row1c, num, today, addDays, days };
 });
