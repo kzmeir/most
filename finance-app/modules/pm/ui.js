@@ -84,6 +84,12 @@ function pmHelp(T) {
 <li>«Разложить сроки»: этапы идут последовательно, пункты этапа — параллельно, длительность этапа — самый долгий пункт (недели из регламента); «под дату по договору» сжимает или растягивает план до срока. Сделанные пункты не сдвигаются.</li>
 <li><b>Устав</b> — цель проекта и проверочная фраза; <b>Ретро</b> — записи ретроспектив с автоматическим снимком показателей (зона буфера, скорость, добавленный объём, возвраты пунктов) и планом действий. Карточка «Буфер расписания» показывает расход буфера и прогноз по скорости; у пункта видны две оценки и число возвратов (снятых отметок «сделано»).</li>
 </ul>`, S('p')],
+    ['Канбан', `
+<ul>
+<li><b>Проекты</b>: в реестре переключатель «Список | Канбан». Колонки — статусы (В работе, Ждём заказчика, Ждём госорган, На паузе, Готово; «Отменён» свёрнут). Перетащите карточку в другую колонку — статус проекта сменится. Двигать могут руководитель и ГИП/ПМ проекта; у остальных карточки без кнопки «⇄».</li>
+<li><b>Пункты</b>: в карточке проекта вкладка «Канбан» — «К выполнению / В работе / На проверке / Готово», фильтр по этапу. «Готово» — то же, что галочка «сделано» (критерий приёмки, дата, счётчики); вынуть из «Готово» — возврат пункта. Двигает тот, кто может отметить пункт.</li>
+<li><b>Телефон</b>: колонки листаются пальцем вбок; чтобы переместить карточку — долгое нажатие или кнопка «⇄» → нужная колонка.</li>
+</ul>`, S('reg')],
     ['Часы по проекту (модуль «Персонал»)', `
 <p>Вкладка «Часы» в карточке появляется, когда включён модуль «Персонал»: часы из сданных и принятых табелей по этому проекту — по разделам и по людям, за всё время и по месяцам (месяц недели — по её четвергу). Себестоимость и ставки видят только владелец, партнёр и бухгалтер с доступом к бюджету проекта; ГИП и ПМ видят часы без денег. Черновики табелей не учитываются.</p>`, S('p')],
   ].filter(e => !e[3] || e[3] === T).map(e => e.slice(0, 3));
@@ -114,6 +120,19 @@ function pmInit(ui, T) {
 .pm-phrase{font-size:15px;line-height:1.5;margin:6px 0 0}
 .pm-hist-row{display:grid;grid-template-columns:120px 1fr auto;gap:6px 12px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}.pm-hist-row:last-child{border-bottom:0}@media(max-width:600px){.pm-hist-row{grid-template-columns:1fr}}
 .pm-chk input{width:20px;height:20px}
+.pm-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:none}.pm-seg a{padding:6px 12px;font-size:13px;color:var(--ink-soft);text-decoration:none;min-height:34px;display:inline-flex;align-items:center}.pm-seg a.active{background:var(--accent);color:#fff}
+.pm-kb{display:flex;gap:10px;align-items:flex-start;overflow-x:auto;width:0;min-width:100%;padding-bottom:8px;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+.pm-kb-col{flex:0 0 272px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;max-height:calc(100vh - 220px);scroll-snap-align:start}
+.pm-kb-col.over{outline:2px dashed var(--accent);outline-offset:-2px}.pm-kb-col.fold{flex-basis:150px}
+.pm-kb-h{display:flex;align-items:center;gap:6px;padding:9px 10px;font-weight:700;font-size:13px;border-bottom:1px solid var(--line)}.pm-kb-h .n{margin-left:auto;font-weight:500;color:var(--ink-faint)}
+.pm-kb-list{padding:8px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:60px}
+.pm-kc{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;cursor:pointer;position:relative;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.pm-kc[draggable=true]{cursor:grab}.pm-kc.drag{opacity:.45}.pm-kc.zone-red,.pm-kc.zone-black{box-shadow:inset 3px 0 0 var(--crit)}.pm-kc.zone-yellow{box-shadow:inset 3px 0 0 var(--warn)}.pm-kc.zone-green{box-shadow:inset 3px 0 0 var(--ok)}.pm-kc.zone-blue{box-shadow:inset 3px 0 0 var(--ink-faint)}
+.pm-kc .kt{font-weight:600;font-size:13px;line-height:1.3;padding-right:30px;word-break:break-word}.pm-kc .km{color:var(--ink-soft);margin-top:3px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}.pm-kc .bar{margin:4px 0 2px}
+.pm-kc .kmove{position:absolute;top:4px;right:4px;min-width:28px;min-height:28px;padding:0 6px}
+.pm-kb-more{font-size:12px;color:var(--ink-faint);text-align:center;padding:4px}
+.pm-kmenu{display:flex;flex-direction:column;gap:8px}.pm-kmenu .btn{min-height:44px;justify-content:flex-start}
+@media(max-width:600px){.pm-kb-col{flex:0 0 84vw;max-height:none}.pm-kb-col.fold{flex-basis:44vw}.pm-kc .kmove{min-width:40px;min-height:40px}.pm-kc .kt{padding-right:44px}}
 @media(max-width:600px){.pm-stage table,.pm-my table{min-width:0;width:100%;table-layout:fixed}.pm-stage .tbl,.pm-my .tbl{max-width:100%;overflow-x:hidden}.pm-item td{white-space:normal;word-break:break-word}.pm-stage th:nth-child(1),.pm-my th:nth-child(1){width:46px}.pm-stage th:nth-child(4),.pm-my th:nth-child(4){width:82px}.pm-stage th:nth-child(5),.pm-my th:nth-child(5){width:72px}.pm-stage th:nth-child(6),.pm-my th:nth-child(6){width:50px}.pm-item .actions{flex-direction:column;gap:6px}.pm-stage th:nth-child(3),.pm-item td:nth-child(3),.pm-my th:nth-child(3){display:none}.pm-stage th,.pm-my th{white-space:normal;font-size:10.5px;padding-left:4px;padding-right:4px}.pm-chk{width:46px}.pm-chk input{width:30px;height:30px;margin:0}.pm-item td{padding:10px 6px}.pm-item td.due,.pm-item td:nth-child(4){font-size:12px}.pm-item .actions .btn.sm,.pm-stage>summary .btn.sm{min-width:40px;min-height:40px}.pm-stage>summary{padding:12px 10px}.pm-kpi .card .val{font-size:18px}.pm-my .card h3{padding:12px 10px}}
 </style>`);
 
@@ -148,6 +167,37 @@ function pmInit(ui, T) {
     const listHash = t => `#/${pmTrackPath(t || T)}/reg`;
     const rerender = async () => { const y = window.scrollY; await route(); window.scrollTo(0, y); };
     const copy = async text => { try { await navigator.clipboard.writeText(text); toast('Скопировано: ' + text, 3500); } catch { window.prompt('Скопируйте путь', text); } };
+    // ---- канбан: общая доска для проектов (колонки — статусы) и пунктов (колонки — статус пункта) ----
+    // cols: [{ key, label, cls, fold, foldHref }], cards: [{ id, col, html, canMove, zone }]. Перетаскивание мышью (HTML5 DnD, только точный указатель),
+    // на телефоне — долгое нажатие или кнопка «⇄» открывают меню «в колонку». Без права — карточку не двигать.
+    const pmStore = { get: k => { try { return localStorage.getItem(k) || ''; } catch { return ''; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } } };
+    function kanbanHtml(cols, cards) {
+      return `<div class="pm-kb">${cols.map(col => { const list = cards.filter(x => x.col === col.key);
+        return `<div class="pm-kb-col${col.fold ? ' fold' : ''}" data-col="${esc(col.key)}"><div class="pm-kb-h">${col.cls ? `<span class="chip ${col.cls}">${esc(col.label)}</span>` : esc(col.label)}<span class="n">${list.length}</span></div><div class="pm-kb-list">${col.fold ? `<a class="pm-kb-more" href="${col.foldHref}">показать ${list.length}</a>` : list.map(x => `<div class="pm-kc${x.zone ? ' zone-' + esc(x.zone) : ''}" data-kid="${esc(x.id)}" data-col="${esc(col.key)}" data-move="${x.canMove ? '1' : ''}">${x.html}${x.canMove ? `<button class="btn sm kmove" data-kmove="${esc(x.id)}" title="Переместить в колонку" aria-label="Переместить в колонку">⇄</button>` : ''}</div>`).join('') || '<div class="pm-kb-more">пусто</div>'}</div></div>`; }).join('')}</div>`;
+    }
+    function bindKanban(root, cols, o) {
+      const board = root.querySelector('.pm-kb'); if (!board) return;
+      const fine = window.matchMedia && window.matchMedia('(pointer: fine)').matches; let dragId = '';
+      const colOf = id => { const el = board.querySelector(`.pm-kc[data-kid="${CSS.escape(id)}"]`); return el ? el.dataset.col : ''; };
+      const move = async (id, to) => { if (!to || colOf(id) === to) return; const el = board.querySelector(`.pm-kc[data-kid="${CSS.escape(id)}"]`); const dst = board.querySelector(`.pm-kb-col[data-col="${CSS.escape(to)}"] .pm-kb-list`); if (el && dst && !dst.querySelector('.pm-kb-more[href]')) { dst.querySelectorAll('.pm-kb-more').forEach(x => x.remove()); dst.prepend(el); el.dataset.col = to; } try { await o.onMove(id, to); } catch (e) { toast(e.message, 4000); } await rerender(); };
+      const menu = id => { const cur = colOf(id); modal(o.menuTitle || 'Переместить в колонку', `<div class="pm-kmenu">${cols.map(c => `<button class="btn" data-kto="${esc(c.key)}"${c.key === cur ? ' disabled' : ''}>→ ${esc(c.label)}${c.key === cur ? ' (сейчас)' : ''}</button>`).join('')}</div>`);
+        document.querySelectorAll('#modal-body [data-kto]').forEach(b => b.onclick = () => { const cl = document.getElementById('modal-close'); if (cl) cl.click(); move(id, b.dataset.kto); }); };
+      board.querySelectorAll('.pm-kc').forEach(el => {
+        const id = el.dataset.kid, can = el.dataset.move === '1'; let timer = 0, longDone = false;
+        el.addEventListener('click', e => { if (longDone) { longDone = false; return; } const b = e.target.closest('[data-kmove]'); if (b) { e.stopPropagation(); menu(id); return; } if (e.target.closest('a,button')) return; o.onOpen && o.onOpen(id); });
+        if (!can) return;
+        if (fine) { el.draggable = true; el.addEventListener('dragstart', e => { dragId = id; el.classList.add('drag'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', id); } catch { /* старые браузеры */ } }); el.addEventListener('dragend', () => { dragId = ''; el.classList.remove('drag'); board.querySelectorAll('.over').forEach(x => x.classList.remove('over')); }); }
+        // телефон: долгое нажатие (0,5 с) открывает меню «в колонку»; прокрутка отменяет
+        el.addEventListener('touchstart', () => { longDone = false; clearTimeout(timer); timer = setTimeout(() => { longDone = true; if (navigator.vibrate) try { navigator.vibrate(20); } catch { /* нет вибро */ } menu(id); }, 500); }, { passive: true });
+        ['touchmove', 'touchend', 'touchcancel'].forEach(ev => el.addEventListener(ev, () => clearTimeout(timer), { passive: true }));
+        el.addEventListener('contextmenu', e => { if (longDone || !fine) e.preventDefault(); });
+      });
+      board.querySelectorAll('.pm-kb-col').forEach(col => {
+        col.addEventListener('dragover', e => { if (!dragId) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; col.classList.add('over'); });
+        col.addEventListener('dragleave', e => { if (!col.contains(e.relatedTarget)) col.classList.remove('over'); });
+        col.addEventListener('drop', e => { e.preventDefault(); col.classList.remove('over'); const id = dragId || e.dataTransfer.getData('text/plain'); dragId = ''; if (id) move(id, col.dataset.col); });
+      });
+    }
     let badgeAt = 0;
     const badges = async force => { if (!force && Date.now() - badgeAt < 60000) return; badgeAt = Date.now(); try { const b = await api('/pm/badges'); const bt = (b.byTrack && b.byTrack[T]) || {}; ui.setBadge(S('my'), bt.my || 0); ui.setBadge(S('bl'), bt.bl || 0); } catch { /* нет доступа */ } };
     M._badges = () => badges(false);
@@ -183,26 +233,36 @@ function pmInit(ui, T) {
       const d = await api('/pm/overview?track=' + T); ctxData = { leader: d.leader, financeProjects: d.financeProjects }; badges();
       const u = params(); const track = cfg.tracks.includes(u.get('track')) ? u.get('track') : cfg.tracks[0];
       const fs = u.get('status') || 'active', mine = u.get('mine') === '1', q = (u.get('q') || '').trim(), ql = q.toLowerCase();
+      const VK = 'pm.view.' + T; const view = ['list', 'kanban'].includes(u.get('view')) ? u.get('view') : (pmStore.get(VK) === 'kanban' ? 'kanban' : 'list'); pmStore.set(VK, view); // «Список | Канбан» — запоминается в браузере
+      const kanban = view === 'kanban', showCancel = u.get('cancel') === '1';
       const all = d.rows.filter(r => cfg.any || r.track === track || (cfg.also || []).includes(r.track)); // сервер уже отдал сотруднику только его проекты
       let rows = all.slice();
-      if (fs === 'active') rows = rows.filter(r => PM.ACTIVE(r.status)); else if (fs !== 'all') rows = rows.filter(r => r.status === fs);
+      if (!kanban) { if (fs === 'active') rows = rows.filter(r => PM.ACTIVE(r.status)); else if (fs !== 'all') rows = rows.filter(r => r.status === fs); } // в канбане колонки — сами статусы
       if (mine) rows = rows.filter(r => r.gipId === me().id || r.pmId === me().id);
       if (ql) rows = rows.filter(r => `${r.name} ${r.client || ''} ${r.no || ''} ${r.address || ''}`.toLowerCase().includes(ql));
       rows.sort((a, b) => (b.late - a.late) || (b.hot - a.hot) || String(a.forecast || a.due || '9').localeCompare(String(b.forecast || b.due || '9')) || a.name.localeCompare(b.name, 'ru'));
       expState = { rows, blockers: d.blockersList.filter(b => rows.some(r => r.id === b.pid)) };
       const act = all.filter(r => PM.ACTIVE(r.status));
       const sub = `${act.length} в работе · <span class="${act.filter(r => r.late).length ? 'crit-text' : ''}">просрочено ${act.filter(r => r.late).length}</span> · <span class="${act.filter(r => r.hot).length ? 'warn-text' : ''}">горит (≤ 14 дн.) ${act.filter(r => r.hot).length}</span> · просроченных пунктов ${act.reduce((s, r) => s + r.overdueN, 0)}`;
-      const tabs = cfg.tracks.length > 1 && !cfg.any ? `<div class="tabs pm-tabs">${cfg.tracks.map(t => `<a href="#/${id}?${qsOf({ track: t, status: fs, mine: mine ? '1' : '', q })}" class="${t === track ? 'active' : ''}">${esc(PM.TRACKS[t])} <span class="faint">${d.rows.filter(r => r.track === t && PM.ACTIVE(r.status)).length}</span></a>`).join('')}</div>` : '';
+      const tabs = cfg.tracks.length > 1 && !cfg.any ? `<div class="tabs pm-tabs">${cfg.tracks.map(t => `<a href="#/${id}?${qsOf({ track: t, status: fs, mine: mine ? '1' : '', q, view })}" class="${t === track ? 'active' : ''}">${esc(PM.TRACKS[t])} <span class="faint">${d.rows.filter(r => r.track === t && PM.ACTIVE(r.status)).length}</span></a>`).join('')}</div>` : '';
       const leadLabel = PM.LEAD_FIELD[track] === 'pmId' ? 'ПМ' : 'ГИП';
+      const hrefOf = o => `#/${id}?${qsOf(Object.assign({ track: cfg.tracks.length > 1 ? track : '', status: fs === 'active' ? '' : fs, mine: mine ? '1' : '', q, view, cancel: showCancel ? '1' : '' }, o))}`;
+      const seg = `<span class="pm-seg" role="tablist"><a href="${hrefOf({ view: 'list' })}" class="${kanban ? '' : 'active'}">Список</a><a href="${hrefOf({ view: 'kanban' })}" class="${kanban ? 'active' : ''}">Канбан</a></span>`;
+      // канбан проектов: колонки — статусы; «Отменён» свёрнут, пока не нажали «показать»
+      const PCOLS = PM.STATUS.map(st => ({ key: st, label: st, cls: STATUS_CHIP[st][0], fold: PM.KANBAN_PROJECT_HIDDEN.includes(st) && !showCancel, foldHref: hrefOf({ cancel: '1' }) }));
+      const projectKanban = list => kanbanHtml(PCOLS, list.map(r => ({ id: r.id, col: PM.STATUS.includes(r.status) ? r.status : 'В работе', canMove: !!r.canEdit, zone: PM.ACTIVE(r.status) && r.health && r.health.zone !== 'none' ? r.health.zone : '',
+        html: `<div class="kt">${esc(r.name)}${r.no ? ` <span class="faint">№${esc(r.no)}</span>` : ''}</div>${r.client ? `<div class="faint">${esc(r.client)}</div>` : ''}<div class="km"><span>${esc(leadLabel)}: <b>${esc(pname(r.leadId) || '—')}</b></span></div><div class="km"><span>${esc(cut(r.progress.stageName || '—', 42))}</span><span>${r.progress.pct}%</span></div>${bar(r.progress.pct)}<div class="km">${PM.ACTIVE(r.status) ? zoneChip(r.health) : ''}<span title="срок по договору${r.forecast && r.forecast !== r.due ? '; прогноз ' + fdate(r.forecast) : ''}">⏱ ${r.due ? (r.late ? `<span class="crit-text">${fdate(r.due)}</span>` : fdate(r.due)) : '—'}</span>${r.overdueN ? `<span class="chip crit" title="просроченных пунктов">просроч. ${r.overdueN}</span>` : ''}${r.blockersN ? `<span class="chip ${r.blockerMaxDays > 14 ? 'crit' : 'warn'}" title="открытых блокеров; самый старый — ${r.blockerMaxDays} дн.">⛔ ${r.blockersN}</span>` : ''}${r.hot ? '<span class="chip warn">горит</span>' : ''}</div>` })));
       main.innerHTML = head(cfg.title, d.staff ? `${sub}<div class="faint">Проекты этой стадии, где вы исполнитель пункта или участник; отмечать «сделано» можно только свои пункты.</div>` : sub, (d.canCreate ? `<button class="btn primary" data-act="pmNew" data-track="${track}">+ Проект</button> ` : '') + (d.staff ? '' : '<button class="btn" data-act="pmExport" title="Показанные строки — в Excel">⇩ Excel</button>')) + tabs +
-        `<div class="filters">${sel('pm-f-status', [['active', 'Активные'], ...PM.STATUS.map(s => [s, s]), ['all', 'Все']], fs)}<label class="fl"><input type="checkbox" id="pm-f-mine"${mine ? ' checked' : ''}> мои</label><input id="pm-f-q" placeholder="Поиск: объект, заказчик, №" value="${esc(q)}"></div>` +
-        (rows.length ? tbl([{ t: 'Объект' }, { t: leadLabel }, { t: 'Этап' }, { t: 'Статус' }, { t: 'Буфер' }, { t: 'Старт' }, { t: 'Срок' }, { t: 'Просрочено', cls: 'right' }, { t: 'Блокеры', cls: 'right' }, { t: 'Риск' }],
+        `<div class="filters">${seg}${kanban ? '' : sel('pm-f-status', [['active', 'Активные'], ...PM.STATUS.map(s => [s, s]), ['all', 'Все']], fs)}<label class="fl"><input type="checkbox" id="pm-f-mine"${mine ? ' checked' : ''}> мои</label><input id="pm-f-q" placeholder="Поиск: объект, заказчик, №" value="${esc(q)}"></div>` +
+        (kanban ? (all.length ? projectKanban(rows) : empty(`Проектов «${PM.TRACKS[track]}» пока нет${d.canCreate ? ' — нажмите «+ Проект»' : ''}`)) : rows.length ? tbl([{ t: 'Объект' }, { t: leadLabel }, { t: 'Этап' }, { t: 'Статус' }, { t: 'Буфер' }, { t: 'Старт' }, { t: 'Срок' }, { t: 'Просрочено', cls: 'right' }, { t: 'Блокеры', cls: 'right' }, { t: 'Риск' }],
           rows.map(r => `<tr class="pm-row" data-id="${esc(r.id)}" data-track="${esc(r.track)}"><td><b>${esc(r.name)}</b>${r.no ? ` <span class="faint">№${esc(r.no)}</span>` : ''}<div class="faint">${esc(r.client || '')}</div></td><td class="nowrap">${esc(pname(r.leadId) || '—')}</td><td style="min-width:150px"><div class="faint">${esc(r.progress.stageName)}</div>${bar(r.progress.pct)}<span class="faint">${r.progress.done}/${r.progress.total} · ${r.progress.pct}%</span></td><td>${chip(r.status, STATUS_CHIP)}${r.hot ? ' <span class="chip warn">горит</span>' : ''}</td><td class="nowrap">${PM.ACTIVE(r.status) ? zoneChip(r.health) : '<span class="faint">—</span>'}</td><td class="nowrap">${r.start ? fdate(r.start) : '—'}</td><td class="nowrap">${r.due ? (r.late ? `<span class="crit-text">${fdate(r.due)}</span>` : fdate(r.due)) : '—'}${r.forecast && r.forecast !== r.due ? `<div class="faint">прогноз ${fdate(r.forecast)}</div>` : ''}</td><td class="right">${r.overdueN ? `<span class="chip crit">${r.overdueN}</span>` : '<span class="faint">0</span>'}</td><td class="right">${r.blockersN ? `<span class="chip ${r.blockerMaxDays > 14 ? 'crit' : 'warn'}" title="самый старый — ${r.blockerMaxDays} дн.">${r.blockersN} · ${r.blockerMaxDays} дн.</span>` : '<span class="faint">—</span>'}</td><td>${r.risk && r.risk !== 'Низкий' ? chip(r.risk, RISK_CHIP) : '<span class="faint">низкий</span>'}</td></tr>`))
           : empty(all.length ? 'Под фильтр ничего не попало' : `Проектов «${PM.TRACKS[track]}» пока нет${d.canCreate ? ' — нажмите «+ Проект»' : ''}`));
       main.querySelectorAll('.tbl').forEach(el => el.classList.add('pm-scroll')); // таблица прокручивается внутри себя и не раздувает страницу на телефоне
-      const apply = () => { location.hash = `#/${id}?${qsOf({ track: cfg.tracks.length > 1 ? track : '', status: $('#pm-f-status').value, mine: $('#pm-f-mine').checked ? '1' : '', q: $('#pm-f-q').value.trim() })}`; };
-      $('#pm-f-status').onchange = apply; $('#pm-f-mine').onchange = apply; $('#pm-f-q').onkeydown = e => { if (e.key === 'Enter') apply(); };
+      const apply = () => { location.hash = hrefOf({ status: $('#pm-f-status') ? $('#pm-f-status').value : fs, mine: $('#pm-f-mine').checked ? '1' : '', q: $('#pm-f-q').value.trim() }); };
+      if ($('#pm-f-status')) $('#pm-f-status').onchange = apply; $('#pm-f-mine').onchange = apply; $('#pm-f-q').onkeydown = e => { if (e.key === 'Enter') apply(); };
       main.querySelectorAll('tr.pm-row').forEach(tr => tr.onclick = () => { location.hash = cardLink(tr.dataset.id, tr.dataset.track); });
+      if (kanban) bindKanban(main, PCOLS, { menuTitle: 'Статус проекта', onOpen: pid => { const r = rows.find(x => x.id === pid); if (r) location.hash = cardLink(r.id, r.track); },
+        onMove: async (pid, to) => { const r = rows.find(x => x.id === pid); await api('/pm/projects/' + encodeURIComponent(pid), { method: 'PUT', body: { status: to } }); toast(`«${r ? r.name : 'Проект'}» → ${to}`); badges(true); } });
       bind(main);
     };
     for (const [id, cfg] of Object.entries(REG)) ui.SECTIONS[id] = register(id, cfg);
@@ -212,7 +272,7 @@ function pmInit(ui, T) {
       const id = params().get('id'); if (!id) { location.hash = listHash(T); return; }
       const c = await api('/pm/projects/' + encodeURIComponent(id)); const p = c.project, s = c.summary, h = c.health; ctxData = { leader: c.leader, financeProjects: c.financeProjects || [] };
       if (pmTrackPath(p.track) !== T) { location.hash = cardLink(p.id, p.track) + (params().get('tab') ? '&tab=' + encodeURIComponent(params().get('tab')) : ''); return; } // карточка другой стадии — в её раздел
-      const tabs = [['stages', 'Этапы'], ['charter', `Устав${c.charterOk ? '' : ' ⚠'}`], ['blockers', `Блокеры${c.blockers.filter(b => b.status !== 'closed').length ? ' ' + c.blockers.filter(b => b.status !== 'closed').length : ''}`], ...(c.canBudget ? [['budget', 'Бюджет']] : []), ...(c.hours ? [['hours', `Часы${c.hours.total.hours ? ' ' + Math.round(c.hours.total.hours) : ''}`]] : []), ['retro', `Ретро${(c.retros || []).length ? ' ' + c.retros.length : ''}`], ...(window.MostBoard && window.MostBoard.embed && ['ep', 'rp', 'concept'].includes(p.track) ? [['board', 'Доска']] : []), ...(p.track === 'ep' || p.track === 'concept' || p.miroUrl ? [['miro', 'Миро']] : []), ['info', 'О проекте']];
+      const tabs = [['stages', 'Этапы'], ['kanban', 'Канбан'], ['charter', `Устав${c.charterOk ? '' : ' ⚠'}`], ['blockers', `Блокеры${c.blockers.filter(b => b.status !== 'closed').length ? ' ' + c.blockers.filter(b => b.status !== 'closed').length : ''}`], ...(c.canBudget ? [['budget', 'Бюджет']] : []), ...(c.hours ? [['hours', `Часы${c.hours.total.hours ? ' ' + Math.round(c.hours.total.hours) : ''}`]] : []), ['retro', `Ретро${(c.retros || []).length ? ' ' + c.retros.length : ''}`], ...(window.MostBoard && window.MostBoard.embed && ['ep', 'rp', 'concept'].includes(p.track) ? [['board', 'Доска']] : []), ...(p.track === 'ep' || p.track === 'concept' || p.miroUrl ? [['miro', 'Миро']] : []), ['info', 'О проекте']];
       const tab = tabs.some(t => t[0] === params().get('tab')) ? params().get('tab') : 'stages';
       const link = t => `${cardLink(p.id, p.track)}&tab=${t}`;
       const next = PM.NEXT_TRACK[p.track];
@@ -228,7 +288,7 @@ function pmInit(ui, T) {
         </div>` +
         (h.zone === 'none' && c.canEdit ? `<div class="notice" style="margin-bottom:12px">Сроки не заданы — буфер и прогноз не считаются. <b>Задайте старт и срок</b> в «✎ Проект» (или «Дата по договору» из договора), затем <b>⇶ Разложить сроки</b> по пунктам.</div>` : '') +
         `<div class="tabs pm-tabs">${tabs.map(t => `<a href="${link(t[0])}" class="${t[0] === tab ? 'active' : ''}">${esc(t[1])}</a>`).join('')}</div>` +
-        (tab === 'stages' ? stagesHtml(c) : tab === 'charter' ? charterHtml(c) : tab === 'retro' ? retroHtml(c) : tab === 'blockers' ? blockersHtml(c) : tab === 'budget' ? budgetHtml(c) : tab === 'hours' ? hoursHtml(c) : tab === 'board' ? '<div id="pm-board"></div>' : tab === 'miro' ? miroHtml(c) : infoHtml(c));
+        (tab === 'stages' ? stagesHtml(c) : tab === 'kanban' ? itemKanbanHtml(c) : tab === 'charter' ? charterHtml(c) : tab === 'retro' ? retroHtml(c) : tab === 'blockers' ? blockersHtml(c) : tab === 'budget' ? budgetHtml(c) : tab === 'hours' ? hoursHtml(c) : tab === 'board' ? '<div id="pm-board"></div>' : tab === 'miro' ? miroHtml(c) : infoHtml(c));
       // доска проекта (модуль board): встраивается после отрисовки, сам показывает доски проекта, «+ Доска» по правам и «На весь экран»
       if (tab === 'board' && window.MostBoard && window.MostBoard.embed) window.MostBoard.embed(document.getElementById('pm-board'), { pmProjectId: p.id, height: '72vh' });
       // действия карточки
@@ -262,6 +322,11 @@ function pmInit(ui, T) {
       ui.ACT.pmItemEdit = ({ id: iid }) => { const it = c.items.find(x => x.id === iid); if (!it) return; modal(canEditAny ? 'Пункт' : 'Пункт: срок, исполнитель, заметка', dl + `<p class="faint" style="margin:0 0 8px"><b>${esc(it.stageName)}</b>${canEditAny ? '' : ` · ${esc(it.title)}${it.crit ? ` · критерий: ${esc(it.crit)}` : ''}`}</p>` + formHtml(itemFields(it, canEditAny), Object.assign({}, it, { na: it.na ? 'true' : 'false' })), async v => { await api('/pm/items/' + iid, { method: 'PUT', body: itemBody(v) }); toast('Сохранено'); rerender(); }); };
       ui.ACT.pmItemDel = async ({ id: iid }) => { if (!confirm('Удалить пункт?')) return; await api('/pm/items/' + iid, { method: 'DELETE' }); toast('Удалено'); rerender(); };
       bindChecks(main);
+      if (tab === 'kanban') {
+        const ks = $('#pm-k-stage'); if (ks) ks.onchange = () => { location.hash = `${link('kanban')}${ks.value ? '&kst=' + encodeURIComponent(ks.value) : ''}`; };
+        bindKanban(main, KCOLS, { menuTitle: 'Статус пункта', onOpen: iid => { const it = c.items.find(x => x.id === iid); if (it && it.canEdit) ui.ACT.pmItemEdit({ id: iid }); else if (it && (it.history || []).length) histModal(it); },
+          onMove: async (iid, to) => { await api('/pm/items/' + encodeURIComponent(iid), { method: 'PUT', body: { kstatus: to } }); toast(to === 'done' ? 'Отмечено: сделано' : `→ ${PM.KANBAN.find(k => k[0] === to)[1]}`); badges(true); } });
+      }
       // блокеры карточки
       ui.ACT.pmBlAdd = () => blockerModal(null, p.id);
       ui.ACT.pmBlEdit = ({ id: bid }) => { const b = c.blockers.find(x => x.id === bid); if (b) blockerModal(b); };
@@ -287,6 +352,7 @@ function pmInit(ui, T) {
         case 'weeksMax': return `пессимистичная оценка: ${e.from || '—'} → ${e.to || '—'} нед.`;
         case 'stage': return `этап: ${e.from} → ${e.to}`;
         case 'role': return `роль: ${e.from || '—'} → ${e.to}`;
+        case 'kstatus': { const L = k => (PM.KANBAN.find(x => x[0] === k) || [k, k || '—'])[1]; return `канбан: ${L(e.from)} → ${L(e.to)}`; }
         default: return `${e.field}: ${e.from} → ${e.to}`;
       } };
     const fdt = iso => { const x = new Date(iso); return isNaN(x) ? String(iso || '') : x.toLocaleString('ru-RU', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
@@ -305,6 +371,19 @@ function pmInit(ui, T) {
       <td>${it.assigneeId ? esc(pname(it.assigneeId)) : '<span class="faint">—</span>'}${it.contractor ? `<div class="faint" title="исполнитель-подрядчик">🛠 ${esc(it.contractor)}</div>` : ''}</td>
       <td class="nowrap due">${dueHtml(it.due, it.done)}${!it.done && it.weeks ? `<div class="faint" title="оптимистичная – пессимистичная оценка">${PM.W(it)}–${PM.WMAX(it)} нед.</div>` : ''}${it.returns ? `<div class="faint crit-text" title="снимали отметку «сделано»">возвратов ${it.returns}</div>` : ''}</td>
       <td><div class="actions">${(it.history || []).length ? `<button class="btn sm" data-act="pmItemHist" data-id="${esc(it.id)}" title="История: кто и когда менял">🕓</button>` : ''}${it.canEdit ? `<button class="btn sm" data-act="pmItemEdit" data-id="${esc(it.id)}" title="Изменить">✎</button>${o && o.manager ? `<button class="btn sm danger" data-act="pmItemDel" data-id="${esc(it.id)}" title="Удалить">✕</button>` : ''}` : ''}</div></td></tr>`; };
+    // канбан пунктов проекта: колонки «К выполнению / В работе / На проверке / Готово» (поле kstatus; «Готово» = отметка «сделано»), «не требуется» не показываются
+    const KCOLS = PM.KANBAN.map(([key, label]) => ({ key, label, cls: { todo: 'neutral', doing: 'accent', review: 'warn', done: 'ok' }[key] }));
+    function itemKanbanHtml(c) {
+      const kst = params().get('kst') || ''; const cur = c.summary.progress.stage;
+      const stages = [...new Map(c.items.map(i => [i.stage, i.stageName])).entries()].sort((a, b) => a[0] - b[0]);
+      const act = c.items.filter(i => !i.na); const na = c.items.length - act.length;
+      const list = act.filter(i => !kst || (kst === 'cur' ? i.stage === cur : String(i.stage) === kst));
+      const t = today();
+      const cards = list.map(it => { const over = !it.done && it.due && it.due < t; return { id: it.id, col: it.kcol || PM.itemKanban(it), canMove: !!it.canEdit, zone: over ? 'red' : '',
+        html: `<div class="kt">${it.code ? `<span class="pm-code">${esc(it.code)}</span> ` : ''}${esc(it.title)}</div><div class="km"><span class="faint">${esc(cut(it.stageName || '', 40))}</span></div><div class="km"><span>${it.assigneeId ? '👤 ' + esc(pname(it.assigneeId)) : `<span class="faint">${esc(it.role || '')}</span>`}</span>${it.contractor ? `<span class="faint" title="исполнитель-подрядчик">🛠 ${esc(cut(it.contractor, 24))}</span>` : ''}</div><div class="km"><span title="${over ? 'просрочено' : 'срок'}">⏱ ${dueHtml(it.due, it.done)}</span>${(it.waiting || []).length && !it.done ? `<span class="chip warn" title="ждёт закрытия пунктов-блокеров">ждёт: ${esc(it.waiting.join(', '))}</span>` : ''}${it.returns ? `<span class="faint crit-text" title="снимали отметку «сделано»">возвр. ${it.returns}</span>` : ''}</div>` }; });
+      const opts = [['', `Все этапы (${act.length})`], ['cur', `Текущий этап ${cur}`], ...stages.map(([n, nm]) => [String(n), nm])];
+      return `<div class="filters">${sel('pm-k-stage', opts, kst)}<span class="faint">Перетащите карточку в колонку${c.items.some(i => i.canEdit) ? '' : ' (нет прав на пункты — только просмотр)'}; на телефоне — долгое нажатие или ⇄. «Готово» = отметка «сделано».${na ? ` Не требуется: ${na} (скрыты).` : ''}</span></div>` + (list.length ? kanbanHtml(KCOLS, cards) : empty('Пунктов нет'));
+    }
     const ITEM_COLS = [{ t: '' }, { t: 'Пункт' }, { t: 'Роль' }, { t: 'Исполнитель' }, { t: 'Срок' }, { t: '' }];
     function stagesHtml(c) {
       const by = new Map(); for (const it of c.items) { if (!by.has(it.stage)) by.set(it.stage, { n: it.stage, name: it.stageName, items: [] }); by.get(it.stage).items.push(it); }

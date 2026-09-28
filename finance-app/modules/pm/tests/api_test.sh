@@ -214,6 +214,7 @@ chk "staff: чужой пункт 403" 403 "$(code STAFF PUT /pm/items/$AR '{"do
 chk "staff: свой пункт — отметил «сделано», заметка записана, срок и исполнитель не меняются" "true/false/готово/dev-staff" "$(call STAFF PUT /pm/items/$SI '{"done":true,"due":"2030-01-01","assigneeId":"dev-gip","note":"готово"}' | js 'd.done+"/"+(d.due==="2030-01-01")+"/"+d.note+"/"+d.assigneeId')"
 chk "staff: добавлять пункты и блокеры, править карточку нельзя" "403/403/403" "$(code STAFF POST /pm/projects/$RPID/items '{"title":"x"}')/$(code STAFF POST /pm/blockers "{\"pid\":\"$RPID\",\"what\":\"x\"}")/$(code STAFF PUT /pm/projects/$RPID '{"name":"x"}')"
 chk "staff: участник проекта (members) тоже видит его" 2 "$(call OWN PUT /pm/projects/$GID '{"members":["dev-staff"]}' > /dev/null; call STAFF GET /pm/overview | js 'd.rows.length')"
+chk "staff: свой пункт в канбане «Готово» → «На проверке» (возврат) и обратно; статус проекта двигать нельзя" "review/false/done/true/403" "$(call STAFF PUT /pm/items/$SI '{"kstatus":"review"}' | js 'd.kcol+"/"+d.done')/$(call STAFF PUT /pm/items/$SI '{"kstatus":"done"}' | js 'd.kcol+"/"+d.done')/$(code STAFF PUT /pm/projects/$RPID '{"status":"На паузе"}')"
 chk "настройки: владелец выключает — staff снова без доступа" "false/403" "$(call OWN PUT /pm/settings '{"staffOwnProjects":false}' | js 'd.staffOwnProjects')/$(code STAFF GET /pm/overview)"
 
 echo "== шаблон ЭП по дорожной карте: коды, зависимости, план, statuses, rebuild =="
@@ -250,6 +251,24 @@ chk "сводка: проект без сроков не красный/чёрн
 chk "только старт без срока — тоже «нет сроков»" none "$(call OWN PUT /pm/projects/$NDID '{"start":"2026-09-01"}' | js 'd.health.zone')"
 chk "старт и срок заданы — зона считается (режим contract)" "contract/true" "$(call OWN PUT /pm/projects/$NDID '{"due":"2027-03-01"}' | js 'd.health.mode+"/"+["blue","green","yellow","red","black"].includes(d.health.zone)')"
 chk "ClickUp: отметки импорта не считаются текущей скоростью, doneAt — только дата из ClickUp" "0/true" "$(call OWN GET /pm/projects/$CUID | js 'd.health.curV+"/"+d.items.filter(i=>i.doneBy==="clickup").every(i=>!i.doneAt || i.doneAt<"2026-09")')"
+
+echo "== канбан =="
+chk "канбан проектов: gip двигает свой проект между колонками (статус)" "На паузе" "$(call GIP PUT /pm/projects/$GID '{"status":"На паузе"}' | js 'd.project.status')"
+chk "канбан проектов: gip чужой ЭП, lead, accountant — 403" "403/403/403" "$(code GIP PUT /pm/projects/$EPID '{"status":"Готово"}')/$(code LEAD PUT /pm/projects/$RPID '{"status":"Готово"}')/$(code ACC PUT /pm/projects/$RPID '{"status":"Готово"}')"
+chk "канбан проектов: неизвестный статус не меняет колонку" "На паузе" "$(call OWN PUT /pm/projects/$GID '{"status":"Непонятно"}' | js 'd.project.status')"
+chk "канбан проектов: canEdit в строках сводки (право перетаскивать) — gip: свой РП да, чужой ЭП нет" "true/false" "$(call GIP GET '/pm/overview?track=rp' | js 'd.rows.find(r=>r.id==="'$GID'").canEdit')/$(call GIP GET '/pm/overview?track=ep' | js 'd.rows.find(r=>r.id==="'$EPID'").canEdit')"
+KI=$(call OWN GET /pm/projects/$RPID | js 'd.items.find(i=>i.section==="ОВ" && !i.done && !i.na && !i.returns && !i.kstatus && !i.rmStatus).id'); KAR=$(call OWN GET /pm/projects/$RPID | js 'd.items.find(i=>i.section==="АР" && !i.assigneeId).id') # после rebuild у пунктов новые id
+chk "канбан пунктов: новый пункт — «К выполнению» (kcol)" todo "$(call OWN GET /pm/projects/$RPID | js 'd.items.find(i=>i.id==="'$KI'").kcol')"
+chk "lead ОВ: → «В работе», → «На проверке», done не ставится" "doing/false/review/false" "$(call LEAD PUT /pm/items/$KI '{"kstatus":"doing"}' | js 'd.kcol+"/"+d.done')/$(call LEAD PUT /pm/items/$KI '{"kstatus":"review"}' | js 'd.kcol+"/"+d.done')"
+chk "lead ОВ: → «Готово» = «сделано» (done, doneAt сегодня, doneBy)" "done/true/$T/dev-lead" "$(call LEAD PUT /pm/items/$KI '{"kstatus":"done"}' | js 'd.kcol+"/"+d.done+"/"+d.doneAt+"/"+d.doneBy')"
+chk "возврат «Готово» → «В работе»: done снят, возвратов 1" "doing/false/1" "$(call LEAD PUT /pm/items/$KI '{"kstatus":"doing"}' | js 'd.kcol+"/"+d.done+"/"+d.returns')"
+chk "галочка «сделано» — колонка «Готово», снятие — «В работе»" "done/doing" "$(call LEAD PUT /pm/items/$KI '{"done":true}' | js 'd.kcol')/$(call LEAD PUT /pm/items/$KI '{"done":false}' | js 'd.kcol')"
+chk "канбан пунктов: lead ОВ — пункт АР 403, pm чужой 403, accountant 403" "403/403/403" "$(code LEAD PUT /pm/items/$KAR '{"kstatus":"doing"}')/$(code PMR PUT /pm/items/$KAR '{"kstatus":"doing"}')/$(code ACC PUT /pm/items/$KI '{"kstatus":"done"}')"
+chk "неизвестная колонка отбрасывается" doing "$(call OWN PUT /pm/items/$KI '{"kstatus":"куда-то"}' | js 'd.kcol')"
+chk "история пункта пишет смену колонки" true "$(call OWN GET /pm/projects/$RPID | js 'd.items.find(i=>i.id==="'$KI'").history.some(e=>e.field==="kstatus" && e.to==="review")')"
+chk "«Мои задачи» отдают колонку kcol" true "$(call LEAD GET /pm/my | js 'd.length>0 && d.every(i=>["todo","doing","review"].includes(i.kcol))')"
+chk "statuses дорожной карты → колонки: A1 «Готово», B2 (У ЗАКАЗЧИКА) «На проверке», C3 (В РАБОТЕ) «В работе»" "done/review/doing" "$(call OWN GET /pm/projects/$RMID | js '(()=>{const by=Object.fromEntries(d.items.filter(i=>i.code).map(i=>[i.code,i]));return [by.A1.kcol,by.B2.kcol,by.C3.kcol].join("/")})()')"
+chk "без сервера: колонка ↔ done, права, событие pm.item.done при «Готово» (+ crm onItemDone)" ok "$(node modules/pm/tests/kanban_test.js | tail -1)"
 
 echo "== удаление =="
 chk "owner удаляет проект" 200 "$(code OWN DELETE /pm/projects/$GID)"
