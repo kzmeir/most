@@ -269,6 +269,8 @@ chk "история пункта пишет смену колонки" true "$(c
 chk "«Мои задачи» отдают колонку kcol" true "$(call LEAD GET /pm/my | js 'd.length>0 && d.every(i=>["todo","doing","review"].includes(i.kcol))')"
 chk "statuses дорожной карты → колонки: A1 «Готово», B2 (У ЗАКАЗЧИКА) «На проверке», C3 (В РАБОТЕ) «В работе»" "done/review/doing" "$(call OWN GET /pm/projects/$RMID | js '(()=>{const by=Object.fromEntries(d.items.filter(i=>i.code).map(i=>[i.code,i]));return [by.A1.kcol,by.B2.kcol,by.C3.kcol].join("/")})()')"
 chk "без сервера: колонка ↔ done, права, событие pm.item.done при «Готово» (+ crm onItemDone)" ok "$(node modules/pm/tests/kanban_test.js | tail -1)"
+chk "без сервера: правка на месте — поля шапки, пункта и журнала по ролям (ПМ, руководитель раздела, сотрудник, секретарь)" ok "$(node modules/pm/tests/inline_test.js | tail -1)"
+chk "без сервера: журнал проекта — права, задним числом, импорт пачкой, вложения (сигнатура, 20 МБ), авто-события, поиск, CSV" ok "$(node modules/pm/tests/log_test.js | tail -1)"
 
 echo "== удаление =="
 chk "owner удаляет проект" 200 "$(code OWN DELETE /pm/projects/$GID)"

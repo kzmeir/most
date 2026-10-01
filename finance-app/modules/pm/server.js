@@ -1,6 +1,8 @@
 'use strict';
 // Модуль «Управление проектами» (ЭП / РП; треки concept и an скрыты — см. domain.js): /api/pm/*. Свои права (domain.js), финансы здесь не видны —
 // всё нужное из финансов (список проектов для связи, факт бюджета, подрядчики для подсказок) отдаётся отсюда с проверкой прав.
+const fs = require('fs');
+const path = require('path');
 const PM = require('./domain');
 
 const CONTRACT_FIELDS = ['contractNo', 'contractDate', 'contractTerm', 'contractTermUnit', 'contractStartRule', 'dueNote'];
@@ -150,6 +152,22 @@ function contractorsOf(db, p) {
   return [...set].sort((a, b) => a.localeCompare(b, 'ru'));
 }
 
+// журнал проекта: вложения (картинки, PDF ≤ 20 МБ) — на диске в DATA_DIR/pm-files/<pid>/, в записи только ключи (как у модулей board и mkt)
+const LOG_MIME = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf' };
+const logDir = (ctx, pid) => path.join(ctx.store.DATA_DIR, 'pm-files', String(pid).replace(/[^\w-]/g, ''));
+const dropLogDir = (ctx, pid) => { try { if (ctx.store.DATA_DIR) fs.rmSync(logDir(ctx, pid), { recursive: true, force: true }); } catch { /* нет папки */ } };
+const dropLogFile = (ctx, pid, key) => { if (PM.LOG_KEY_RE.test(String(key || ''))) { try { fs.unlinkSync(path.join(logDir(ctx, pid), key)); } catch { /* уже нет */ } } };
+// файл из base64 {name, type, data}: тип из списка, размер ≤ 20 МБ, сигнатура совпадает с типом → { ext, data, name, type, size } или строка ошибки
+function readLogFile(f) {
+  const nm = String((f && f.name) || 'Файл').slice(0, 200); const type = String((f && f.type) || ''); const ext = PM.LOG_FILE_TYPES[type]; if (!ext) return `${nm}: разрешены картинки (PNG, JPG, WebP, GIF) и PDF`;
+  const b64 = String(f.data || '').replace(/^data:[^,]*,/, ''); if (!b64) return `${nm}: пустой файл`; const mb = PM.LOG_MAX_FILE / 1048576;
+  if (b64.length * 3 / 4 > PM.LOG_MAX_FILE + 4) return `${nm}: больше ${mb} МБ`;
+  const data = Buffer.from(b64, 'base64'); if (!data.length) return `${nm}: пустой файл`; if (data.length > PM.LOG_MAX_FILE) return `${nm}: больше ${mb} МБ`;
+  if (!PM.logFileSig(ext, data)) return `${nm}: содержимое не совпадает с типом файла`;
+  return { ext, data, name: nm, type, size: data.length };
+}
+function writeLogFile(ctx, pid, f) { const dir = logDir(ctx, pid); fs.mkdirSync(dir, { recursive: true }); const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${f.ext}`; fs.writeFileSync(path.join(dir, key), f.data); return { key, name: f.name, type: f.type, size: f.size }; }
+
 function handle(ctx) {
   const { parts, method, body, user, db, store, D, ok, err, pick, num } = ctx;
   const [, a, b, c, d] = parts;
@@ -172,10 +190,11 @@ function handle(ctx) {
   const projOut = p => { const o = Object.assign({}, p); if (!PM.canBudget(user, p)) delete o.budget; return o; };
   const finProjects = () => db.projects.map(x => ({ id: x.id, name: x.name, status: x.status || '' })).sort((x, y) => (x.status === 'archive') - (y.status === 'archive') || String(x.name).localeCompare(String(y.name), 'ru'));
   const blockerOut = x => { const p = findP(x.pid) || {}; return Object.assign({}, x, { project: p.name || '', track: p.track || '', days: PM.blockerAge(x, t), canEdit: PM.isManager(user, p) || x.createdBy === user.id }); };
+  const logs = () => (db.pmLog = db.pmLog || []);
   const card = p => {
     const items = db.pmItems.filter(i => i.pid === p.id).sort((x, y) => x.stage - y.stage || x.order - y.order);
     const h = PM.health(p, db.pmItems, t);
-    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i), waiting: PM.waitingFor(items, i), kcol: PM.itemKanban(i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [] };
+    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i), waiting: PM.waitingFor(items, i), kcol: PM.itemKanban(i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [], logN: logs().filter(r => r.pid === p.id).length, canLog: PM.canLogAdd(user, p, db.pmItems) };
     if (staff) { out.staff = true; out.blockers = out.blockers.filter(x => x.ownerId === user.id); out.contractors = []; }
     const hrMod = ctx.modules && ctx.modules.hr; if (hrMod && hrMod.laborHours && !staff) out.hours = hoursOf(ctx, hrMod, p, user, out.canBudget); // вкладка «Часы» — только при включённом модуле hr
     if (out.canBudget) out.throughput = PM.throughput(p, h);
@@ -234,11 +253,13 @@ function handle(ctx) {
       if ('status' in patch && !PM.STATUS.includes(patch.status)) delete patch.status; if ('risk' in patch && !PM.RISK.includes(patch.risk)) delete patch.risk;
       if ('name' in patch) { patch.name = String(patch.name).trim(); if (!patch.name) delete patch.name; }
       cleanContract(patch, body, p);
+      p.history = PM.projectHistory(p, patch, user.id); // статус, сроки, название — для ленты «Журнал»
       Object.assign(p, patch, { updatedAt: now(), updatedBy: user.id }); store.save(); store.audit(user.id, 'update', 'pmProjects', p.id); return ok(card(p));
     }
     if (p && !c && method === 'DELETE') {
       if (!PM.isLeader(user)) return err(403, 'Удалять может руководитель');
       db.pmItems = db.pmItems.filter(i => i.pid !== p.id); db.pmBlockers = db.pmBlockers.filter(x => x.pid !== p.id); db.pmProjects = db.pmProjects.filter(x => x.id !== p.id);
+      db.pmLog = logs().filter(r => r.pid !== p.id); dropLogDir(ctx, p.id);
       for (const q of db.pmProjects) for (const k of ['epId', 'rpId', 'conceptId']) if (q[k] === p.id) delete q[k];
       store.save(); store.audit(user.id, 'delete', 'pmProjects', p.id); return ok({ ok: true });
     }
@@ -253,7 +274,7 @@ function handle(ctx) {
       if (p.track === 'concept') { collapseConcept(ctx, p, body, user.id); return ok(card(p)); } // старая концепция сворачивается в ЭП на месте
       const linkKey = next + 'Id'; if (p[linkKey] && findP(p[linkKey])) return err(400, 'Проект уже передан дальше');
       const q = createProject(ctx, { track: next, name: body.name || p.name, no: p.no || '', client: p.client || '', address: p.address || '', area: p.area || '', projectId: p.projectId || '', folder: p.folder || '', members: p.members || {}, pmId: body.pmId || p.pmId || '', gipId: body.gipId || p.gipId || '', start: body.start || t, due: body.due || '', fit: !!body.due, comment: body.comment || '', miroUrl: next === 'ep' ? (p.miroUrl || '') : '' }, user.id);
-      q[p.track + 'Id'] = p.id; Object.assign(p, { status: 'Готово', [linkKey]: q.id, handedAt: t }); store.save(); store.audit(user.id, 'handover', 'pmProjects', p.id, { to: q.id, track: next }); ctx.emit('pm.project.handover', { from: p, to: q }); return ok(card(q));
+      q[p.track + 'Id'] = p.id; p.history = PM.projectHistory(p, { status: 'Готово' }, user.id, `передан в ${PM.TRACK_SHORT[next] || next}`); Object.assign(p, { status: 'Готово', [linkKey]: q.id, handedAt: t }); store.save(); store.audit(user.id, 'handover', 'pmProjects', p.id, { to: q.id, track: next }); ctx.emit('pm.project.handover', { from: p, to: q }); return ok(card(q));
     }
     // пересобрать пункты по текущему шаблону (руководитель): {template: ep|rp, keepExtra: true}
     if (p && c === 'rebuild' && method === 'POST') {
@@ -288,6 +309,27 @@ function handle(ctx) {
     if (p && c === 'retro' && d && method === 'DELETE') {
       if (!PM.isManager(user, p)) return err(403, 'Удалять может ГИП/ПМ проекта'); p.retros = (p.retros || []).filter(r => r.id !== d); store.save(); store.audit(user.id, 'retro-delete', 'pmProjects', p.id, { retro: d }); return ok(card(p));
     }
+    // журнал проекта: лента (записи + события), добавить запись, импорт пачкой
+    if (p && c === 'log' && !d && method === 'GET') {
+      const blk = db.pmBlockers.filter(x => x.pid === p.id && (!staff || x.ownerId === user.id));
+      const events = PM.projectFeed(p, db.pmItems, blk, logs(), {}).map(e => e.kind === 'log' ? Object.assign(e, { canEdit: PM.canLogEdit(user, p, e), files: (e.files || []).map(f => Object.assign({}, f, { url: `/api/pm/log/${e.id}/files/${f.key}` })) }) : e);
+      return ok({ events, canAdd: PM.canLogAdd(user, p, db.pmItems), canEdit: PM.isManager(user, p), types: PM.LOG_TYPES, today: t, maxFile: PM.LOG_MAX_FILE, maxFiles: PM.LOG_MAX_FILES });
+    }
+    if (p && c === 'log' && !d && method === 'POST') {
+      if (!PM.canLogAdd(user, p, db.pmItems)) return err(403, 'Добавлять записи могут участники проекта и те, кто ведёт его пункты');
+      const r = PM.cleanLog(body, t); if (r.error) return err(400, r.error);
+      const rec = Object.assign({ id: store.id(), pid: p.id }, r.rec, { files: [], by: user.id, createdAt: now() }); logs().push(rec);
+      store.save(); store.audit(user.id, 'create', 'pmLog', rec.id, { pid: p.id, date: rec.date }); return ok(Object.assign({}, rec, { canEdit: true }));
+    }
+    if (p && c === 'log' && d === 'batch' && method === 'POST') {
+      if (!PM.canLogAdd(user, p, db.pmItems)) return err(403, 'Добавлять записи могут участники проекта и те, кто ведёт его пункты');
+      const src = Array.isArray(body.rows) ? body.rows : typeof body.text === 'string' ? PM.parseLogBatch(body.text, { today: t, type: body.type }).rows : [];
+      if (!src.length) return err(400, 'Нет строк для импорта'); if (src.length > PM.LOG_MAX_BATCH) return err(400, `Не больше ${PM.LOG_MAX_BATCH} записей за раз`);
+      const bad = []; const recs = [];
+      src.forEach((row, i) => { const r = PM.cleanLog(Object.assign({ type: body.type }, row), t); if (r.error) bad.push(`строка ${row.line || i + 1}: ${r.error}`); else recs.push(Object.assign({ id: store.id(), pid: p.id }, r.rec, { files: [], by: user.id, createdAt: now(), source: 'batch' })); });
+      if (bad.length) return err(400, bad.slice(0, 5).join('; '));
+      logs().push(...recs); store.save(); store.audit(user.id, 'import', 'pmLog', p.id, { n: recs.length }); return ok({ added: recs.length });
+    }
     if (p && c === 'items' && method === 'POST') {
       if (!PM.isManager(user, p)) return err(403, 'Добавлять пункты может ГИП/ПМ проекта');
       const st = Number(body.stage) || 1; const same = db.pmItems.filter(i => i.pid === p.id && i.stage === st); const role = PM.ITEM_ROLES.includes(body.role) ? body.role : 'ГИП';
@@ -315,6 +357,33 @@ function handle(ctx) {
       return ok(Object.assign({}, it, { canEdit: true, kcol: PM.itemKanban(it) }));
     }
     if (method === 'DELETE') { if (!PM.isManager(user, p)) return err(403, 'Удалять пункты может ГИП/ПМ проекта'); db.pmItems = db.pmItems.filter(i => i.id !== it.id); store.save(); store.audit(user.id, 'delete', 'pmItems', b); return ok({ ok: true }); }
+  }
+  if (a === 'log' && b) {
+    const rec = logs().find(r => r.id === b); if (!rec) return err(404, 'Запись не найдена'); const p = findP(rec.pid); if (!p) return err(404, 'Проект не найден');
+    if (!visibleP(p)) return err(403, 'Проект вам не назначен');
+    if (c === 'files' && d && method === 'GET') {
+      if (!PM.LOG_KEY_RE.test(d) || !(rec.files || []).some(f => f.key === d)) return err(404, 'Файл не найден'); const file = path.join(logDir(ctx, p.id), d); if (!fs.existsSync(file)) return err(404, 'Файл не найден');
+      return ctx.send(200, fs.readFileSync(file), { 'Content-Type': LOG_MIME[d.split('.').pop()] || 'application/octet-stream', 'Content-Disposition': `inline; filename="${d}"`, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+    }
+    if (!PM.canLogEdit(user, p, rec)) return err(403, 'Править запись может автор или ГИП/ПМ проекта');
+    if (c === 'files' && !d && method === 'POST') {
+      if ((rec.files || []).length >= PM.LOG_MAX_FILES) return err(400, `Не больше ${PM.LOG_MAX_FILES} вложений в записи`);
+      const f = readLogFile(body); if (typeof f === 'string') return err(400, f);
+      const x = writeLogFile(ctx, p.id, f); rec.files = [...(rec.files || []), x]; Object.assign(rec, { updatedAt: now(), updatedBy: user.id });
+      store.save(); store.audit(user.id, 'file', 'pmLog', rec.id, { key: x.key, size: x.size }); return ok(Object.assign({}, x, { url: `/api/pm/log/${rec.id}/files/${x.key}` }));
+    }
+    if (c === 'files' && d && method === 'DELETE') {
+      if (!(rec.files || []).some(f => f.key === d)) return err(404, 'Файл не найден'); dropLogFile(ctx, p.id, d); rec.files = rec.files.filter(f => f.key !== d);
+      Object.assign(rec, { updatedAt: now(), updatedBy: user.id }); store.save(); store.audit(user.id, 'file-delete', 'pmLog', rec.id, { key: d }); return ok({ ok: true });
+    }
+    if (!c && method === 'PUT') {
+      const r = PM.cleanLog(Object.assign({ date: rec.date, type: rec.type, text: rec.text, participants: rec.participants }, ctx.pick(body, ['date', 'type', 'text', 'participants'])), t); if (r.error) return err(400, r.error);
+      Object.assign(rec, r.rec, { updatedAt: now(), updatedBy: user.id }); store.save(); store.audit(user.id, 'update', 'pmLog', rec.id); return ok(Object.assign({}, rec, { canEdit: true }));
+    }
+    if (!c && method === 'DELETE') {
+      for (const f of rec.files || []) dropLogFile(ctx, p.id, f.key);
+      db.pmLog = logs().filter(r => r.id !== rec.id); store.save(); store.audit(user.id, 'delete', 'pmLog', rec.id, { pid: p.id }); return ok({ ok: true });
+    }
   }
   if (a === 'blockers') {
     if (!b && method === 'GET') return ok(db.pmBlockers.filter(x => !staff || x.ownerId === user.id).map(blockerOut));
@@ -384,4 +453,4 @@ function handle(ctx) {
   return err(404, 'Нет такого действия');
 }
 
-module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers'], handle, createProject, collapseConcept, importClickup, hoursOf, logHistory, rebuildItems, domain: PM };
+module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers', 'pmLog'], handle, createProject, collapseConcept, importClickup, hoursOf, logHistory, rebuildItems, domain: PM };

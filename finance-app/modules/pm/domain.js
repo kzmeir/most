@@ -631,8 +631,133 @@
   // снимок показателей для ретроспективы
   const retroSnapshot = (h, blockers) => ({ progress: h.progress, zone: h.zone, consumption: h.consumption, curV: h.curV, avgV: h.avgV, addedW: h.addedW, remain: h.remain, forecast: h.forecast, returns: h.returns, blockers: (blockers || []).filter(b => b.status !== 'closed').length });
 
+  // ---- Журнал проекта (pmLog): ручные записи + автоматические события, собранные на лету из того, что уже хранится ----
+  const LOG_TYPES = [['meeting', 'Встреча'], ['decision', 'Решение'], ['client', 'Письмо / звонок заказчику'], ['remark', 'Замечание экспертизы / заказчика'], ['issue', 'Выдача'], ['photo', 'Фото / стройка'], ['note', 'Заметка']];
+  const LOG_TYPE_KEYS = LOG_TYPES.map(x => x[0]);
+  const logTypeLabel = k => (LOG_TYPES.find(x => x[0] === k) || [k, 'Заметка'])[1];
+  const LOG_MAX_TEXT = 4000, LOG_MAX_FILE = 20 * 1024 * 1024, LOG_MAX_FILES = 10, LOG_MAX_BATCH = 500, LOG_MIN_DATE = '2000-01-01';
+  const LOG_FILE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'application/pdf': 'pdf' };
+  const LOG_KEY_RE = /^[a-z0-9]+-[a-z0-9]+\.(png|jpg|webp|gif|pdf)$/;
+  // содержимое файла совпадает с типом (bytes — Buffer или Uint8Array)
+  function logFileSig(ext, bytes) {
+    const b = bytes || []; const s = (i, n) => String.fromCharCode.apply(null, Array.prototype.slice.call(b, i, i + n));
+    if (ext === 'png') return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+    if (ext === 'jpg') return b[0] === 0xff && b[1] === 0xd8;
+    if (ext === 'gif') return s(0, 4) === 'GIF8';
+    if (ext === 'webp') return s(0, 4) === 'RIFF' && s(8, 4) === 'WEBP';
+    if (ext === 'pdf') return s(0, 5) === '%PDF-';
+    return false;
+  }
+  // кто добавляет записи: ГИП/ПМ проекта и руководители, участники проекта, сотрудник в «своём» проекте, все, кто может править хотя бы один пункт проекта
+  const canLogAdd = (u, p, items) => !!u && !!p && (isManager(u, p) || memberIds(p).includes(u.id) || (isStaff(u) && staffSees(u, p, items)) || (items || []).some(i => i.pid === p.id && canEditItem(u, p, i)));
+  // править и удалять запись — автор или ГИП/ПМ проекта и руководители
+  const canLogEdit = (u, p, rec) => !!u && !!rec && (isManager(u, p) || rec.by === u.id);
+  // дата записи: ДД.ММ.ГГГГ, ДД.ММ.ГГ, ГГГГ-ММ-ДД → ГГГГ-ММ-ДД; '' — если не дата или несуществующий день
+  function logDate(v) {
+    const s = String(v == null ? '' : v).trim(); let m, y, mo, d;
+    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) [y, mo, d] = [m[1], m[2], m[3]];
+    else if ((m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2}|\d{4})$/))) [d, mo, y] = [m[1], m[2], m[3].length === 2 ? '20' + m[3] : m[3]];
+    else return '';
+    const out = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`; const dt = new Date(out + 'T00:00:00Z');
+    return !isNaN(dt) && dt.toISOString().slice(0, 10) === out ? out : '';
+  }
+  // проверка и очистка записи: → { rec } или { error }
+  function cleanLog(body, t) {
+    body = body || {}; t = t || today();
+    const date = body.date ? logDate(body.date) : t; if (!date) return { error: 'Дата: ДД.ММ.ГГГГ' };
+    if (date > t) return { error: 'Дата в будущем — журнал о том, что уже произошло' }; if (date < LOG_MIN_DATE) return { error: 'Слишком ранняя дата' };
+    const text = String(body.text || '').trim().slice(0, LOG_MAX_TEXT); if (!text) return { error: 'Напишите, что произошло' };
+    const type = LOG_TYPE_KEYS.includes(body.type) ? body.type : 'note';
+    return { rec: { date, type, text, participants: String(body.participants || '').trim().slice(0, 500) } };
+  }
+  // тип по началу текста: «Встреча: …», «Решение — …», «Письмо заказчику: …» → [тип, текст без метки] (первое слово метки из 1–3 слов)
+  const LOG_TYPE_WORDS = { meeting: ['встреча', 'совещание', 'планерка'], decision: ['решение', 'решили'], client: ['письмо', 'звонок', 'созвон', 'созвонились'], remark: ['замечание', 'замечания'], issue: ['выдача', 'выдали', 'передали'], photo: ['фото', 'стройка', 'площадка'], note: ['заметка'] };
+  function logTypeFromText(text, def) {
+    const s = String(text || ''); const m = s.match(/^\s*([А-Яа-яЁё /]+?)\s*[:—–-]\s+(.*)$/s);
+    if (m) { const w = normTitle(m[1]).split(' '); const hit = w.length <= 3 && Object.keys(LOG_TYPE_WORDS).find(k => LOG_TYPE_WORDS[k].includes(w[0])); if (hit) return [hit, m[2].trim()]; }
+    return [def || 'note', s.trim()];
+  }
+  // импорт пачкой: строки «ДД.ММ.ГГГГ — текст» (разделитель — тире, двоеточие или пробел); строка без даты продолжает предыдущую запись.
+  // В начале текста можно указать тип: «12.03.2026 — Встреча: …». → { rows: [{ date, type, text, line }], errors: [{ line, text, reason }] }
+  function parseLogBatch(text, opts) {
+    opts = opts || {}; const t = opts.today || today(); const def = LOG_TYPE_KEYS.includes(opts.type) ? opts.type : 'note';
+    const rows = [], errors = []; let cur = null;
+    String(text || '').replace(/\r/g, '').split('\n').forEach((raw, i) => {
+      const line = raw.trim(); if (!line) { cur = null; return; }
+      const m = line.match(/^(\d{1,2}[./]\d{1,2}[./](?:\d{4}|\d{2})|\d{4}-\d{1,2}-\d{1,2})\s*(?:[—–:-]\s*|\s+)(.*)$/);
+      if (!m) { if (cur) { cur.text = (cur.text + '\n' + line).slice(0, LOG_MAX_TEXT); return; } errors.push({ line: i + 1, text: line, reason: 'нет даты в начале строки' }); return; }
+      const date = logDate(m[1]); const [type, body] = logTypeFromText(m[2], def);
+      if (!date) { errors.push({ line: i + 1, text: line, reason: 'нет такой даты' }); cur = null; return; }
+      if (date > t) { errors.push({ line: i + 1, text: line, reason: 'дата в будущем' }); cur = null; return; }
+      if (date < LOG_MIN_DATE) { errors.push({ line: i + 1, text: line, reason: 'слишком ранняя дата' }); cur = null; return; }
+      if (!body) { errors.push({ line: i + 1, text: line, reason: 'нет текста' }); cur = null; return; }
+      cur = { date, type, text: body.slice(0, LOG_MAX_TEXT), line: i + 1 }; rows.push(cur);
+    });
+    if (rows.length > LOG_MAX_BATCH) { errors.push({ line: rows[LOG_MAX_BATCH].line, text: '', reason: `больше ${LOG_MAX_BATCH} записей за раз — разбейте на части` }); rows.length = LOG_MAX_BATCH; }
+    return { rows, errors };
+  }
+  // ISO-время → дата по Алматы
+  const almatyDate = at => { const d = new Date(at); return isNaN(d) ? '' : d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Almaty' }); };
+  const PROJ_HIST_FIELDS = ['status', 'start', 'due', 'forecast', 'name'];
+  const PROJ_HIST_LABEL = { status: 'Статус', start: 'Старт', due: 'Дата по договору', forecast: 'Прогноз', name: 'Название' };
+  // история карточки проекта (статус, сроки, название): последние 50 изменений — кто, когда, что
+  function projectHistory(p, patch, userId, note) {
+    const h = Array.isArray(p.history) ? p.history.slice() : []; const at = new Date().toISOString();
+    for (const k of PROJ_HIST_FIELDS) if (k in patch && String(patch[k] == null ? '' : patch[k]) !== String(p[k] == null ? '' : p[k])) h.push(Object.assign({ at, by: userId || '', field: k, from: p[k] == null ? '' : p[k], to: patch[k] == null ? '' : patch[k] }, note ? { note } : {}));
+    return h.slice(-50);
+  }
+  const fmtD = v => { const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}.${m[2]}.${m[1]}` : (v ? String(v) : '—'); };
+  // лента проекта: записи журнала + события из карточки, пунктов (it.history), блокеров и ретро. Новые сверху.
+  // Массовые отметки (импорт, дорожная карта) одного дня и автора сворачиваются в одно событие.
+  function projectFeed(p, items, blockers, logs, opts) {
+    opts = opts || {}; const ev = []; const add = e => { if (e.date) ev.push(Object.assign({ kind: 'auto', at: '', by: '', text: '' }, e)); };
+    for (const r of logs || []) if (r.pid === p.id) ev.push(Object.assign({}, r, { kind: 'log', at: r.createdAt || '' }));
+    if (p.createdAt) add({ type: 'created', date: almatyDate(p.createdAt), at: p.createdAt, by: p.createdBy || '', text: `Проект заведён в системе${p.imported && p.imported.source ? ` (импорт: ${p.imported.source})` : ''}` });
+    for (const e of p.history || []) add({ type: e.field === 'status' ? 'status' : 'dates', date: almatyDate(e.at), at: e.at, by: e.by, text: `${PROJ_HIST_LABEL[e.field] || e.field}: ${['start', 'due', 'forecast'].includes(e.field) ? `${fmtD(e.from)} → ${fmtD(e.to)}` : `${e.from || '—'} → ${e.to || '—'}`}${e.note ? ` (${e.note})` : ''}` });
+    if (p.handedAt) add({ type: 'status', date: p.handedAt, text: `Передан на следующую стадию${p.rpId ? ' (РП)' : p.epId ? ' (ЭП)' : ''}` });
+    if (p.collapsedAt) add({ type: 'status', date: p.collapsedAt, text: 'Концепция свёрнута в ЭП (этап 1)' });
+    if (p.rebuiltAt) add({ type: 'dates', date: almatyDate(p.rebuiltAt), at: p.rebuiltAt, by: p.rebuiltBy || '', text: 'Пункты пересобраны по текущему шаблону' });
+    const bulk = new Map();
+    for (const it of items || []) {
+      if (it.pid !== p.id) continue; let doneSeen = false;
+      for (const e of it.history || []) {
+        if (e.field === 'created') { add({ type: 'item', date: almatyDate(e.at), at: e.at, by: e.by, text: `Добавлен пункт: ${it.title}`, ref: it.id }); continue; }
+        if (e.field !== 'done') continue; const on = e.to === true || e.to === 'true'; if (on) doneSeen = true;
+        const x = { type: on ? 'done' : 'undone', date: almatyDate(e.at), at: e.at, by: e.by, text: `${on ? 'Сделано' : 'Возвращён в работу'}: ${it.title}${e.note ? ` (${e.note})` : ''}`, ref: it.id, title: it.title, note: e.note || '' };
+        if (e.note) { const k = [x.type, x.date, x.by, e.note].join('|'); if (!bulk.has(k)) bulk.set(k, []); bulk.get(k).push(x); } else add(x);
+      }
+      if (it.done && !doneSeen && it.doneAt && /^\d{4}-\d{2}-\d{2}$/.test(it.doneAt)) add({ type: 'done', date: it.doneAt, by: it.doneBy && !['import', 'clickup'].includes(it.doneBy) ? it.doneBy : '', text: `Сделано: ${it.title}${it.doneNote ? ` (${it.doneNote})` : ''}`, ref: it.id });
+    }
+    for (const list of bulk.values()) {
+      if (list.length < 6) { list.forEach(add); continue; }
+      const x = list[0]; add({ type: x.type, date: x.date, at: x.at, by: x.by, text: `${x.type === 'done' ? 'Отмечено сделанными' : 'Возвращено в работу'}: ${list.length} пунктов (${x.note})`, titles: list.map(y => y.title) });
+    }
+    for (const b of blockers || []) {
+      if (b.pid !== p.id) continue;
+      add({ type: 'blocker', date: b.since || almatyDate(b.createdAt), at: b.createdAt || '', by: b.createdBy || '', text: `Блокер: ${b.what}${b.holder ? ` — ждём: ${b.holder}` : ''}`, ref: b.id });
+      if (b.status === 'closed' && b.closedAt) add({ type: 'blocker-closed', date: b.closedAt, by: b.closedBy || '', text: `Блокер снят: ${b.what}`, ref: b.id });
+    }
+    for (const r of p.retros || []) { const s = r.snapshot || {}; add({ type: 'retro', date: r.date, by: r.by || '', text: `Ретроспектива${s.progress != null ? `: выполнено ${Math.round(s.progress * 100)} %` : ''}${r.interpret ? ` — ${String(r.interpret).slice(0, 200)}` : ''}`, ref: r.id }); }
+    return ev.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.at || '').localeCompare(String(a.at || '')) || (a.kind === 'log' ? -1 : 0) - (b.kind === 'log' ? -1 : 0));
+  }
+  const AUTO_LABEL = { created: 'Проект', status: 'Статус', dates: 'Сроки', item: 'Пункт', done: 'Сделано', undone: 'Возврат', blocker: 'Блокер', 'blocker-closed': 'Блокер снят', retro: 'Ретро' };
+  const feedLabel = e => e.kind === 'log' ? logTypeLabel(e.type) : (AUTO_LABEL[e.type] || 'Событие');
+  // фильтр ленты: mode 'log' — только записи; q — слова через пробел (все должны встретиться в тексте, типе, участниках, авторе)
+  function filterFeed(events, o) {
+    o = o || {}; const words = String(o.q || '').toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(Boolean); const nameOf = o.nameOf || (() => '');
+    return (events || []).filter(e => (o.mode !== 'log' || e.kind === 'log') && (!words.length || (s => words.every(w => s.includes(w)))([e.text, e.participants, feedLabel(e), nameOf(e.by), fmtD(e.date), (e.files || []).map(f => f.name).join(' ')].join(' ').toLowerCase().replace(/ё/g, 'е'))));
+  }
+  // лента в CSV для Excel (разделитель «;», BOM добавляет вызывающий)
+  function feedCsv(events, nameOf) {
+    nameOf = nameOf || (() => ''); const q = v => { const s = String(v == null ? '' : v); return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const rows = [['Дата', 'Источник', 'Тип', 'Запись', 'Участники', 'Автор', 'Вложения']];
+    for (const e of events || []) rows.push([fmtD(e.date), e.kind === 'log' ? 'запись' : 'событие', feedLabel(e), e.text + (e.titles ? ': ' + e.titles.join('; ') : ''), e.participants || '', nameOf(e.by) || '', (e.files || []).map(f => f.name || f.key).join(', ')]);
+    return rows.map(r => r.map(q).join(';')).join('\r\n');
+  }
+
   return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, TEMPLATE_VERSION, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, normCode, depItems, waitingFor, roadmapStatus, PM_ROLES, SETTINGS_DEFAULT, pmSettings, isStaff, memberIds, staffSees, STAFF_ITEM_FIELDS, trackPath, defaultTracks, userTracks, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
     parseCsv, CLICKUP_FIELDS, clickupAutoMap, parseAnyDate, splitList, CLICKUP_DONE, clickupStatus, normTitle, findItemByTitle, matchUser, clickupToProjects, crc32, zipStore, xlsx, registryExport, ZONE_NAME_RU,
     W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot,
-    KANBAN, KANBAN_KEYS, KANBAN_OPEN, KANBAN_PROJECT_HIDDEN, rmKanban, itemKanban, kanbanPatch, canMoveProject };
+    KANBAN, KANBAN_KEYS, KANBAN_OPEN, KANBAN_PROJECT_HIDDEN, rmKanban, itemKanban, kanbanPatch, canMoveProject,
+    LOG_TYPES, LOG_TYPE_KEYS, logTypeLabel, LOG_MAX_TEXT, LOG_MAX_FILE, LOG_MAX_FILES, LOG_MAX_BATCH, LOG_FILE_TYPES, LOG_KEY_RE, logFileSig, canLogAdd, canLogEdit, logDate, cleanLog, logTypeFromText, parseLogBatch, almatyDate, PROJ_HIST_FIELDS, projectHistory, projectFeed, feedLabel, filterFeed, feedCsv };
 });
