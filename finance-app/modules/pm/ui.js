@@ -87,8 +87,9 @@ function pmHelp(T) {
 </ul>`, S('p')],
     ['Как редактировать', `
 <ul>
-<li><b>Проект</b> (название, статус, заказчик, ГИП/ПМ, старт и дата по договору, договор, папка): в шапке карточки кнопка <b>«✎ Редактировать проект»</b>. Её видят владелец, партнёр, ПМ и ГИП этого проекта; остальным в шапке написано, почему править нельзя и что можно.</li>
-<li><b>Пункт</b>: кнопка <b>«✎ Изменить»</b> справа в строке пункта (на вкладке «Этапы») или на карточке в «Канбане», либо щелчок по подчёркнутому названию пункта. В окне — статус (колонка канбана), срок, исполнитель, подрядчик, «чем подтверждено», заметка; ГИП/ПМ правят ещё название, этап, роль и оценку. Кнопка «🕓 История изменений» — кто и когда что менял.</li>
+<li><b>Правка на месте</b>: щёлкните (на телефоне — коснитесь) по полю — оно станет полем ввода прямо там же. <b>Enter</b> или щелчок мимо — сохранить, <b>Esc</b> — отмена (в заметке Shift+Enter — новая строка). Так правятся: в шапке — название, заказчик, статус, риск, ГИП и ПМ (руководитель), старт, дата по договору, адрес, площадь, папка; у пункта — название (ГИП/ПМ), срок, исполнитель, заметка (у пустой — «+ заметка» при наведении); в канбане — название карточки; в «Журнале» — текст своей записи. Поле, которое можно править, подсвечивается при наведении и показывает ✎; без прав подсветки нет, а в шапке написано, кто может править.</li>
+<li><b>Проект целиком</b> (название, статус, заказчик, ГИП/ПМ, старт и дата по договору, договор, папка): в шапке карточки кнопка <b>«✎ Редактировать проект»</b>. Её видят владелец, партнёр, ПМ и ГИП этого проекта; остальным в шапке написано, почему править нельзя и что можно.</li>
+<li><b>Пункт целиком</b>: кнопка <b>«✎ Изменить»</b> справа в строке пункта (на вкладке «Этапы», в «Моих задачах») или на карточке в «Канбане». В окне — статус (колонка канбана), срок, исполнитель, подрядчик, «чем подтверждено», заметка; ГИП/ПМ правят ещё название, этап, роль и оценку. Кнопка «🕓 История изменений» — кто и когда что менял.</li>
 <li><b>Галочка</b> слева — «сделано» (то же, что колонка «Готово» в канбане). Снять галочку — вернуть пункт в работу (считается возвратом).</li>
 <li>Кто что правит: ГИП/ПМ проекта и руководители — всё; руководитель раздела — пункты своего раздела; исполнитель — свой пункт; сотрудник (staff) — только статус, «чем подтверждено» и заметку своего пункта.</li>
 <li>«+ Пункт» в заголовке этапа — новый пункт (ГИП/ПМ). Подсказку «Как работать» вверху карточки можно закрыть крестиком — она больше не появится в этом браузере.</li>
@@ -142,6 +143,12 @@ function pmInit(ui, T) {
 .pm-noedit{font-size:12.5px;color:var(--ink-soft);margin:-6px 0 12px}
 .pm-tl{color:inherit;text-decoration:none;border-bottom:1px dashed var(--line-strong);cursor:pointer}.pm-tl:hover{color:var(--accent);border-bottom-color:var(--accent)}
 .pm-kact{margin-top:6px}
+[data-ie]{cursor:text;border-radius:4px;transition:background-color .12s,box-shadow .12s}[data-ie][data-k=select]{cursor:pointer}
+@media(hover:hover){[data-ie]:hover{background:var(--accent-soft);box-shadow:0 0 0 3px var(--accent-soft)}[data-ie]:not(.pm-ie-on):hover::after{content:' ✎';font-size:11px;color:var(--ink-faint);font-weight:400}}
+.pm-ie-on{background:none!important;box-shadow:none!important;display:block}.pm-ie-inp{width:100%;min-width:120px;font:inherit;font-size:13.5px;padding:4px 6px;box-sizing:border-box}textarea.pm-ie-inp{resize:vertical}
+.pm-ie-empty{color:var(--ink-faint);font-size:12px}@media(hover:hover){.pm-item:not(:hover) .pm-ie-empty:not(.pm-ie-on){visibility:hidden}}
+.pm-flds{margin-top:4px}.pm-flds b{font-weight:600}
+h1[data-ie]{display:inline-block;padding:0 4px;margin-left:-4px}
 @media(max-width:600px){.pm-lbl{display:none}}
 .pm-logq{padding:10px 12px;margin-bottom:12px}.pm-logq .error:empty{display:none}.pm-logq-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pm-logq-row>input[name=text]{flex:1 1 260px;min-width:0}.pm-logq-row>select,.pm-logq-row>input[type=date]{flex:0 1 auto;width:auto;min-width:0;max-width:100%}.pm-logq-row>input[name=participants]{flex:1 1 220px;min-width:0}
 .pm-logq-more{margin-top:8px}.pm-logq-more>summary{cursor:pointer;font-size:12.5px;color:var(--ink-soft)}.pm-logq-more .pm-logq-row{margin-top:8px}.pm-file-btn{position:relative;overflow:hidden}.pm-file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
@@ -309,7 +316,9 @@ function pmInit(ui, T) {
       const link = t => `${cardLink(p.id, p.track)}&tab=${t}`;
       const next = PM.NEXT_TRACK[p.track];
       const btns = [c.canEdit ? `<button class="btn" data-act="pmPlan">⇶ Разложить сроки</button>` : '', c.canEdit && next && !p[next + 'Id'] ? `<button class="btn" data-act="pmHandover">${p.track === 'concept' ? '→ Свернуть в ЭП' : `→ Передать в ${esc(PM.TRACK_SHORT[next])}`}</button>` : '', c.canEdit ? `<button class="btn primary" data-act="pmEdit" title="Название, статус, заказчик, ГИП/ПМ, сроки, договор, папка">✎ Редактировать проект</button>` : '', c.leader ? `<button class="btn" data-act="pmRebuild" title="Пересобрать пункты по текущему шаблону">⟳ Шаблон</button>` : '', c.leader ? `<button class="btn danger" data-act="pmDel">✕</button>` : ''].filter(Boolean).join(' ');
-      const sub = `<div class="pm-sub">${chip(p.track, TRACK_CHIP)} ${chip(p.status, STATUS_CHIP)} ${p.risk && p.risk !== 'Низкий' ? chip(p.risk, RISK_CHIP) : ''}${p.client ? `<span>${esc(p.client)}</span>` : ''}${p.gipId ? `<span>ГИП: <b>${esc(pname(p.gipId))}</b></span>` : ''}${p.pmId ? `<span>ПМ: <b>${esc(pname(p.pmId))}</b></span>` : ''}${p.folder ? `<a href="file:///${esc(p.folder.replace(/\\/g, '/'))}" title="Откроется, если браузер разрешает file://; иначе — скопируйте путь">📁 Папка</a><button class="btn sm" data-act="pmCopy" data-text="${esc(p.folder)}">Скопировать путь</button>` : ''}${c.ep && pmTrackPath(p.track) === 'rp' ? `<a href="${cardLink(c.ep.id, 'ep')}" title="Эскизный проект этого объекта">← ЭП этого объекта</a>` : ''}${c.rp && pmTrackPath(p.track) === 'ep' ? `<a href="${cardLink(c.rp.id, 'rp')}" title="Рабочий проект этого объекта">РП этого объекта →</a>` : ''}</div>`;
+      const E = c.canEdit; const pf = (f, label, shown, val, k, o, edit) => (edit === undefined ? E : edit) ? `<span>${label ? label + ': ' : ''}<b${ieAttr('proj', p.id, f, val, k, o)}>${shown || '<span class="faint">—</span>'}</b></span>` : shown ? `<span>${label ? label + ': ' : ''}<b>${shown}</b></span>` : '';
+      const sub = `<div class="pm-sub">${chip(p.track, TRACK_CHIP)} ${E ? `<span${ieAttr('proj', p.id, 'status', p.status, 'select', 'status')}>${chip(p.status, STATUS_CHIP)}</span>` : chip(p.status, STATUS_CHIP)} ${E ? `<span${ieAttr('proj', p.id, 'risk', p.risk || 'Низкий', 'select', 'risk')}>${chip(p.risk || 'Низкий', RISK_CHIP)}</span>` : p.risk && p.risk !== 'Низкий' ? chip(p.risk, RISK_CHIP) : ''}${pf('client', E ? 'Заказчик' : '', esc(p.client || ''), p.client)}${pf('gipId', 'ГИП', esc(pname(p.gipId)), p.gipId, 'select', 'leads', !!c.leader)}${pf('pmId', 'ПМ', esc(pname(p.pmId)), p.pmId, 'select', 'leads', !!c.leader)}${p.folder ? `<a href="file:///${esc(p.folder.replace(/\\/g, '/'))}" title="Откроется, если браузер разрешает file://; иначе — скопируйте путь">📁 Папка</a><button class="btn sm" data-act="pmCopy" data-text="${esc(p.folder)}">Скопировать путь</button>` : ''}${c.ep && pmTrackPath(p.track) === 'rp' ? `<a href="${cardLink(c.ep.id, 'ep')}" title="Эскизный проект этого объекта">← ЭП этого объекта</a>` : ''}${c.rp && pmTrackPath(p.track) === 'ep' ? `<a href="${cardLink(c.rp.id, 'rp')}" title="Рабочий проект этого объекта">РП этого объекта →</a>` : ''}</div>` +
+        `<div class="pm-sub pm-flds">${pf('start', 'Старт', p.start ? fdate(p.start) : '', p.start, 'date')}${pf('due', 'Дата по договору', p.due ? fdate(p.due) : '', p.due, 'date')}${pf('address', 'Адрес', esc(p.address || ''), p.address)}${pf('area', 'Площадь, м²', esc(p.area || ''), p.area)}${E ? pf('folder', 'Папка', p.folder ? `<span class="pm-path">${esc(cut(p.folder, 48))}</span>` : '', p.folder) : ''}</div>`;
       const deadline = p.forecast || p.due;
       main.innerHTML = `<p class="faint" style="margin:0 0 6px"><a href="${listHash(p.track)}">← ${esc(PM.TRACKS[p.track] || 'Проекты')}</a></p>` + head(p.name, sub, btns) +
         `<div class="grid g4 pm-kpi" style="margin-bottom:14px">
@@ -325,6 +334,7 @@ function pmInit(ui, T) {
       // доска проекта (модуль board): встраивается после отрисовки, сам показывает доски проекта, «+ Доска» по правам и «На весь экран»
       if (tab === 'log') loadLog(document.getElementById('pm-log'), p);
       bindHint(main);
+      { const h1 = main.querySelector('.head h1'); if (h1 && c.canEdit) h1.outerHTML = `<h1${ieAttr('proj', p.id, 'name', p.name)}>${esc(p.name)}</h1>`; }
       if (tab === 'board' && window.MostBoard && window.MostBoard.embed) window.MostBoard.embed(document.getElementById('pm-board'), { pmProjectId: p.id, height: '72vh' });
       // действия карточки
       const canEditAny = c.canEdit;
@@ -344,20 +354,10 @@ function pmInit(ui, T) {
       // пункты
       const dl = `<datalist id="pm-dl-contr">${(c.contractors || []).map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
       const stageOpts = [...new Map(c.items.map(i => [i.stage, i.stageName])).entries()].sort((a, b) => a[0] - b[0]).map(([n, nm]) => [n, nm]);
-      const itemFields = (it, full) => [
-        ...(full ? [{ name: 'title', label: 'Пункт', required: true }, { name: 'stage', label: 'Этап', type: 'select', options: stageOpts, half: true }, { name: 'role', label: 'Роль (кто ведёт)', type: 'select', options: PM.ITEM_ROLES, half: true }, { name: 'weeks', label: 'Оптимистичная оценка, недель (успеем с вероятностью 50 %)', type: 'number', step: '0.1', half: true }, { name: 'weeksMax', label: 'Пессимистичная, недель (90 %; пусто = ×2)', type: 'number', step: '0.1', half: true }, { name: 'crit', label: 'Критерий приёмки' }] : []),
-        { name: 'kstatus', label: 'Статус (колонка канбана; «Готово» = сделано)', type: 'select', options: PM.KANBAN, half: true },
-        ...(c.staff ? [{ name: 'doneNote', label: 'Чем подтверждено (документ, письмо)', half: true }] : [{ name: 'na', label: 'Не требуется в этом проекте', type: 'select', options: [['false', 'Нет — пункт нужен'], ['true', 'Да — не требуется']], half: true },
-          { name: 'due', label: 'Срок', type: 'date', half: true }, { name: 'assigneeId', label: 'Исполнитель (сотрудник)', type: 'select', options: userOpts(), half: true },
-          { name: 'contractor', label: 'Исполнитель-подрядчик (субподряд; ведёт руководитель раздела)', list: 'pm-dl-contr' }, { name: 'doneNote', label: 'Чем подтверждено (документ, письмо)' }]),
-        { name: 'note', label: 'Заметка', type: 'textarea' },
-      ];
-      const itemBody = v => { if ('na' in v) v.na = v.na === 'true'; if ('weeks' in v) v.weeks = Number(String(v.weeks).replace(',', '.')) || 1; if ('weeksMax' in v) v.weeksMax = Number(String(v.weeksMax).replace(',', '.')) || 0; if ('stage' in v) v.stage = Number(v.stage); return v; };
+      const itemBody = pmItemBody;
       ui.ACT.pmItemAdd = ({ stage }) => modal('Новый пункт', dl + formHtml([{ name: 'title', label: 'Пункт', required: true }, { name: 'stage', label: 'Этап', type: 'select', options: stageOpts, half: true }, { name: 'role', label: 'Роль (кто ведёт)', type: 'select', options: PM.ITEM_ROLES, half: true }, { name: 'weeks', label: 'Недель', type: 'number', step: '0.1', half: true }, { name: 'due', label: 'Срок', type: 'date', half: true }, { name: 'crit', label: 'Критерий приёмки' }, { name: 'assigneeId', label: 'Исполнитель', type: 'select', options: userOpts(), half: true }, { name: 'contractor', label: 'Подрядчик', list: 'pm-dl-contr', half: true }, { name: 'note', label: 'Заметка' }], { stage: Number(stage) || 1, role: 'ГИП', weeks: 1 }, 'Добавить'), async v => { await api(`/pm/projects/${p.id}/items`, { method: 'POST', body: itemBody(v) }); toast('Пункт добавлен'); rerender(); });
       ui.ACT.pmItemHist = ({ id: iid }) => { const it = c.items.find(x => x.id === iid); if (it) histModal(it); };
-      ui.ACT.pmItemEdit = ({ id: iid }) => { const it = c.items.find(x => x.id === iid); if (!it) return; const kcol = it.kcol || PM.itemKanban(it);
-        modal(canEditAny ? 'Изменить пункт' : c.staff ? 'Пункт: статус и заметка' : 'Пункт: статус, срок, исполнитель, заметка', dl + `<div class="pm-sub" style="margin:0 0 8px"><span class="faint"><b>${esc(it.stageName)}</b>${canEditAny ? '' : ` · ${esc(it.title)}${it.crit ? ` · критерий: ${esc(it.crit)}` : ''}`}</span>${(it.history || []).length ? '<button type="button" class="btn sm" id="pm-ih">🕓 История изменений</button>' : ''}</div>` + formHtml(itemFields(it, canEditAny), Object.assign({}, it, { na: it.na ? 'true' : 'false', kstatus: kcol })), async v => { if (v.kstatus === kcol) delete v.kstatus; itemBody(v); for (const k of Object.keys(v)) if (String(v[k] == null ? '' : v[k]) === String(it[k] == null ? '' : it[k]) || (!v[k] && !it[k])) delete v[k]; if (!Object.keys(v).length) { toast('Без изменений'); return; } await api('/pm/items/' + iid, { method: 'PUT', body: v }); toast('Сохранено'); rerender(); badges(true); });
-        const hb = document.getElementById('pm-ih'); if (hb) hb.onclick = () => histModal(it); };
+      ui.ACT.pmItemEdit = ({ id: iid }) => { const it = c.items.find(x => x.id === iid); if (it) itemEditModal(it, { full: canEditAny, staff: !!c.staff, stageOpts, contractors: c.contractors }); };
       ui.ACT.pmItemDel = async ({ id: iid }) => { if (!confirm('Удалить пункт?')) return; await api('/pm/items/' + iid, { method: 'DELETE' }); toast('Удалено'); rerender(); };
       bindChecks(main);
       if (tab === 'kanban') {
@@ -372,12 +372,75 @@ function pmInit(ui, T) {
       ui.ACT.pmBlDel = async ({ id: bid }) => { if (!confirm('Удалить блокер?')) return; await api('/pm/blockers/' + bid, { method: 'DELETE' }); toast('Удалено'); rerender(); };
       bind(main);
     };
+    // ---- окно правки пункта (карточка, канбан, «Мои задачи»): статус-колонка, «История», поля по правам; отправляются только изменённые поля ----
+    function pmItemBody(v) { if ('na' in v) v.na = v.na === 'true'; if ('weeks' in v) v.weeks = Number(String(v.weeks).replace(',', '.')) || 1; if ('weeksMax' in v) v.weeksMax = Number(String(v.weeksMax).replace(',', '.')) || 0; if ('stage' in v) v.stage = Number(v.stage); return v; }
+    function itemEditModal(it, o) {
+      o = o || {}; const kcol = it.kcol || PM.itemKanban(it); const full = !!o.full, staffOnly = !!o.staff;
+      const dl = `<datalist id="pm-dl-contr">${(o.contractors || []).map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+      const fields = [
+        ...(full ? [{ name: 'title', label: 'Пункт', required: true }, { name: 'stage', label: 'Этап', type: 'select', options: o.stageOpts || [], half: true }, { name: 'role', label: 'Роль (кто ведёт)', type: 'select', options: PM.ITEM_ROLES, half: true }, { name: 'weeks', label: 'Оптимистичная оценка, недель (успеем с вероятностью 50 %)', type: 'number', step: '0.1', half: true }, { name: 'weeksMax', label: 'Пессимистичная, недель (90 %; пусто = ×2)', type: 'number', step: '0.1', half: true }, { name: 'crit', label: 'Критерий приёмки' }] : []),
+        { name: 'kstatus', label: 'Статус (колонка канбана; «Готово» = сделано)', type: 'select', options: PM.KANBAN, half: true },
+        ...(staffOnly ? [{ name: 'doneNote', label: 'Чем подтверждено (документ, письмо)', half: true }] : [{ name: 'na', label: 'Не требуется в этом проекте', type: 'select', options: [['false', 'Нет — пункт нужен'], ['true', 'Да — не требуется']], half: true },
+          { name: 'due', label: 'Срок', type: 'date', half: true }, { name: 'assigneeId', label: 'Исполнитель (сотрудник)', type: 'select', options: userOpts(), half: true },
+          { name: 'contractor', label: 'Исполнитель-подрядчик (субподряд; ведёт руководитель раздела)', list: 'pm-dl-contr' }, { name: 'doneNote', label: 'Чем подтверждено (документ, письмо)' }]),
+        { name: 'note', label: 'Заметка', type: 'textarea' },
+      ];
+      modal(full ? 'Изменить пункт' : staffOnly ? 'Пункт: статус и заметка' : 'Пункт: статус, срок, исполнитель, заметка', dl + `<div class="pm-sub" style="margin:0 0 8px"><span class="faint">${o.project ? `<b>${esc(o.project)}</b> · ` : ''}<b>${esc(it.stageName || '')}</b>${full ? '' : ` · ${esc(it.title)}${it.crit ? ` · критерий: ${esc(it.crit)}` : ''}`}</span>${(it.history || []).length ? '<button type="button" class="btn sm" id="pm-ih">🕓 История изменений</button>' : ''}</div>` + formHtml(fields, Object.assign({}, it, { na: it.na ? 'true' : 'false', kstatus: kcol })),
+        async v => { if (v.kstatus === kcol) delete v.kstatus; pmItemBody(v); for (const k of Object.keys(v)) if (String(v[k] == null ? '' : v[k]) === String(it[k] == null ? '' : it[k]) || (!v[k] && !it[k])) delete v[k]; if (!Object.keys(v).length) { toast('Без изменений'); return; } await api('/pm/items/' + encodeURIComponent(it.id), { method: 'PUT', body: v }); toast('Сохранено'); rerender(); badges(true); });
+      const hb = document.getElementById('pm-ih'); if (hb) hb.onclick = () => histModal(it);
+    }
+    // ---- правка на месте: щелчок по полю → поле ввода в строке; Enter или уход фокуса — сохранить, Esc — отмена ----
+    // Разметка: data-ie="item|proj|log" data-id data-f="поле" data-k="text|date|select|textarea" data-o="список для select" data-v="текущее значение".
+    // Права решает тот, кто рисует атрибут (без права — атрибута нет), сервер проверяет ещё раз. Ошибка — старое значение и тост.
+    const IE_SAVE = {
+      item: (id, f, v) => api('/pm/items/' + encodeURIComponent(id), { method: 'PUT', body: { [f]: v } }),
+      proj: (id, f, v) => api('/pm/projects/' + encodeURIComponent(id), { method: 'PUT', body: { [f]: v } }),
+      log: (id, f, v) => api('/pm/log/' + encodeURIComponent(id), { method: 'PUT', body: { [f]: v } }),
+    };
+    const IE_OPTS = { users: () => userOpts(), leads: () => userOpts(LEAD_ROLES), status: () => PM.STATUS.map(x => [x, x]), risk: () => PM.RISK.map(x => [x, x]) };
+    const IE_REQUIRED = { name: 'Название не может быть пустым', title: 'Название пункта не может быть пустым', text: 'Текст записи не может быть пустым' };
+    const ieAttr = (kind, id, f, v, k, o) => ` data-ie="${kind}" data-id="${esc(id)}" data-f="${f}" data-k="${k || 'text'}"${o ? ` data-o="${o}"` : ''} data-v="${esc(v == null ? '' : v)}" title="Щёлкните, чтобы изменить"`;
+    function ieStart(el) {
+      const k = el.dataset.k || 'text', old = el.dataset.v || '', html = el.innerHTML; let inp;
+      if (k === 'select') { inp = document.createElement('select'); inp.innerHTML = (IE_OPTS[el.dataset.o] || (() => []))().map(([v, l]) => `<option value="${esc(v)}"${String(v) === old ? ' selected' : ''}>${esc(l)}</option>`).join(''); }
+      else if (k === 'textarea') { inp = document.createElement('textarea'); inp.rows = Math.min(8, Math.max(3, old.split('\n').length + 1)); inp.value = old; }
+      else { inp = document.createElement('input'); inp.type = k === 'date' ? 'date' : 'text'; inp.value = old; if (k === 'date' && el.dataset.max) inp.max = el.dataset.max; }
+      inp.className = 'pm-ie-inp'; inp.setAttribute('aria-label', el.title || 'Изменить');
+      const card = el.closest('[draggable="true"]'); if (card) card.draggable = false;
+      el.classList.add('pm-ie-on'); el.innerHTML = ''; el.appendChild(inp); inp.focus(); if (inp.select && k !== 'select' && k !== 'date') inp.select();
+      let done = false;
+      const restore = () => { el.innerHTML = html; el.classList.remove('pm-ie-on'); if (card) card.draggable = true; };
+      const finish = async save => {
+        if (done) return; done = true; const v = k === 'textarea' ? inp.value.replace(/\s+$/, '') : k === 'select' || k === 'date' ? inp.value : inp.value.trim();
+        if (!save || v === old) { restore(); return; }
+        if (!v && IE_REQUIRED[el.dataset.f]) { toast(IE_REQUIRED[el.dataset.f], 3500); restore(); return; }
+        inp.disabled = true;
+        try { await IE_SAVE[el.dataset.ie](el.dataset.id, el.dataset.f, v); toast('Сохранено'); await rerender(); if (el.dataset.ie === 'item') badges(true); }
+        catch (e) { restore(); toast(e.message || 'Не сохранилось', 4000); }
+      };
+      inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); finish(false); } else if (e.key === 'Enter' && !(k === 'textarea' && e.shiftKey)) { e.preventDefault(); finish(true); } });
+      inp.addEventListener('blur', () => finish(true));
+      if (k === 'select') inp.addEventListener('change', () => finish(true));
+      ['click', 'mousedown', 'touchstart', 'pointerdown', 'dragstart'].forEach(ev => inp.addEventListener(ev, e => e.stopPropagation(), { passive: ev === 'touchstart' }));
+    }
+    // один перехват на документ (оба раздела ЭП/РП): щелчок без сдвига (≤ 5 px) и не долгое нажатие — правка; перетаскивание канбана не трогаем
+    if (!window.__pmInlineEdit) {
+      window.__pmInlineEdit = true; let down = null;
+      document.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: Date.now() }; }, true);
+      document.addEventListener('click', e => {
+        const el = e.target.closest && e.target.closest('[data-ie]'); if (!el || el.classList.contains('pm-ie-on') || !document.getElementById('main').contains(el)) return;
+        if (down && e.detail > 0 && (Math.abs(e.clientX - down.x) > 5 || Math.abs(e.clientY - down.y) > 5 || Date.now() - down.t > 450)) return;
+        const ab = e.target.closest('a[href],button'); if (ab && ab !== el && el.contains(ab)) return;
+        e.preventDefault(); e.stopPropagation(); if (window.__pmIeStart) window.__pmIeStart(el);
+      }, true);
+    }
+    window.__pmIeStart = ieStart;
     // ---- подсказка при первом открытии карточки и строка «почему нельзя править» ----
-    const HINT_KEY = 'pm-hint-card-v1';
-    const hintHtml = () => pmStore.get(HINT_KEY) ? '' : `<div class="pm-hint" id="pm-hint"><div class="grow"><b>Как работать:</b> «✎ Изменить» (или щелчок по названию пункта) — срок, исполнитель, статус, заметка; галочка — «сделано»; «✎ Редактировать проект» — карточка проекта; вкладка «Журнал» — история проекта: встречи, решения, письма, фото.</div><button class="btn sm" data-hintclose="1" title="Больше не показывать" aria-label="Закрыть подсказку">✕</button></div>`;
+    const HINT_KEY = 'pm-hint-card-v2';
+    const hintHtml = () => pmStore.get(HINT_KEY) ? '' : `<div class="pm-hint" id="pm-hint"><div class="grow"><b>Как работать:</b> щёлкните по названию, сроку, исполнителю или заметке пункта (и по полям в шапке) — они правятся прямо на месте, Enter — сохранить, Esc — отмена; «✎ Изменить» — всё сразу в окне; галочка — «сделано»; «✎ Редактировать проект» — карточка проекта; вкладка «Журнал» — история проекта: встречи, решения, письма, фото.</div><button class="btn sm" data-hintclose="1" title="Больше не показывать" aria-label="Закрыть подсказку">✕</button></div>`;
     const bindHint = root => { const b = root.querySelector('[data-hintclose]'); if (b) b.onclick = () => { pmStore.set(HINT_KEY, '1'); const h = document.getElementById('pm-hint'); if (h) h.remove(); }; };
     const noEditHtml = c => { if (c.canEdit) return ''; const mine = c.items.filter(i => i.canEdit).length;
-      return `<p class="pm-noedit">🔒 Править карточку могут: владелец, партнёр, ПМ и ГИП этого проекта.${mine ? ` Вы можете отмечать и менять свои пункты (${mine}) — «✎ Изменить» у пункта.` : ' Ваших пунктов в проекте нет — только просмотр.'}${c.canLog ? ' Записи в «Журнал» добавлять можно.' : ''}</p>`; };
+      return `<p class="pm-noedit">🔒 Вы вошли как «${esc(me().roleLabel || me().role || '—')}» — править карточку могут: владелец, партнёр, ПМ и ГИП этого проекта.${mine ? ` Вы можете отмечать и менять свои пункты (${mine}) — «✎ Изменить» у пункта.` : ' Ваших пунктов в проекте нет — только просмотр.'}${c.canLog ? ' Записи в «Журнал» добавлять можно.' : ''}</p>`; };
     // ---- журнал проекта: быстрый ввод, лента с событиями, поиск, CSV, импорт списком ----
     const logState = { q: '', mode: pmStore.get('pm-log-mode') === 'log' ? 'log' : 'all', type: 'note', date: '' };
     const LOG_CHIP = { meeting: 'accent', decision: 'ok', client: 'neutral', remark: 'warn', issue: 'ok', photo: 'neutral', note: 'neutral' };
@@ -392,7 +455,7 @@ function pmInit(ui, T) {
     const logEntryHtml = e => {
       if (e.kind !== 'log') return `<div class="pm-log-e auto"><span aria-hidden="true">${AUTO_ICON[e.type] || '•'}</span><span>${esc(e.text)}</span>${e.by ? `<span class="faint">· ${esc(pname(e.by))}</span>` : ''}${e.titles ? `<details><summary>список (${e.titles.length})</summary>${e.titles.map(x => esc(x)).join('<br>')}</details>` : ''}</div>`;
       const files = (e.files || []).map(f => f.type === 'application/pdf' ? `<a class="chip neutral" href="${esc(f.url)}" target="_blank" rel="noopener">📄 ${esc(cut(f.name || f.key, 40))} · ${kb(f.size || 0)}</a>` : `<a href="${esc(f.url)}" target="_blank" rel="noopener" title="${esc(f.name || '')}"><img class="pm-log-img" src="${esc(f.url)}" alt="${esc(f.name || 'вложение')}" loading="lazy"></a>`).join('');
-      return `<div class="pm-log-e"><div class="pm-log-h"><span class="chip ${LOG_CHIP[e.type] || 'neutral'}">${esc(PM.logTypeLabel(e.type))}</span><span class="faint">${esc(pname(e.by))}</span>${e.participants ? `<span class="faint">👥 ${esc(e.participants)}</span>` : ''}${e.canEdit ? `<span class="actions"><button class="btn sm" data-logedit="${esc(e.id)}" title="Изменить запись">✎<span class="pm-lbl"> Изменить</span></button><button class="btn sm danger" data-logdel="${esc(e.id)}" title="Удалить запись">✕</button></span>` : ''}</div><div class="pm-log-text">${esc(e.text)}</div>${files ? `<div class="pm-log-files">${files}</div>` : ''}</div>`;
+      return `<div class="pm-log-e"><div class="pm-log-h"><span class="chip ${LOG_CHIP[e.type] || 'neutral'}">${esc(PM.logTypeLabel(e.type))}</span><span class="faint">${esc(pname(e.by))}</span>${e.participants ? `<span class="faint">👥 ${esc(e.participants)}</span>` : ''}${e.canEdit ? `<span class="actions"><button class="btn sm" data-logedit="${esc(e.id)}" title="Изменить запись">✎<span class="pm-lbl"> Изменить</span></button><button class="btn sm danger" data-logdel="${esc(e.id)}" title="Удалить запись">✕</button></span>` : ''}</div><div class="pm-log-text"${e.canEdit ? ieAttr('log', e.id, 'text', e.text, 'textarea') : ''}>${esc(e.text)}</div>${files ? `<div class="pm-log-files">${files}</div>` : ''}</div>`;
     };
     function logListHtml(d) {
       const list = PM.filterFeed(d.events, { q: logState.q, mode: logState.mode, nameOf: pname }); const nLog = d.events.filter(e => e.kind === 'log').length;
@@ -488,12 +551,13 @@ function pmInit(ui, T) {
       const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `MOST_Планирование_проектов_${today()}.xlsx`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
       toast(`Excel: ${expState.rows.length} проектов, ${sheets[1].rows.length - 1} открытых блокеров`);
     };
+    const ieStaff = () => me().role === 'staff'; // сотрудник меняет только статус, «чем подтверждено» и заметку
     const itemRow = (it, o) => { const over = !it.done && !it.na && it.due && it.due < today(); return `<tr class="pm-item${it.done ? ' done' : ''}${it.na ? ' na' : ''}${over ? ' over' : ''}">
       <td class="pm-chk"><input type="checkbox" data-pmdone="${esc(it.id)}"${it.done ? ' checked' : ''}${it.canEdit && !it.na ? '' : ' disabled'} title="${it.canEdit ? 'Отметить «сделано»' : 'Этот пункт ведёт другой раздел'}"></td>
-      <td>${o && o.project ? `<div class="faint"><a href="${cardLink(it.pid, it.track)}">${esc(it.project)}</a> · ${esc(it.stageName)}</div>` : ''}<div class="pm-t">${it.code ? `<span class="pm-code">${esc(it.code)}</span> ` : ''}${it.canEdit ? `<a class="pm-tl" data-act="pmItemEdit" data-id="${esc(it.id)}" title="Изменить пункт">${esc(it.title)}</a>` : esc(it.title)}${(it.waiting || []).length ? ` <span class="chip warn" title="ждёт закрытия пунктов-блокеров">ждёт: ${esc(it.waiting.join(', '))}</span>` : ''}${it.rmStatus && !it.done ? ` <span class="chip neutral" title="статус из дорожной карты">${esc(it.rmStatus)}</span>` : ''}${it.optional ? ' <span class="chip neutral" title="по необходимости">опц.</span>' : ''}${it.na ? ' <span class="chip neutral">не требуется</span>' : ''}${it.custom ? ' <span class="chip neutral" title="добавлен вручную">доп.</span>' : ''}</div>${it.crit ? `<div class="pm-crit">критерий: ${esc(it.crit)}</div>` : ''}${it.note ? `<div class="pm-note">${esc(it.note)}</div>` : ''}${it.done ? `<div class="pm-crit">сделано${it.doneAt ? ' ' + fdate(it.doneAt) : ''}${it.doneBy ? ' · ' + esc(pname(it.doneBy)) : ''}${it.doneNote ? ' · ' + esc(it.doneNote) : ''}</div>` : ''}</td>
+      <td>${o && o.project ? `<div class="faint"><a href="${cardLink(it.pid, it.track)}">${esc(it.project)}</a> · ${esc(it.stageName)}</div>` : ''}<div class="pm-t">${it.code ? `<span class="pm-code">${esc(it.code)}</span> ` : ''}${o && o.manager ? `<span class="pm-tl"${ieAttr('item', it.id, 'title', it.title)}>${esc(it.title)}</span>` : it.canEdit ? `<a class="pm-tl" data-act="pmItemEdit" data-id="${esc(it.id)}" title="Изменить пункт">${esc(it.title)}</a>` : esc(it.title)}${(it.waiting || []).length ? ` <span class="chip warn" title="ждёт закрытия пунктов-блокеров">ждёт: ${esc(it.waiting.join(', '))}</span>` : ''}${it.rmStatus && !it.done ? ` <span class="chip neutral" title="статус из дорожной карты">${esc(it.rmStatus)}</span>` : ''}${it.optional ? ' <span class="chip neutral" title="по необходимости">опц.</span>' : ''}${it.na ? ' <span class="chip neutral">не требуется</span>' : ''}${it.custom ? ' <span class="chip neutral" title="добавлен вручную">доп.</span>' : ''}</div>${it.crit ? `<div class="pm-crit">критерий: ${esc(it.crit)}</div>` : ''}${it.canEdit ? `<div class="pm-note${it.note ? '' : ' pm-ie-empty'}"${ieAttr('item', it.id, 'note', it.note || '', 'textarea')}>${it.note ? esc(it.note) : '+ заметка'}</div>` : it.note ? `<div class="pm-note">${esc(it.note)}</div>` : ''}${it.done ? `<div class="pm-crit">сделано${it.doneAt ? ' ' + fdate(it.doneAt) : ''}${it.doneBy ? ' · ' + esc(pname(it.doneBy)) : ''}${it.doneNote ? ' · ' + esc(it.doneNote) : ''}</div>` : ''}</td>
       <td class="nowrap">${esc(it.role)}${it.section && it.section !== it.role ? `<div class="faint">${esc(it.section)}</div>` : ''}</td>
-      <td>${it.assigneeId ? esc(pname(it.assigneeId)) : '<span class="faint">—</span>'}${it.contractor ? `<div class="faint" title="исполнитель-подрядчик">🛠 ${esc(it.contractor)}</div>` : ''}</td>
-      <td class="nowrap due">${dueHtml(it.due, it.done)}${!it.done && it.weeks ? `<div class="faint" title="оптимистичная – пессимистичная оценка">${PM.W(it)}–${PM.WMAX(it)} нед.</div>` : ''}${it.returns ? `<div class="faint crit-text" title="снимали отметку «сделано»">возвратов ${it.returns}</div>` : ''}</td>
+      <td>${(v => it.canEdit && !ieStaff() ? `<span${ieAttr('item', it.id, 'assigneeId', it.assigneeId || '', 'select', 'users')}>${v}</span>` : v)(it.assigneeId ? esc(pname(it.assigneeId)) : '<span class="faint">—</span>')}${it.contractor ? `<div class="faint" title="исполнитель-подрядчик">🛠 ${esc(it.contractor)}</div>` : ''}</td>
+      <td class="nowrap due">${it.canEdit && !ieStaff() ? `<span${ieAttr('item', it.id, 'due', it.due || '', 'date')}>${dueHtml(it.due, it.done)}</span>` : dueHtml(it.due, it.done)}${!it.done && it.weeks ? `<div class="faint" title="оптимистичная – пессимистичная оценка">${PM.W(it)}–${PM.WMAX(it)} нед.</div>` : ''}${it.returns ? `<div class="faint crit-text" title="снимали отметку «сделано»">возвратов ${it.returns}</div>` : ''}</td>
       <td><div class="actions">${(it.history || []).length ? `<button class="btn sm" data-act="pmItemHist" data-id="${esc(it.id)}" title="История: кто и когда менял">🕓<span class="pm-lbl"> История</span></button>` : ''}${it.canEdit ? `<button class="btn sm" data-act="pmItemEdit" data-id="${esc(it.id)}" title="Изменить пункт: срок, исполнитель, статус, заметка">✎<span class="pm-lbl"> Изменить</span></button>${o && o.manager ? `<button class="btn sm danger" data-act="pmItemDel" data-id="${esc(it.id)}" title="Удалить">✕</button>` : ''}` : ''}</div></td></tr>`; };
     // канбан пунктов проекта: колонки «К выполнению / В работе / На проверке / Готово» (поле kstatus; «Готово» = отметка «сделано»), «не требуется» не показываются
     const KCOLS = PM.KANBAN.map(([key, label]) => ({ key, label, cls: { todo: 'neutral', doing: 'accent', review: 'warn', done: 'ok' }[key] }));
@@ -504,7 +568,7 @@ function pmInit(ui, T) {
       const list = act.filter(i => !kst || (kst === 'cur' ? i.stage === cur : String(i.stage) === kst));
       const t = today();
       const cards = list.map(it => { const over = !it.done && it.due && it.due < t; return { id: it.id, col: it.kcol || PM.itemKanban(it), canMove: !!it.canEdit, zone: over ? 'red' : '',
-        html: `<div class="kt">${it.code ? `<span class="pm-code">${esc(it.code)}</span> ` : ''}${esc(it.title)}</div><div class="km"><span class="faint">${esc(cut(it.stageName || '', 40))}</span></div><div class="km"><span>${it.assigneeId ? '👤 ' + esc(pname(it.assigneeId)) : `<span class="faint">${esc(it.role || '')}</span>`}</span>${it.contractor ? `<span class="faint" title="исполнитель-подрядчик">🛠 ${esc(cut(it.contractor, 24))}</span>` : ''}</div><div class="km"><span title="${over ? 'просрочено' : 'срок'}">⏱ ${dueHtml(it.due, it.done)}</span>${(it.waiting || []).length && !it.done ? `<span class="chip warn" title="ждёт закрытия пунктов-блокеров">ждёт: ${esc(it.waiting.join(', '))}</span>` : ''}${it.returns ? `<span class="faint crit-text" title="снимали отметку «сделано»">возвр. ${it.returns}</span>` : ''}</div>${it.canEdit || (it.history || []).length ? `<div class="km pm-kact">${it.canEdit ? `<button class="btn sm" data-act="pmItemEdit" data-id="${esc(it.id)}">✎ Изменить</button>` : ''}${(it.history || []).length ? `<button class="btn sm" data-act="pmItemHist" data-id="${esc(it.id)}">🕓 История</button>` : ''}</div>` : ''}` }; });
+        html: `<div class="kt">${it.code ? `<span class="pm-code">${esc(it.code)}</span> ` : ''}${c.canEdit ? `<span${ieAttr('item', it.id, 'title', it.title)}>${esc(it.title)}</span>` : esc(it.title)}</div><div class="km"><span class="faint">${esc(cut(it.stageName || '', 40))}</span></div><div class="km"><span>${it.assigneeId ? '👤 ' + esc(pname(it.assigneeId)) : `<span class="faint">${esc(it.role || '')}</span>`}</span>${it.contractor ? `<span class="faint" title="исполнитель-подрядчик">🛠 ${esc(cut(it.contractor, 24))}</span>` : ''}</div><div class="km"><span title="${over ? 'просрочено' : 'срок'}">⏱ ${dueHtml(it.due, it.done)}</span>${(it.waiting || []).length && !it.done ? `<span class="chip warn" title="ждёт закрытия пунктов-блокеров">ждёт: ${esc(it.waiting.join(', '))}</span>` : ''}${it.returns ? `<span class="faint crit-text" title="снимали отметку «сделано»">возвр. ${it.returns}</span>` : ''}</div>${it.canEdit || (it.history || []).length ? `<div class="km pm-kact">${it.canEdit ? `<button class="btn sm" data-act="pmItemEdit" data-id="${esc(it.id)}">✎ Изменить</button>` : ''}${(it.history || []).length ? `<button class="btn sm" data-act="pmItemHist" data-id="${esc(it.id)}">🕓 История</button>` : ''}</div>` : ''}` }; });
       const opts = [['', `Все этапы (${act.length})`], ['cur', `Текущий этап ${cur}`], ...stages.map(([n, nm]) => [String(n), nm])];
       return `<div class="filters">${sel('pm-k-stage', opts, kst)}<span class="faint">Перетащите карточку в колонку или нажмите «✎ Изменить»${c.items.some(i => i.canEdit) ? '' : ' (нет прав на пункты — только просмотр)'}; на телефоне — долгое нажатие или ⇄. «Готово» = отметка «сделано».${na ? ` Не требуется: ${na} (скрыты).` : ''}</span></div>` + (list.length ? kanbanHtml(KCOLS, cards) : empty('Пунктов нет'));
     }
@@ -594,7 +658,7 @@ function pmInit(ui, T) {
       const byP = new Map(); for (const it of shown) { if (!byP.has(it.pid)) byP.set(it.pid, { pid: it.pid, name: it.project, track: it.track, items: [] }); byP.get(it.pid).items.push(it); }
       main.innerHTML += `<div class="pm-my">${[...byP.values()].map(g => `<div class="card"><h3><a href="${cardLink(g.pid, g.track)}">${esc(g.name)}</a> ${chip(g.track, TRACK_CHIP)} <span class="faint">${g.items.length}</span></h3>${tbl(ITEM_COLS, g.items.map(it => itemRow(Object.assign({}, it, { project: '' }), { manager: false })))}</div>`).join('')}</div>`;
       ui.ACT.pmItemHist = ({ id: iid }) => { const it = list.find(x => x.id === iid); if (it) histModal(it); };
-      ui.ACT.pmItemEdit = ({ id: iid }) => { const it = list.find(x => x.id === iid); if (!it) return; modal('Пункт: срок, исполнитель, заметка', `<p class="faint" style="margin:0 0 8px"><b>${esc(it.project)}</b> · ${esc(it.stageName)}<br>${esc(it.title)}${it.crit ? `<br>критерий: ${esc(it.crit)}` : ''}</p>` + formHtml([{ name: 'due', label: 'Срок', type: 'date', half: true }, { name: 'assigneeId', label: 'Исполнитель', type: 'select', options: userOpts(), half: true }, { name: 'contractor', label: 'Исполнитель-подрядчик' }, { name: 'doneNote', label: 'Чем подтверждено' }, { name: 'note', label: 'Заметка', type: 'textarea' }], it), async v => { await api('/pm/items/' + iid, { method: 'PUT', body: v }); toast('Сохранено'); rerender(); }); };
+      ui.ACT.pmItemEdit = ({ id: iid }) => { const it = list.find(x => x.id === iid); if (it) itemEditModal(it, { full: false, staff: me().role === 'staff', project: it.project }); };
       bindChecks(main); bind(main);
     };
 
