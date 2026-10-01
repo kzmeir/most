@@ -20,8 +20,9 @@ chk('kanbanPatch: снятие галочки → «В работе»', 'false/d
 chk('kanbanPatch: неизвестная колонка отброшена', 'false/false', (p => ('kstatus' in p) + '/' + ('done' in p))(PM.kanbanPatch({ done: true }, { kstatus: 'xxx' })));
 chk('kanbanPatch: done:true вместе с открытой колонкой — побеждает «сделано»', 'true/done', (p => p.done + '/' + p.kstatus)(PM.kanbanPatch({}, { kstatus: 'doing', done: true })));
 const P = { id: 'p1', track: 'rp', gipId: 'u-gip', pmId: '' };
-chk('canMoveProject: owner, свой ГИП — да; чужой ГИП, lead, staff, бухгалтер — нет', 'true/true/false/false/false/false',
-  [{ id: 'o', role: 'owner' }, { id: 'u-gip', role: 'gip' }, { id: 'x', role: 'gip' }, { id: 'l', role: 'lead', section: 'ОВ' }, { id: 's', role: 'staff' }, { id: 'a', role: 'accountant' }].map(u => PM.canMoveProject(u, P)).join('/'));
+chk('любой ГИП правит любой РП, но не чужой ЭП; бюджет — нет', 'true/false/false', [PM.isManager({ id: 'g2', role: 'gip' }, P), PM.isManager({ id: 'g2', role: 'gip' }, Object.assign({}, P, { track: 'ep', gipId: 'u-gip' })), PM.canBudget({ id: 'g2', role: 'gip', seeBudget: true }, P)].join('/'));
+chk('canMoveProject: owner, свой ГИП — да; чужой ПМ, lead, staff, бухгалтер — нет', 'true/true/false/false/false/false',
+  [{ id: 'o', role: 'owner' }, { id: 'u-gip', role: 'gip' }, { id: 'x', role: 'pm' }, { id: 'l', role: 'lead', section: 'ОВ' }, { id: 's', role: 'staff' }, { id: 'a', role: 'accountant' }].map(u => PM.canMoveProject(u, P)).join('/'));
 
 // ---- обработчик API в памяти: смена колонки пункта и событие ----
 let n = 0; const events = [];
@@ -39,13 +40,13 @@ function call(user, method, pathStr, body) {
   ctx.emit = (name, data) => { events.push(`${name}:${data.item.id}`); if (CRM && CRM.on && CRM.on[name]) CRM.on[name](Object.assign({}, ctx, { module: 'crm' }), data); };
   S.handle(ctx); return res;
 }
-const GIP = { id: 'u-gip', role: 'gip' }, LEAD = { id: 'u-lead', role: 'lead', section: 'ОВ' }, OTHER = { id: 'u-x', role: 'gip' }, STAFF = { id: 'u-st', role: 'staff' };
+const GIP = { id: 'u-gip', role: 'gip' }, LEAD = { id: 'u-lead', role: 'lead', section: 'ОВ' }, OTHER = { id: 'u-x', role: 'pm' } /* чужой ПМ: любой ГИП теперь правит все РП (01.10.2026) */, STAFF = { id: 'u-st', role: 'staff' };
 chk('ГИП: i1 → «В работе» — без события', '200/doing/false/0', (r => [r.s, r.b.kcol, r.b.done, events.length].join('/'))(call(GIP, 'PUT', 'items/i1', { kstatus: 'doing' })));
 chk('ГИП: i1 → «На проверке» — без события', '200/review/0', (r => [r.s, r.b.kcol, events.length].join('/'))(call(GIP, 'PUT', 'items/i1', { kstatus: 'review' })));
 const r1 = call(GIP, 'PUT', 'items/i1', { kstatus: 'done' });
 chk('ГИП: i1 → «Готово» = сделано: done, doneAt сегодня (Алматы), doneBy, событие pm.item.done', `200/true/${today()}/u-gip/pm.item.done:i1`, [r1.s, r1.b.done, r1.b.doneAt, r1.b.doneBy, events.join(',')].join('/'));
 chk('crm: этап 1 ещё не закрыт — платёж не готов к акту', 'нет', CRM ? (db.crmPayments[0].readyAt ? 'да' : 'нет') : 'нет');
-chk('чужой ГИП: 403, события нет', '403/1', [call(OTHER, 'PUT', 'items/i2', { kstatus: 'done' }).s, events.length].join('/'));
+chk('чужой ПМ: 403, события нет', '403/1', [call(OTHER, 'PUT', 'items/i2', { kstatus: 'done' }).s, events.length].join('/'));
 chk('руководитель раздела ОВ: пункт АР — 403', 403, call(LEAD, 'PUT', 'items/i3', { kstatus: 'doing' }).s);
 chk('сотрудник (модуль выключен) — 403', 403, call(STAFF, 'PUT', 'items/i2', { kstatus: 'done' }).s);
 const r2 = call(LEAD, 'PUT', 'items/i2', { kstatus: 'done' });
@@ -57,7 +58,7 @@ chk('история пункта: колонка и «сделано» запи�
 chk('галочка «сделано» по-старому: колонка «Готово», событие', 'done/3', (r => [r.b.kcol, events.length].join('/'))(call(GIP, 'PUT', 'items/i1', { done: true })));
 // статус проекта (канбан проектов) — тем же PUT, права менеджера
 chk('проект: свой ГИП двигает в «Ждём заказчика»', '200/Ждём заказчика', (r => r.s + '/' + (r.b.project || {}).status)(call(GIP, 'PUT', 'projects/p1', { status: 'Ждём заказчика' })));
-chk('проект: чужой ГИП и руководитель раздела — 403', '403/403', [call(OTHER, 'PUT', 'projects/p1', { status: 'Готово' }).s, call(LEAD, 'PUT', 'projects/p1', { status: 'Готово' }).s].join('/'));
+chk('проект: чужой ПМ и руководитель раздела — 403', '403/403', [call(OTHER, 'PUT', 'projects/p1', { status: 'Готово' }).s, call(LEAD, 'PUT', 'projects/p1', { status: 'Готово' }).s].join('/'));
 chk('проект: неизвестный статус не меняется', 'Ждём заказчика', (call(GIP, 'PUT', 'projects/p1', { status: 'Куда-то' }).b.project || {}).status);
 
 console.log(fail ? `fail ${fail}` : 'ok');

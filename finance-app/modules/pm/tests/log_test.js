@@ -39,13 +39,13 @@ function call(user, method, pathStr, body) {
     store: { id: () => 'n' + (n++), save() {}, audit() {}, DATA_DIR: tmp }, ok: b => (res = { s: 200, b }), err: (s, m) => (res = { s, b: m }), send: (s, b, h) => (res = { s, b, h }) };
   S.handle(ctx); return res;
 }
-const OWN = { id: 'u-own', role: 'owner' }, GIP = { id: 'u-gip', role: 'gip' }, OTHER = { id: 'u-x', role: 'gip' }, LEAD = { id: 'u-lead', role: 'lead', section: 'ОВ' }, LEAD2 = { id: 'u-lead2', role: 'lead', section: 'ЭЛ' },
+const OWN = { id: 'u-own', role: 'owner' }, GIP = { id: 'u-gip', role: 'gip' }, OTHER = { id: 'u-x', role: 'pm' } /* чужой ПМ: любой ГИП теперь правит все РП (01.10.2026) */, LEAD = { id: 'u-lead', role: 'lead', section: 'ОВ' }, LEAD2 = { id: 'u-lead2', role: 'lead', section: 'ЭЛ' },
   STAFF = { id: 'u-st', role: 'staff' }, STAFF2 = { id: 'u-st2', role: 'staff' }, MEM = { id: 'u-mem', role: 'staff' }, ACC = { id: 'u-acc', role: 'accountant' };
 
 // права на добавление
 const add = (u, body) => call(u, 'POST', 'projects/p1/log', Object.assign({ text: 'Запись ' + u.id }, body));
 chk('добавляют: руководитель, свой ГИП, руководитель раздела с пунктом, сотрудник со своим пунктом, участник', '200/200/200/200/200', [add(OWN).s, add(GIP).s, add(LEAD).s, add(STAFF).s, add(MEM).s].join('/'));
-chk('не добавляют: чужой ГИП, руководитель раздела без пунктов, бухгалтер; чужой сотрудник — проект не виден', '403/403/403/403', [add(OTHER).s, add(LEAD2).s, add(ACC).s, add(STAFF2).s].join('/'));
+chk('не добавляют: чужой ПМ, руководитель раздела без пунктов, бухгалтер; чужой сотрудник — проект не виден', '403/403/403/403', [add(OTHER).s, add(LEAD2).s, add(ACC).s, add(STAFF2).s].join('/'));
 const back = add(GIP, { date: dmy(past), type: 'meeting', text: 'Встреча с заказчиком', participants: 'Заказчик, ГИП' });
 chk('задним числом: дата, тип, участники, автор', `${past}/meeting/Заказчик, ГИП/u-gip`, [back.b.date, back.b.type, back.b.participants, back.b.by].join('/'));
 chk('будущая дата — 400', 400, add(GIP, { date: future }).s);
@@ -59,7 +59,7 @@ chk('правка с будущей датой — 400', 400, call(GIP, 'PUT', '
 const bt = call(GIP, 'POST', 'projects/p1/log/batch', { text: `${dmy(past)} — Решение: принять вариант 2\n05.03.2026 — Письмо: отправили концепцию\nпродолжение`, type: 'note' });
 chk('импорт пачкой текстом: 2 записи', '200/2', `${bt.s}/${bt.b.added}`);
 chk('импорт пачкой строками: будущее — 400, ничего не добавлено', `400/${db.pmLog.length}`, [call(GIP, 'POST', 'projects/p1/log/batch', { rows: [{ date: past, text: 'ок' }, { date: future, text: 'нет' }] }).s, db.pmLog.length].join('/'));
-chk('импорт пачкой: чужой ГИП — 403', 403, call(OTHER, 'POST', 'projects/p1/log/batch', { rows: [{ date: past, text: 'x' }] }).s);
+chk('импорт пачкой: чужой ПМ — 403', 403, call(OTHER, 'POST', 'projects/p1/log/batch', { rows: [{ date: past, text: 'x' }] }).s);
 // вложения
 const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(100)]);
 const up = call(GIP, 'POST', `log/${back.b.id}/files`, { name: 'фото.png', type: 'image/png', data: png.toString('base64') });

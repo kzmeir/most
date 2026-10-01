@@ -210,7 +210,7 @@
   const LEADERS = ['owner', 'partner'];
   const PM_ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm', 'gip', 'lead'];
   // настройки модуля (db.settings.pm). staffOwnProjects — рядовые сотрудники (staff) видят проекты, где они исполнители пунктов или участники (members); по умолчанию выключено
-  const SETTINGS_DEFAULT = { staffOwnProjects: false };
+  const SETTINGS_DEFAULT = { staffOwnProjects: false, defaultEpPmId: '', defaultRpGipId: '' }; // ПМ по умолчанию для ЭП, ГИП по умолчанию для РП
   const pmSettings = db => Object.assign({}, SETTINGS_DEFAULT, (db && db.settings && db.settings.pm) || {});
   const isStaff = u => !!u && u.role === 'staff';
   const canOpen = (u, s) => !!u && (PM_ROLES.includes(u.role) || (isStaff(u) && !!(s && s.staffOwnProjects)));
@@ -228,7 +228,8 @@
     return ['ep', 'rp'].filter(t => set.has(t));
   }
   const isLeader = u => !!u && LEADERS.includes(u.role);
-  const isManager = (u, p) => !!u && !!p && (isLeader(u) || p.gipId === u.id || p.pmId === u.id);
+  // любой ГИП правит все РП (решение директора 01.10.2026); бюджет — отдельно, canBudget
+  const isManager = (u, p) => !!u && !!p && (isLeader(u) || p.gipId === u.id || p.pmId === u.id || (u.role === 'gip' && p.track === 'rp'));
   const canCreate = u => !!u && (isLeader(u) || u.role === 'pm' || u.role === 'gip');
   const canEditItem = (u, p, it) => isManager(u, p) || (!!u && u.role === 'lead' && !!u.section && itemSection(it) === u.section) || (!!u && !!it && !!it.assigneeId && it.assigneeId === u.id);
   const canBudget = (u, p) => isLeader(u) || (!!u && !!u.seeBudget && !!p && (p.gipId === u.id || p.pmId === u.id));
@@ -698,7 +699,7 @@
   }
   // ISO-время → дата по Алматы
   const almatyDate = at => { const d = new Date(at); return isNaN(d) ? '' : d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Almaty' }); };
-  const PROJ_HIST_FIELDS = ['status', 'start', 'due', 'forecast', 'name'];
+  const PROJ_HIST_FIELDS = ['status', 'start', 'due', 'forecast', 'name', 'pmId', 'gipId'];
   const PROJ_HIST_LABEL = { status: 'Статус', start: 'Старт', due: 'Дата по договору', forecast: 'Прогноз', name: 'Название' };
   // история карточки проекта (статус, сроки, название): последние 50 изменений — кто, когда, что
   function projectHistory(p, patch, userId, note) {

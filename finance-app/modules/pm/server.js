@@ -49,6 +49,9 @@ function cleanBudget(b) {
 function createProject(ctx, fields, byUserId) {
   const p = Object.assign(ctx.pick(fields, FIELDS), { id: ctx.store.id(), track: PM.normalizeTrack(fields.track), name: String(fields.name).trim(), status: fields.status || 'В работе', risk: fields.risk || 'Низкий', createdAt: new Date().toISOString(), createdBy: byUserId || '' });
   if (!PM.STATUS.includes(p.status)) p.status = 'В работе'; if (!PM.RISK.includes(p.risk)) p.risk = 'Низкий';
+  const DS = PM.pmSettings(ctx.db); const okU = id => !!id && ctx.db.users.some(u => u.id === id && u.active !== false); // ПМ/ГИП по умолчанию
+  if (p.track === 'ep' && !p.pmId && okU(DS.defaultEpPmId)) p.pmId = DS.defaultEpPmId;
+  if (p.track === 'rp' && !p.gipId && okU(DS.defaultRpGipId)) p.gipId = DS.defaultRpGipId;
   if (fields.budget) p.budget = cleanBudget(fields.budget);
   p.templateVersion = PM.TEMPLATE_VERSION[p.track] || '';
   ctx.db.pmProjects.push(p); addItems(ctx, PM.itemsFromTemplate(p.track, p.id, { start: p.start, due: p.due, months: fields.months }));
@@ -175,6 +178,19 @@ function handle(ctx) {
   // доступность модуля для текущего пользователя — без прав на модуль: меню в браузере узнаёт, показывать ли «Проекты» сотруднику
   if (a === 'access' && method === 'GET') return ok({ canOpen: PM.canOpen(user, S), staffOwnProjects: !!S.staffOwnProjects, staff, tracks: PM.canOpen(user, S) ? PM.userTracks(user, db.pmProjects, db.pmItems) : [] });
   if (!PM.canOpen(user, S)) return err(403, 'Нет доступа к управлению проектами');
+  // назначить ПМ (ЭП) и ГИП (РП) по умолчанию проектам, где не заполнено (replace — и там, где заполнено). dry — только список.
+  if (a === 'assign-defaults' && method === 'POST') {
+    if (!['owner', 'partner'].includes(user.role)) return err(403, 'Назначать могут владелец и партнёр');
+    const replace = body.replace === true || body.replace === 'true'; const plan = [];
+    for (const [track, field, id] of [['ep', 'pmId', S.defaultEpPmId], ['rp', 'gipId', S.defaultRpGipId]]) {
+      if ((body.track && body.track !== track) || !id || !db.users.some(u => u.id === id && u.active !== false)) continue;
+      for (const p of db.pmProjects) if (p.track === track && PM.ACTIVE(p.status) && p[field] !== id && (replace || !p[field])) plan.push({ id: p.id, name: p.name, track, field, from: p[field] || '', to: id });
+    }
+    if (body.dry === true || body.dry === 'true') return ok({ plan, replace });
+    for (const x of plan) { const p = db.pmProjects.find(q => q.id === x.id); p.history = PM.projectHistory(p, { [x.field]: x.to }, user.id, 'назначение по умолчанию'); p[x.field] = x.to; p.updatedAt = new Date().toISOString(); p.updatedBy = user.id; }
+    if (plan.length) { store.save(); store.audit(user.id, 'assign-defaults', 'pmProjects', plan.map(x => x.id).join(','), { n: plan.length, replace }); }
+    return ok({ done: plan.length, plan });
+  }
   // настройки модуля: читает руководитель, меняют владелец и партнёр (db.settings.pm)
   if (a === 'settings') {
     if (!PM.isLeader(user)) return err(403, 'Только руководитель');
@@ -182,6 +198,8 @@ function handle(ctx) {
     if (method === 'PUT') {
       if (!['owner', 'partner'].includes(user.role)) return err(403, 'Менять настройки модуля могут владелец и партнёр');
       const next = Object.assign({}, S); if ('staffOwnProjects' in body) next.staffOwnProjects = body.staffOwnProjects === true || body.staffOwnProjects === 'true' || body.staffOwnProjects === 1;
+      for (const [k, roles] of [['defaultEpPmId', ['pm', 'owner', 'partner']], ['defaultRpGipId', ['gip', 'owner', 'partner']]]) if (k in body) {
+        const id = String(body[k] || ''); if (id && !db.users.some(u => u.id === id && u.active !== false && roles.includes(u.role))) return err(400, k === 'defaultEpPmId' ? 'ПМ по умолчанию — пользователь с ролью ПМ' : 'ГИП по умолчанию — пользователь с ролью ГИП'); next[k] = id; }
       db.settings = Object.assign({}, db.settings, { pm: next }); store.save(); store.audit(user.id, 'update', 'settings', 'pm', next); return ok(next);
     }
   }
