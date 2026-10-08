@@ -439,6 +439,11 @@ if (DEV_ROLE) console.log(`\n  РЕЖИМ РАЗРАБОТКИ: вход без 
 const HOST = DEV_ROLE ? '127.0.0.1' : '0.0.0.0';
 // в режиме разработки — один порт со всеми разделами; на рабочем сервере — два сайта
 const SPLIT = !DEV_ROLE || !!process.env.DEV_SPLIT; // DEV_SPLIT=1 — два сайта и в режиме разработки
+// Выкладка на сервер в Docker: скрипт выкладки меняет файл VERSION — процесс сам завершается, Docker (restart: unless-stopped) поднимает новый код.
+if (process.env.RESTART_ON_VERSION === '1') {
+  const VFILE = path.join(__dirname, 'VERSION'); const readV = () => { try { return fs.readFileSync(VFILE, 'utf8'); } catch { return ''; } }; const v0 = readV();
+  setInterval(() => { const v = readV(); if (v && v !== v0) { console.log('VERSION изменился — перезапуск для новой версии'); process.exit(0); } }, 15000).unref();
+}
 if (SPLIT) http.createServer(handler('erp')).listen(ERP_PORT, HOST);
 // Адреса по имени на стандартном порту: http://fin.most → «Финансы», http://erp.most (и любое другое имя) → ERP.
 // «Финансы» — только по имени из FIN_HOSTS и только из офиса: запрос через туннель (cf-connecting-ip / x-forwarded-for) всегда уходит в ERP.

@@ -13,7 +13,10 @@ param(
   [switch]$FirstDeploy   # разрешить выкладку в папку без data\db.sqlite
 )
 $ErrorActionPreference = 'Stop'
-if ($MostServer) { $Target = '\\MostServer\Documents\MOST-Финансы' }
+$StatusHost = 'localhost'
+# с 08.10.2026 сервер работает в Docker на MostServer (Synology): код в \\MostServer\docker\most-finance,
+# перезапуск — сам: процесс выходит, увидев новый файл VERSION (RESTART_ON_VERSION=1), Docker поднимает его заново
+if ($MostServer) { $Target = '\\MostServer\docker\most-finance'; $StatusHost = '192.168.50.51' }
 
 if (-not $Target -or -not $Port) {
   Write-Host "Использование: deploy-to-server.ps1 -Target <путь к серверу> -Port <порт сайта Финансы> [-Source <путь>] [-DryRun]"
@@ -160,8 +163,10 @@ if ($DryRun) {
 }
 
 # ---------- 4) перезапуск: только дочерний процесс под serve-local.js ----------
-$conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $conn) {
+$conn = if ($MostServer) { $null } else { Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1 }
+if ($MostServer) {
+  if ($DryRun) { Log '[DryRun] сервер на MostServer перезапустился бы сам по файлу VERSION' } else { Log 'Docker на MostServer: жду, пока сервер сам перезапустится с новой версией...'; Start-Sleep -Seconds 25 }
+} elseif (-not $conn) {
   Log "На порту $Port никто не слушает - запускать сервер должен директор сам (start-server.bat)."
 } else {
   $childPid = $conn.OwningProcess
@@ -223,12 +228,12 @@ if ($DryRun) {
 
 # ---------- 5) ждём /api/status на Port и Port+1 ----------
 $erpPort = $Port + 1
-$deadline = (Get-Date).AddSeconds(30)
+$deadline = (Get-Date).AddSeconds(60)
 $finOk = $false; $erpOk = $false; $status = $null
 while ((Get-Date) -lt $deadline -and -not ($finOk -and $erpOk)) {
   Start-Sleep -Milliseconds 1000
-  if (-not $finOk) { try { $status = Invoke-RestMethod -Uri "http://localhost:$Port/api/status" -TimeoutSec 3; $finOk = $true } catch {} }
-  if (-not $erpOk) { try { Invoke-RestMethod -Uri "http://localhost:$erpPort/api/status" -TimeoutSec 3 | Out-Null; $erpOk = $true } catch {} }
+  if (-not $finOk) { try { $status = Invoke-RestMethod -Uri "http://${StatusHost}:$Port/api/status" -TimeoutSec 3; $finOk = $true } catch {} }
+  if (-not $erpOk) { try { Invoke-RestMethod -Uri "http://${StatusHost}:$erpPort/api/status" -TimeoutSec 3 | Out-Null; $erpOk = $true } catch {} }
 }
 if (-not $finOk) {
   Log "Сайт Финансы (порт $Port) не ответил за 30 секунд после выкладки."

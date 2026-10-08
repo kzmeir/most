@@ -26,6 +26,7 @@ services:
       - PORT=3000
       - ERP_PORT=3001
       - TZ=Asia/Almaty
+      - RESTART_ON_VERSION=1       # после выкладки (изменился файл VERSION) процесс выходит, Docker поднимает новый код
       - NAME_PORT=0                # адреса по имени (fin.most / erp.most на порту 80) в Docker не нужны; 0 — выключить
       # Корни сетевых папок для досок (id|алиас|путь в контейнере|стадии) — раскомментируйте вместе с томами выше:
       # - BOARD_ROOTS=y|Y:|/mnt/most-2025|ep,concept;z|Z:|/mnt/projects|rp
