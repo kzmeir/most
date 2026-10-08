@@ -85,14 +85,14 @@ async function loadRefs() {
 }
 async function afterLogin() { await loadRefs(); renderApp(); }
 function renderSetup() {
-  $('#app').innerHTML = `<div class="auth"><div class="auth-card"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>финансы</small></b></div><h1>Первый запуск</h1><p class="sub">Создайте аккаунт владельца. Данные хранятся только на этом компьютере.</p>${formHtml([{ name: 'name', label: 'Ваше имя', required: true }, { name: 'login', label: 'Логин', required: true }, { name: 'password', label: 'Пароль (мин. 6 символов)', type: 'password', required: true }], {}, 'Создать и войти')}</div></div>`;
+  $('#app').innerHTML = `<div class="auth"><div class="auth-card"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>erp</small></b></div><h1>Первый запуск</h1><p class="sub">Создайте аккаунт владельца. Данные хранятся только на этом компьютере.</p>${formHtml([{ name: 'name', label: 'Ваше имя', required: true }, { name: 'login', label: 'Логин', required: true }, { name: 'password', label: 'Пароль (мин. 6 символов)', type: 'password', required: true }], {}, 'Создать и войти')}</div></div>`;
   $('#app form').onsubmit = async e => { e.preventDefault(); try { const r = await api('/setup', { method: 'POST', body: Object.fromEntries(new FormData(e.target).entries()) }); state.user = r.user; state.status.needsSetup = false; await afterLogin(); if (!state.status.hasData && state.status.seed.available) location.hash = '#/settings'; } catch (er) { $('#app .error').textContent = er.message; } };
 }
 function renderNoAccess(msg) {
-  $('#app').innerHTML = `<div class="auth"><div class="auth-card"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>финансы</small></b></div><h1>Нет доступа</h1><p class="sub">${esc(msg || 'Откройте страницу под рабочим аккаунтом claude.ai.')}</p><p class="faint">Доступ выдаёт владелец через меню «Поделиться» на этой странице.</p></div></div>`;
+  $('#app').innerHTML = `<div class="auth"><div class="auth-card"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>erp</small></b></div><h1>Нет доступа</h1><p class="sub">${esc(msg || 'Откройте страницу под рабочим аккаунтом claude.ai.')}</p><p class="faint">Доступ выдаёт владелец через меню «Поделиться» на этой странице.</p></div></div>`;
 }
 function renderLogin() {
-  $('#app').innerHTML = `<div class="auth"><div class="auth-card"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>финансы</small></b></div>${formHtml([{ name: 'login', label: 'Логин', required: true }, { name: 'password', label: 'Пароль', type: 'password', required: true }], {}, 'Войти')}</div></div>`;
+  $('#app').innerHTML = `<div class="auth"><div class="auth-card"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>erp</small></b></div>${formHtml([{ name: 'login', label: 'Логин', required: true }, { name: 'password', label: 'Пароль', type: 'password', required: true }], {}, 'Войти')}</div></div>`;
   $('#app form').onsubmit = async e => { e.preventDefault(); try { const r = await api('/login', { method: 'POST', body: Object.fromEntries(new FormData(e.target).entries()) }); state.user = r.user; await afterLogin(); } catch (er) { $('#app .error').textContent = er.message; } };
 }
 
@@ -123,6 +123,7 @@ let CUR_MOD = null;
 function setBadge(id, n) { BADGES[id] = Number(n) || 0; const b = document.getElementById('badge-' + id); if (b) { b.textContent = BADGES[id] || ''; b.hidden = !BADGES[id]; } }
 // сайт: 'fin' — «Финансы», 'erp' — «MOST ERP» (только модули), 'all' — всё (режим разработки)
 const SITE = window.MOST_SITE || 'fin';
+document.title = SITE === 'fin' ? 'MOST ERP · Финансы' : 'MOST ERP';
 const MODS = SITE === 'erp' ? [] : [{ id: 'fin', title: 'Финансы', nav: NAV.filter(n => !n.any), routes: ['project'], canOpen: () => true }];
 const finNavOk = n => n.dash ? window.MostDomain.canDashboard(state.user.role) : n.col ? canR(n.col) : (!n.admin || isAdmin());
 const modNav = m => m.id === 'fin' ? m.nav.filter(finNavOk) : (m.nav || []).filter(n => !n.can || n.can(state.user));
@@ -135,11 +136,11 @@ function drawNav(id) {
   const items = [...(cur ? modNav(cur) : []), NAV.find(n => n.id === 'help')];
   $('#nav').innerHTML = sw + items.map(n => `<a href="#/${n.id}" data-id="${n.id}"${n.id === id ? ' class="active"' : ''}><span>${n.icon || '•'}</span>${esc(n.label)}<span class="badge" id="badge-${n.id}"${BADGES[n.id] ? '' : ' hidden'}>${BADGES[n.id] || ''}</span></a>`).join('');
   for (const m of mods) if (m.onNav) { try { m.onNav(UI, id); } catch (e) { console.error('onNav ' + m.id, e); } }
-  const bs = $('.side .brand small'); if (bs) bs.textContent = cur ? cur.title.toLowerCase() : (SITE === 'erp' ? 'erp' : 'финансы');
+  const bs = $('.side .brand small'); if (bs) bs.textContent = 'erp';
 }
 function renderApp() {
   const nav = navAll();
-  $('#app').innerHTML = `<div class="shell"><aside class="side" id="side"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>финансы</small></b></div><nav class="nav" id="nav"></nav><div class="me"><b>${esc(state.user.name)}</b><span class="muted">${esc(state.user.roleLabel || state.user.role)}</span>${state.status.web ? '' : '<br><button class="btn sm" id="logout" style="margin-top:8px">Выйти</button>'}</div></aside><div><div class="topbar"><button class="icon-btn" id="burger">☰</button><b>most · финансы</b></div><main class="main" id="main"></main></div></div>`;
+  $('#app').innerHTML = `<div class="shell"><aside class="side" id="side"><div class="brand"><div class="logo">${LOGO}</div><b>most<small>erp</small></b></div><nav class="nav" id="nav"></nav><div class="me"><b>${esc(state.user.name)}</b><span class="muted">${esc(state.user.roleLabel || state.user.role)}</span>${state.status.web ? '' : '<br><button class="btn sm" id="logout" style="margin-top:8px">Выйти</button>'}</div></aside><div><div class="topbar"><button class="icon-btn" id="burger">☰</button><b>most · финансы</b></div><main class="main" id="main"></main></div></div>`;
   if (!$('#dl-cp')) document.body.insertAdjacentHTML('beforeend', '<datalist id="dl-cp"></datalist><datalist id="dl-projects"></datalist>'); refreshCpList();
   if ($('#logout')) $('#logout').onclick = async () => { await api('/logout', { method: 'POST' }); state.user = null; location.hash = ''; renderLogin(); };
   $('#burger').onclick = () => $('#side').classList.toggle('open');
