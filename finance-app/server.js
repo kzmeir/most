@@ -160,7 +160,7 @@ async function api(req, res, url, user, site) {
     const closed = ['users', 'tokens', 'backup', 'backups', 'restore', 'import', 'export', 'seed', 'setup', 'logout', 'files'];
     if (method === 'DELETE' || closed.includes(seg) || (seg === 'settings' && mutating) || (parts[1] === 'settings' && mutating) || parts.includes('assign-defaults'))
       return err(res, 403, 'Ключу ИИ это действие запрещено — выполните его сами в ERP');
-    if (mutating) store.audit(user.id, 'ai', 'api', parts.join('/').slice(0, 200), { method, token: user.tokenName });
+    if (mutating && !/^ingest/.test(parts[parts.length - 1] || '')) store.audit(user.id, 'ai', 'api', parts.join('/').slice(0, 200), { method, token: user.tokenName }); // приём переписки (ingest, ingest-status) идёт потоком — его учитывают сами модули
   }
   // --- ключи ИИ: выдаёт и отзывает только владелец, вошедший паролем ---
   if (seg === 'tokens') {
