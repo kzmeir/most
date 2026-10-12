@@ -271,6 +271,21 @@ chk "statuses дорожной карты → колонки: A1 «Готово�
 chk "без сервера: колонка ↔ done, права, событие pm.item.done при «Готово» (+ crm onItemDone)" ok "$(node modules/pm/tests/kanban_test.js | tail -1)"
 chk "без сервера: правка на месте — поля шапки, пункта и журнала по ролям (ПМ, руководитель раздела, сотрудник, секретарь)" ok "$(node modules/pm/tests/inline_test.js | tail -1)"
 chk "без сервера: журнал проекта — права, задним числом, импорт пачкой, вложения (сигнатура, 20 МБ), авто-события, поиск, CSV" ok "$(node modules/pm/tests/log_test.js | tail -1)"
+chk "без сервера: переписка WhatsApp — приём, дубли, лимиты, сигнатуры, привязка и pid, права чтения, порции, журнал, «→ В журнал», файлы в папку проекта (только внутрь подпапки, без перезаписи, «только чтение»)" ok "$(node modules/pm/tests/chat_test.js | tail -1)"
+
+echo "== переписка (WhatsApp) =="
+WA='{"source":"whatsapp","chat":{"extId":"120363000000000777@g.us","name":"API test group"},"messages":[{"extId":"W1","ts":"2026-10-01T09:00:00+05:00","author":"Test Author","phone":"+7 700 000 00 00","text":"hello"},{"extId":"W2","ts":"2026-10-01T09:05:00+05:00","author":"Test Author","text":"second"}]}'
+chk "приём: ГИП 403, сотрудник 403, бухгалтер 403" "403/403/403" "$(code GIP POST /pm/chats/ingest "$WA")/$(code STAFF POST /pm/chats/ingest "$WA")/$(code ACC POST /pm/chats/ingest "$WA")"
+chk "приём владельцем: принято 2, группа не привязана" "2//true" "$(call OWN POST /pm/chats/ingest "$WA" | js '[d.accepted,d.chat.pid,d.chat.created].join("/")')"
+chk "повтор партнёром: дубли 2" "0/2" "$(call PART POST /pm/chats/ingest "$WA" | js '[d.accepted,d.duplicates].join("/")')"
+WAC=$(call OWN GET /pm/chats | js 'd.chats[0].id')
+chk "состояние моста: 200, видно в списке групп" "200/qr" "$(code OWN POST /pm/chats/ingest-status '{"state":"qr"}')/$(call OWN GET /pm/chats | js 'd.bridge.state')"
+chk "привязка ГИПом к своему РП: 200, сообщений 2; карточка: canChat и счётчик" "2/true/2" "$(call GIP PUT /pm/chats/$WAC '{"pid":"'$RPID'"}' | js 'd.moved')/$(call GIP GET /pm/projects/$RPID | js '[d.canChat,d.chatN].join("/")')"
+chk "лента: ГИП 200, руководитель раздела 403, бухгалтер 403, секретарь 403" "200/403/403/403" "$(code GIP GET /pm/projects/$RPID/chat)/$(code LEAD GET /pm/projects/$RPID/chat)/$(code ACC GET /pm/projects/$RPID/chat)/$(code SEC GET /pm/projects/$RPID/chat)"
+chk "журнал: одна строка WhatsApp за день" "1" "$(call GIP GET /pm/projects/$RPID/log | js 'd.events.filter(e=>e.type==="chat" && /2 сообщения, 0 файлов/.test(e.text)).length')"
+chk "коллекции pmChats / pmChatMessages через общий API закрыты" "404/404" "$(code OWN GET /pmChats)/$(code OWN GET /pmChatMessages)"
+chk "сообщения сохранены в базе" 2 "$(node -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('$DATA_DIR/db.sqlite');console.log(db.prepare(\"select count(*) n from docs where col='pmChatMessages'\").get().n)")"
+chk "настоящий сервер: приём по ключу ИИ (Bearer), запреты ключа, CSRF" ok "$(node modules/pm/tests/chat_token_test.js | tail -1)"
 
 echo "== удаление =="
 chk "owner удаляет проект" 200 "$(code OWN DELETE /pm/projects/$GID)"
