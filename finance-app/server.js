@@ -29,6 +29,7 @@ const MODULES = (fs.existsSync(MODULES_DIR) ? fs.readdirSync(MODULES_DIR) : []).
 const MODULE_BY_ID = Object.fromEntries(MODULES.map(m => [m.id, m]));
 const MODULE_COLS = new Set(MODULES.flatMap(m => m.collections || []));
 store.register([...MODULE_COLS]);
+store.register(['apiTokens']); // ключи ИИ: только через /api/tokens, общим API коллекций не отдаются
 // события между модулями: ctx.emit('pm.project.created', data) → у всех модулей on['pm.project.created'](ctx, data)
 function emit(ctx, name, data) { for (const m of MODULES) { const h = m.on && m.on[name]; if (h) { try { h(Object.assign({}, ctx, { module: m.id }), data); } catch (e) { console.error(`[${m.id}] ${name}:`, e.message); } } } }
 const pickKeys = (o, keys) => Object.fromEntries(keys.filter(k => k in (o || {})).map(k => [k, o[k]]));
@@ -109,7 +110,7 @@ async function api(req, res, url, user, site) {
   const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(p => { try { return decodeURIComponent(p); } catch { return p; } });
   const method = req.method;
   const mutating = ['POST', 'PUT', 'DELETE'].includes(method);
-  if (mutating && req.headers['x-requested-with'] !== 'fetch') return err(res, 403, 'CSRF: нет заголовка');
+  if (mutating && req.headers['x-requested-with'] !== 'fetch' && !(user && user.viaToken)) return err(res, 403, 'CSRF: нет заголовка');
   const body = mutating ? await readBody(req).catch(e => ({ __err: e.message })) : {};
   if (body.__err) return err(res, 400, body.__err);
   const db = store.get();
@@ -143,6 +144,26 @@ async function api(req, res, url, user, site) {
 
   if (!user) return err(res, 401, 'Не авторизован');
   const role = user.role;
+  // --- ключ ИИ: читает и вносит, но не удаляет и не трогает пользователей, ключи, настройки, копии и загрузки базы ---
+  if (user.viaToken) {
+    const closed = ['users', 'tokens', 'backup', 'backups', 'restore', 'import', 'export', 'seed', 'setup', 'logout', 'files'];
+    if (method === 'DELETE' || closed.includes(seg) || (seg === 'settings' && mutating) || (parts[1] === 'settings' && mutating) || parts.includes('assign-defaults'))
+      return err(res, 403, 'Ключу ИИ это действие запрещено — выполните его сами в ERP');
+    if (mutating) store.audit(user.id, 'ai', 'api', parts.join('/').slice(0, 200), { method, token: user.tokenName });
+  }
+  // --- ключи ИИ: выдаёт и отзывает только владелец, вошедший паролем ---
+  if (seg === 'tokens') {
+    if (role !== 'owner' || user.viaToken) return err(res, 403, 'Только владелец');
+    const list = () => (db.apiTokens || []).map(t => ({ id: t.id, name: t.name || '', createdAt: t.createdAt, lastUsedAt: t.lastUsedAt || '' }));
+    if (method === 'GET' && !id2) return ok(res, list());
+    if (method === 'POST' && !id2) {
+      if ((db.apiTokens || []).length >= 5) return err(res, 400, 'Не больше 5 ключей — отзовите лишние');
+      const { token, hash } = auth.newApiToken(); const t = store.insert('apiTokens', { name: String(body.name || 'Claude').slice(0, 60), hash, userId: user.id, createdAt: new Date().toISOString() });
+      store.audit(user.id, 'create', 'apiTokens', t.id); return ok(res, { id: t.id, name: t.name, token }); // сам ключ показывается один раз
+    }
+    if (method === 'DELETE' && id2) { if (!store.find('apiTokens', id2)) return err(res, 404, 'Нет такого ключа'); store.remove('apiTokens', id2); store.audit(user.id, 'delete', 'apiTokens', id2); return ok(res, { ok: true }); }
+    return err(res, 404, 'Нет такого действия');
+  }
   if (seg === 'people' && method === 'GET') return ok(res, db.users.filter(u => u.active !== false).map(u => ({ id: u.id, name: u.name || u.login, role: u.role, roleLabel: D.ROLE_LABEL[u.role], section: u.section || '' })));
   const mod = MODULES.find(m => m.api === seg && moduleActive(m, site));
   if (mod) {
@@ -345,7 +366,7 @@ async function api(req, res, url, user, site) {
   }
 
   // --- generic collections ---
-  if (!store.COLLECTIONS.includes(seg) || seg === 'users' || MODULE_COLS.has(seg)) return err(res, 404, 'Нет такого раздела'); // коллекции модулей — только через их API
+  if (!store.COLLECTIONS.includes(seg) || seg === 'users' || seg === 'apiTokens' || MODULE_COLS.has(seg)) return err(res, 404, 'Нет такого раздела'); // коллекции модулей — только через их API
   const action = method === 'GET' ? 'read' : 'write';
   if (!D.can(role, seg, action)) return err(res, 403, action === 'read' ? 'Нет доступа к разделу' : 'Только просмотр');
   const list = db[seg];
@@ -406,7 +427,7 @@ function serveStatic(req, res, url, site) {
 const handler = site => async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
-    if (url.pathname.startsWith('/api')) return await api(req, res, url, devUser(req) || auth.currentUser(req), site);
+    if (url.pathname.startsWith('/api')) return await api(req, res, url, devUser(req) || auth.currentUser(req) || auth.tokenUser(req), site);
     if (req.method === 'GET') return serveStatic(req, res, url, site);
     return err(res, 405, 'method');
   } catch (e) {

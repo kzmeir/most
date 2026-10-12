@@ -57,6 +57,17 @@ function currentUser(req) {
   return { id: u.id, login: u.login, name: u.name, role: u.role, section: u.section || '', seeBudget: !!u.seeBudget, employeeId: u.employeeId || '', token };
 }
 
+// ключ ИИ (Authorization: Bearer most_…): в базе только sha256 ключа; действует от имени владельца, который его выдал
+const tokenHash = t => crypto.createHash('sha256').update(String(t)).digest('hex');
+function newApiToken() { const token = 'most_' + crypto.randomBytes(32).toString('hex'); return { token, hash: tokenHash(token) }; }
+function tokenUser(req) {
+  const m = String(req.headers.authorization || '').match(/^Bearer\s+(most_[a-f0-9]{64})$/); if (!m) return null;
+  const db = store.get(); const h = tokenHash(m[1]); const t = (db.apiTokens || []).find(x => x.hash === h); if (!t) return null;
+  const u = db.users.find(x => x.id === t.userId && x.active !== false); if (!u) return null;
+  if (!t.lastUsedAt || Date.now() - new Date(t.lastUsedAt).getTime() > 60e3) { t.lastUsedAt = new Date().toISOString(); try { store.save(); } catch { } }
+  return { id: u.id, login: u.login, name: u.name, role: u.role, section: u.section || '', seeBudget: !!u.seeBudget, employeeId: u.employeeId || '', token: null, viaToken: t.id, tokenName: t.name || '' };
+}
+
 // лимит попыток входа: 10 за 15 минут с одного IP
 const attempts = new Map();
 function loginAllowed(ip) {
@@ -69,4 +80,4 @@ function noteFailedLogin(ip) { (attempts.get(ip) || (attempts.set(ip, []), attem
 
 function publicUser(u) { return { id: u.id, login: u.login, name: u.name, role: u.role, section: u.section || '', seeBudget: !!u.seeBudget, employeeId: u.employeeId || '', active: u.active !== false, createdAt: u.createdAt }; }
 
-module.exports = { hashPassword, verifyPassword, parseCookies, createSession, destroySession, sessionCookie, clearCookie, currentUser, loginAllowed, noteFailedLogin, publicUser, COOKIE };
+module.exports = { tokenUser, newApiToken, hashPassword, verifyPassword, parseCookies, createSession, destroySession, sessionCookie, clearCookie, currentUser, loginAllowed, noteFailedLogin, publicUser, COOKIE };
