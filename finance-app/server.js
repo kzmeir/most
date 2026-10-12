@@ -106,6 +106,7 @@ function importSeed() {
 }
 
 // ---------- API ----------
+const PAIR = { req: null }; // запрос на подключение ИИ, ждущий подтверждения владельца (в памяти)
 async function api(req, res, url, user, site) {
   const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(p => { try { return decodeURIComponent(p); } catch { return p; } });
   const method = req.method;
@@ -120,6 +121,16 @@ async function api(req, res, url, user, site) {
   if (site === 'erp' && !ERP_API.includes(seg) && !(seg === 'settings' && method === 'GET') && !MODULES.some(m => m.api === seg && moduleActive(m, site))) return err(res, 404, 'Этот раздел — на сайте «Финансы»');
 
   // --- public ---
+  // запрос на подключение ИИ: скрипт сам придумал ключ и прислал только его sha256; владелец подтверждает по коду в Настройках.
+  // Только из локальной сети, один запрос за раз, живёт час; до подтверждения ключ ничего не открывает.
+  if (seg === 'tokens' && id2 === 'pair' && method === 'POST') {
+    const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, ''); const lan = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(ip) || ip === '::1';
+    if (!lan || req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']) return err(res, 403, 'Только из офисной сети');
+    const hash = String(body.hash || ''); if (!/^[a-f0-9]{64}$/.test(hash)) return err(res, 400, 'Нужен sha256 ключа');
+    if (PAIR.req && Date.now() - PAIR.req.at < 60e3 && PAIR.req.hash !== hash) return err(res, 429, 'Запрос уже ждёт подтверждения — повторите через минуту');
+    PAIR.req = { hash, name: String(body.name || 'Claude').slice(0, 60), code: String(parseInt(hash.slice(0, 8), 16) % 1000000).padStart(6, '0'), at: Date.now(), ip };
+    return ok(res, { code: PAIR.req.code, expiresMin: 60 });
+  }
   if (seg === 'status' && method === 'GET') return ok(res, { publicUrl: publicUrl(), needsSetup: db.users.length === 0 && !DEV_ROLE, hasData: store.COLLECTIONS.some(c => c !== 'users' && c !== 'audit' && db[c].length > 0), seed: seedStatus(), version: '2.0', site, modules: MODULES.map(m => ({ id: m.id, title: MODULE_TITLES[m.id] || m.id, on: moduleOn(m) })) });
   if (seg === 'setup' && method === 'POST') {
     if (db.users.length || site === 'erp') return err(res, 403, 'Уже настроено');
@@ -155,6 +166,15 @@ async function api(req, res, url, user, site) {
   if (seg === 'tokens') {
     if (role !== 'owner' || user.viaToken) return err(res, 403, 'Только владелец');
     const list = () => (db.apiTokens || []).map(t => ({ id: t.id, name: t.name || '', createdAt: t.createdAt, lastUsedAt: t.lastUsedAt || '' }));
+    const pending = () => PAIR.req && Date.now() - PAIR.req.at < 3600e3 ? { code: PAIR.req.code, name: PAIR.req.name, at: new Date(PAIR.req.at).toISOString(), ip: PAIR.req.ip } : null;
+    if (method === 'GET' && id2 === 'pending') return ok(res, { pending: pending() });
+    if (method === 'POST' && id2 === 'approve') {
+      const p = pending(); if (!p || String(body.code || '') !== p.code) return err(res, 400, 'Нет запроса с таким кодом (или он устарел)');
+      if ((db.apiTokens || []).length >= 5) return err(res, 400, 'Не больше 5 ключей — отзовите лишние');
+      const t = store.insert('apiTokens', { name: PAIR.req.name, hash: PAIR.req.hash, userId: user.id, createdAt: new Date().toISOString() }); PAIR.req = null;
+      store.audit(user.id, 'create', 'apiTokens', t.id, { via: 'pair' }); return ok(res, { id: t.id, name: t.name });
+    }
+    if (method === 'POST' && id2 === 'reject') { PAIR.req = null; return ok(res, { ok: true }); }
     if (method === 'GET' && !id2) return ok(res, list());
     if (method === 'POST' && !id2) {
       if ((db.apiTokens || []).length >= 5) return err(res, 400, 'Не больше 5 ключей — отзовите лишние');

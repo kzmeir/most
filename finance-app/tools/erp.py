@@ -3,6 +3,7 @@
 
 Ключ лежит в хранилище паролей (gopass / pass), запись most/erp/token. В чат, файлы и аргументы команд не попадает:
   python erp.py login                       - ключ спрашивается скрытым вводом и кладётся в хранилище (делает директор)
+  python erp.py pair                        - запросить доступ: ключ создаётся в хранилище, владелец подтверждает по коду в Настройках
   python erp.py logout                      - убрать ключ из хранилища
   python erp.py ping                        - кто я и какие модули включены
   python erp.py GET /pm/projects?track=ep   - чтение (сайт ERP, порт 3001)
@@ -27,8 +28,16 @@ def _tool():
     sys.exit("Нет хранилища паролей (gopass / pass). Установите: winget install --id gopass.gopass --exact")
 
 
+def _env():
+    # GnuPG впереди PATH: gpg из Git не видит ключи пользователя и не умеет окно фразы-пароля
+    env = dict(os.environ)
+    dirs = [os.path.join(os.environ.get(v, ""), "GnuPG", "bin") for v in ("ProgramFiles(x86)", "ProgramFiles")] + [os.path.join(os.environ.get("ProgramFiles(x86)", ""), "gnupg", "bin")]
+    env["PATH"] = os.pathsep.join([d for d in dirs if os.path.isdir(d)] + [env.get("PATH", "")])
+    return env
+
+
 def _run(cmd, text=None):
-    return subprocess.run(cmd, input=text, stdin=None if text is not None else subprocess.DEVNULL, capture_output=True, encoding="utf-8")
+    return subprocess.run(cmd, input=text, stdin=None if text is not None else subprocess.DEVNULL, capture_output=True, encoding="utf-8", env=_env())
 
 
 def token_read():
@@ -72,6 +81,23 @@ def main():
             sys.exit("Не удалось записать ключ в хранилище: " + (out.stderr or "").strip())
         st, txt = request("GET", "/me")
         print("Ключ сохранён. Проверка: %s %s" % (st, txt[:120]))
+        return
+    if cmd == "pair":
+        # ключ придумывает скрипт и кладёт в хранилище; на сервер уходит только sha256. Владелец подтверждает по коду в Настройках.
+        import secrets, hashlib
+        t = "most_" + secrets.token_hex(32)
+        tool, _ = _tool()
+        out = _run([tool, "insert", "-f", "-m", ENTRY], text=t + "\n")
+        if out.returncode != 0:
+            sys.exit("Не удалось записать ключ в хранилище: " + (out.stderr or "").strip())
+        url = "http://%s:3000/api/tokens/pair" % HOST
+        data = json.dumps({"hash": hashlib.sha256(t.encode()).hexdigest(), "name": "Claude"}).encode()
+        req = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/json", "X-Requested-With": "fetch"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                print("Запрос отправлен. Код для сверки:", json.loads(r.read().decode())["code"])
+        except urllib.error.HTTPError as e:
+            sys.exit("Сервер отклонил запрос: %d %s" % (e.code, e.read().decode("utf-8", "replace")[:200]))
         return
     if cmd == "logout":
         tool, _ = _tool()
