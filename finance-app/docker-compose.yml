@@ -40,6 +40,30 @@ services:
       retries: 5
       start_period: 10s
 
+  # Мост WhatsApp -> ERP (services/wa-bridge): читает номер-архивариус и передаёт группы в «Проекты», личные сообщения — в «Коммерцию».
+  # Единственная служба со сторонней библиотекой (baileys из npm, ставится при первом запуске — нужен интернет). Сам в WhatsApp не пишет.
+  # Включить: задать номер архивариуса в .env рядом с этим файлом (WA_PHONE=7701XXXXXXX, только цифры) и поднять проект заново.
+  # Первый запуск: 1) в ERP «Настройки» -> «Ключи для ИИ» подтвердить ключ «WhatsApp-мост» по коду из журнала службы;
+  #                2) код привязки появится в ERP: раздел «WhatsApp» -> ввести его в WhatsApp архивариуса («Связанные устройства» -> «Привязать по номеру»).
+  # Данные службы (сессия WhatsApp и ключ ERP) — data/wa; при потере привязку надо повторить.
+  wa-bridge:
+    image: node:24-alpine
+    container_name: most-wa-bridge
+    profiles: ["whatsapp"]          # не стартует, пока профиль не включён (COMPOSE_PROFILES=whatsapp в .env)
+    working_dir: /app/services/wa-bridge
+    command: ["sh", "-c", "[ -d node_modules/baileys ] || npm ci --omit=dev --no-audit --no-fund; exec node index.mjs"]
+    volumes:
+      - ./services/wa-bridge:/app/services/wa-bridge
+      - ./data/wa:/app/services/wa-bridge/data
+    environment:
+      - ERP_URL=http://most-finance:3001
+      - FIN_URL=http://most-finance:3000
+      - WA_PHONE=${WA_PHONE:-}
+      - TZ=Asia/Almaty
+    restart: unless-stopped
+    depends_on:
+      - most-finance
+
   # Необязательно: постоянный адрес через Cloudflare Tunnel вместо start-internet.bat.
   # Публичный хост в туннеле — ТОЛЬКО most-finance:3001 (сайт ERP). Финансы (3000) в туннель не заводить.
   # 1) Cloudflare Zero Trust → Networks → Tunnels → Create a tunnel → скопируйте токен.

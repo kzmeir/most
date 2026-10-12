@@ -131,6 +131,14 @@ if ($DryRun) {
 # /NFL /NDL (без построчного списка файлов) только в реальном прогоне - в -DryRun список нужен, иначе
 # Select-String ниже не увидит ни одной строки и всегда покажет «0 изменений», даже при реальных отличиях.
 $quietFlags = if ($DryRun) { @() } else { @('/NFL', '/NDL') }
+# службы рядом с ERP (services\wa-bridge и т. п.): без node_modules и data — зависимости ставит сам контейнер, данные (ключи, сессия WhatsApp) живут на сервере
+$svcSrc = Join-Path $Source 'services'
+if (Test-Path $svcSrc) {
+  $svcFlag = if ($DryRun) { '/L' } else { '/E' }
+  $rcOut = & robocopy $svcSrc (Join-Path $Target 'services') $svcFlag /XD node_modules data data-test test @quietFlags /NJH /NP
+  if ($LASTEXITCODE -ge 8) { Fail "robocopy services завершился с ошибкой (код $LASTEXITCODE)" }
+  if ($DryRun) { Log "[DryRun] services - изменений: $(($rcOut | Select-String '^\s+(Newer|New File)').Count)" }
+}
 foreach ($dir in 'lib', 'public', 'modules') {
   $srcDir = Join-Path $Source $dir
   if (-not (Test-Path $srcDir)) { continue }

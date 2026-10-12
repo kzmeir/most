@@ -1,0 +1,7 @@
+[
+  { "key": { "remoteJid": "120363000000000001@g.us", "id": "G1", "fromMe": false, "participant": "77010000001@s.whatsapp.net" }, "pushName": "Тест Заказчик", "messageTimestamp": 1791800000, "message": { "conversation": "Добрый день, фасады согласованы, ждём планы." } },
+  { "key": { "remoteJid": "120363000000000001@g.us", "id": "G2", "fromMe": false, "participant": "77010000002@s.whatsapp.net" }, "pushName": "Тест Архитектор", "messageTimestamp": 1791800060, "message": { "extendedTextMessage": { "text": "Планы пришлём в пятницу.", "contextInfo": { "quotedMessage": { "conversation": "Добрый день, фасады согласованы, ждём планы." } } } } },
+  { "key": { "remoteJid": "120363000000000001@g.us", "id": "G3", "fromMe": false, "participant": "77010000001@s.whatsapp.net" }, "pushName": "Тест Заказчик", "messageTimestamp": 1791800120, "message": { "reactionMessage": { "text": "+" } } },
+  { "key": { "remoteJid": "77020000003@s.whatsapp.net", "id": "D1", "fromMe": false }, "pushName": "Тест Новый Клиент", "messageTimestamp": 1791800200, "message": { "conversation": "Здравствуйте! Нужен эскизный проект гостиницы, участок 0,5 га. Сколько стоит и какие сроки?" } },
+  { "key": { "remoteJid": "status@broadcast", "id": "S1", "fromMe": false }, "messageTimestamp": 1791800300, "message": { "conversation": "статус" } }
+]
