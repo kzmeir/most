@@ -3,12 +3,14 @@
 // Лиды и воронка (crmLeads), график платежей по договору (crmPayments), шаблоны документов (crmTemplates).
 // КП и договоры ядра (db.proposals, db.contracts) только читаем и отдаём отсюда по правам модуля — на сайте ERP финансовых API нет.
 // Файлы готовых КП (внешние редакции) — на диске DATA_DIR/crm-files/<id лида>/, в базе только ключи (как board/office).
+// Обращения (личные сообщения номеру WhatsApp бюро) — inbox.js: crmInbox, crmInboxMessages, файлы DATA_DIR/crm-files/inbox/<id диалога>/.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const C = require('./domain');
 const KP = require('./kp');
 const KPDOCX = require('./kpdocx');
+const INBOX = require('./inbox'); // обращения из WhatsApp: приём от моста, диалоги, превращение в сделки
 
 const KP_FILE_TYPES = {
   pdf: { type: 'application/pdf', sig: b => b.slice(0, 5).toString('latin1') === '%PDF-' },
@@ -116,13 +118,14 @@ function handle(ctx) {
   if (a === 'badges' && method === 'GET') {
     const out = { crmleads: visible().filter(l => C.leadOverdue(l, t)).length };
     if (leader) out.crmpay = db.crmPayments.map(payOut).filter(p => p.ready || p.late).length;
+    if (editor) out.crminbox = INBOX.counts(db).new; // новых обращений (WhatsApp), ещё не разобранных
     return ok(out);
   }
   // ---- справочники и списки для форм ----
   if (a === 'meta' && method === 'GET') {
     const out = { statuses: C.STATUSES, tracks: C.TRACKS, sources: C.SOURCES, objectTypes: C.OBJECT_TYPES, reasons: C.REASONS, payStatus: C.PAY_STATUS, payTemplates: C.PAY_TEMPLATES, companies: C.COMPANIES, fields: C.FIELDS,
       erpPort: Number(process.env.ERP_PORT) || (Number(process.env.PORT) || 3000) + 1, // ссылки на карточки проектов (сайт MOST ERP)
-      rights: { leader, editor, payments: C.canPayments(user), docs: C.canDocs(user), templates: C.canEditTemplates(user), sign: C.canSign(user) }, vatRate: vat, term: termOf(ctx) };
+      rights: { leader, editor, inbox: editor, ingest: C.canIngest(user), payments: C.canPayments(user), docs: C.canDocs(user), templates: C.canEditTemplates(user), sign: C.canSign(user) }, vatRate: vat, term: termOf(ctx) };
     if (editor) {
       const used = new Set(db.crmLeads.map(l => l.proposalId).filter(Boolean));
       out.proposals = db.proposals.map(p => ({ id: p.id, no: p.no || '', title: p.title || '', client: p.client || '', sum: p.sum || 0, status: p.status || '', used: used.has(p.id) }));
@@ -133,7 +136,9 @@ function handle(ctx) {
   }
 
   // ---- лиды ----
-  if (a === 'funnel' && method === 'GET') return ok(C.funnel(visible(), { vatRate: vat, from: qs.from || '' }));
+  if (a === 'funnel' && method === 'GET') return ok(Object.assign(C.funnel(visible(), { vatRate: vat, from: qs.from || '' }), editor ? { inbox: INBOX.counts(db) } : {}));
+  // ---- обращения (WhatsApp) ----
+  if (a === 'inbox') return INBOX.handle(ctx, { editor, canSee: l => C.canSeeLead(user, l, pmProjects), leadOut, nextNo });
   if (a === 'leads') {
     if (!b && method === 'GET') return ok(visible().map(leadOut).sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt))));
     if (!b && method === 'POST') {
@@ -149,6 +154,7 @@ function handle(ctx) {
       const out = leadOut(l); out.history = (l.history || []).map(h => Object.assign({}, h, { byName: ctx.userName ? ctx.userName(h.by) : '' }));
       if (C.canDocs(user)) out.payments = paysOf(l.id).map(payOut); // секретарю — для документов по этапам оплаты
       if (leader) out.stageNames = l.pmProjectId ? stageNamesOf(l.pmProjectId) : [];
+      out.whatsapp = INBOX.threadsOfLead(ctx, l.id, 5); // переписка WhatsApp, привязанная к сделке
       return ok(out);
     }
     if (l && !c && method === 'PUT') {
@@ -171,6 +177,7 @@ function handle(ctx) {
       if (!leader) return err(403, 'Удалять лиды может только руководитель');
       db.crmLeads.splice(db.crmLeads.indexOf(l), 1); const ps = paysOf(l.id); for (const p of ps) db.crmPayments.splice(db.crmPayments.indexOf(p), 1);
       try { fs.rmSync(kpDir(ctx, l.id), { recursive: true, force: true }); } catch { } // файлы готовых КП
+      INBOX.onLeadDeleted(db, l.id); // переписка возвращается в «Обращения»
       saveAudit('delete', 'crmLeads', l.id, { payments: ps.length }); return ok({ ok: true });
     }
     // «Договор подписан»: реквизиты договора, проект в pm (новый или существующий), график платежей, событие crm.contract.signed
@@ -377,4 +384,4 @@ function handle(ctx) {
   return err(404, 'Нет такого раздела коммерции');
 }
 
-module.exports = { id: 'crm', api: 'crm', site: 'fin', collections: ['crmLeads', 'crmPayments', 'crmTemplates'], handle, expectedPayments, on: { 'pm.item.done': onItemDone }, domain: C };
+module.exports = { id: 'crm', api: 'crm', site: 'fin', collections: ['crmLeads', 'crmPayments', 'crmTemplates', ...INBOX.collections], handle, expectedPayments, on: { 'pm.item.done': onItemDone }, domain: C };

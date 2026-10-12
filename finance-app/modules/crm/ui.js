@@ -5,10 +5,11 @@
   title: 'Коммерция',
   nav: [
     { id: 'crmleads', label: 'Лиды и воронка', icon: '◔' },
+    { id: 'crminbox', label: 'Обращения', icon: '✉', can: u => !!window.MostCRM && window.MostCRM.canEditLeads(u) },
     { id: 'crmpay', label: 'График платежей', icon: '₸', can: u => !!window.MostCRM && window.MostCRM.canPayments(u) },
     { id: 'crmdocs', label: 'Документы', icon: '📝', can: u => !!window.MostCRM && window.MostCRM.canDocs(u) },
   ],
-  routes: ['crmlead'], // карточка лида / сделки: #/crmlead?id=…
+  routes: ['crmlead', 'crmdialog'], // карточка лида / сделки: #/crmlead?id=…; диалог обращения: #/crmdialog?id=…
   canOpen: u => !!window.MostCRM && window.MostCRM.canOpen(u),
   help: [
     ['Как устроена коммерция', `
@@ -35,6 +36,14 @@
 <li><b>⬆ Загрузить готовое КП</b> — если КП собрано вне ERP (сложное: несколько позиций, фиксированные строки, разбивка по разделам): приложите PDF и/или DOCX и перенесите итог — номер (пусто — присвоится следующий КП-26-NNN), дата, площадь, итог без НДС, НДС и с НДС (пустые досчитаются по ставке НДС), ставка ₸/м² без НДС (пусто — итог / площадь), отдельно <b>сопутствующие работы вне КП</b> и комментарий. Редакция помечается «готовый файл», файлы скачиваются из карточки; итог без НДС и площадь идут в лид и аналитику (ставка ₸/м², конверсия КП → договор), сопутствующие — нет. Новый лид переводится в «КП отправлено». Ошибочную загрузку руководитель удаляет кнопкой ✕ у редакции.</li>
 <li>После подписания в карточке виден график платежей и ссылка на проект. «Коммерция» работает на сайте «Финансы», а карточка проекта открывается в новой вкладке на сайте MOST ERP.</li>
 </ul>`],
+    ['Обращения (WhatsApp)', `
+<p>У бюро есть отдельный номер WhatsApp. Личные сообщения этому номеру автоматически попадают сюда — чтобы новый заказ не потерялся в переписке.</p>
+<ul>
+<li>Если телефон написавшего уже есть в <b>текущей сделке</b> (поле «Телефон / почта» лида, сделка не в отказе), переписка сразу привязывается к ней и видна в карточке сделки — блок «Переписка WhatsApp». Новое обращение не создаётся.</li>
+<li>Остальные диалоги — в списке <b>«Новые»</b>; цифра в меню — сколько их ещё не разобрано. Метка <b>«похоже на заказ»</b> ставится по ключевым словам во входящих сообщениях (проект, эскиз, участок, га, м², коттедж, ЖК, гостиница, стоимость, КП, договор, сроки… — на русском и казахском), слова подсвечены в переписке. Это только подсказка: ничего не скрывается и не удаляется автоматически.</li>
+<li><b>Создать сделку</b> — новый лид: заказчик = имя из WhatsApp, телефон, источник «WhatsApp», в заметке — первые сообщения. <b>Привязать к сделке…</b> — если заказчик уже есть в воронке под другим номером. <b>Не заказ</b> — личное, реклама, спам: диалог уходит во вкладку «Не заказ», новые сообщения этого контакта его не возвращают, пока вы сами не нажмёте «Вернуть в обращения».</li>
+<li>Переписка — только для чтения: отвечают заказчику в самом WhatsApp. Групповые чаты сюда не попадают — они относятся к проектам.</li>
+</ul>`, 'crminbox'],
     ['График платежей', `
 <ol>
 <li>По каждой сделке — строки графика: этап оплаты, доля %, сумма, <b>привязка к этапу проекта</b>, ожидаемая дата и статус «Ожидается → Акт выставлен → Оплачен».</li>
@@ -66,6 +75,14 @@
 .crm-deal{padding:0;margin-bottom:14px}.crm-deal>.h{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}.crm-deal>.h .grow{flex:1;min-width:200px}.crm-deal .tbl{border:0;box-shadow:none;border-radius:0 0 var(--r) var(--r)}
 .crm-sched td input,.crm-sched td select{width:100%;min-width:60px}.crm-sched td{padding:4px}
 .crm-bars .r{display:grid;grid-template-columns:130px 1fr 110px;gap:8px;align-items:center;font-size:13px;margin-bottom:6px}
+.crm-ibl{display:flex;flex-direction:column;gap:8px}.crm-ib{display:block;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;text-decoration:none;color:inherit;min-width:0}.crm-ib:hover{border-color:var(--accent)}.crm-ib.unread{box-shadow:inset 3px 0 0 var(--accent)}
+.crm-ib .t{display:flex;gap:4px 8px;align-items:baseline;flex-wrap:wrap}.crm-ib .t .w{margin-left:auto;color:var(--ink-faint);font-size:12px;white-space:nowrap}.crm-ib .x{margin:4px 0 6px;font-size:13.5px;overflow-wrap:anywhere}.crm-ib .m{display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center}
+.crm-tabs{flex-wrap:wrap}.crm-tabs small{color:var(--ink-faint);font-weight:600;margin-left:2px}
+.crm-feed{display:flex;flex-direction:column;gap:6px;padding:12px;background:var(--panel-2);border-radius:var(--r)}.crm-msg{display:flex}.crm-msg.me{justify-content:flex-end}
+.crm-msg .b{max-width:min(560px,88%);min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13.5px}.crm-msg.me .b{background:var(--ok-bg)}
+.crm-msg .tx{white-space:pre-wrap;overflow-wrap:anywhere}.crm-msg .tm{font-size:11px;color:var(--ink-faint);text-align:right;margin-top:2px}.crm-msg img{display:block;max-width:100%;max-height:260px;border-radius:6px;margin:4px 0}.crm-msg .f{overflow-wrap:anywhere}
+.crm-hit{background:var(--warn-bg);color:inherit;border-radius:3px;padding:0 2px}
+.crm-wa{margin-bottom:10px}.crm-wa .h{display:flex;gap:4px 10px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px}
 .crm-kpv{font-size:12.5px;margin-bottom:6px}.crm-kpv .chip{font-size:11px;padding:0 6px}.crm-kpf{margin-top:2px}.crm-fields{font-size:12px;color:var(--ink-soft);columns:2;margin:6px 0 10px}.crm-fields code{font-size:11.5px}
 </style>`);
 
@@ -84,11 +101,25 @@
     const pmpLink = (id, text) => `<a href="${pmpHref(id)}"${window.MOST_SITE === 'fin' ? ' target="_blank" rel="noopener" title="Откроется на сайте MOST ERP"' : ''}>${text}</a>`;
     const rerender = async () => { const y = window.scrollY; await route(); window.scrollTo(0, y); };
     let badgeAt = 0;
-    const badges = async force => { if (!force && Date.now() - badgeAt < 60000) return; badgeAt = Date.now(); try { const b = await api('/crm/badges'); ui.setBadge('crmleads', b.crmleads); if ('crmpay' in b) ui.setBadge('crmpay', b.crmpay); } catch { /* нет доступа */ } };
+    const badges = async force => { if (!force && Date.now() - badgeAt < 60000) return; badgeAt = Date.now(); try { const b = await api('/crm/badges'); ui.setBadge('crmleads', b.crmleads); if ('crmpay' in b) ui.setBadge('crmpay', b.crmpay); if ('crminbox' in b) ui.setBadge('crminbox', b.crminbox); } catch { /* нет доступа */ } };
     M._badges = () => badges(false);
     const leadLink = id => `#/crmlead?id=${encodeURIComponent(id)}`;
     const openHtml = html => { const w = window.open(URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' })), '_blank'); if (!w) toast('Разрешите всплывающие окна для печати'); };
     const download = (text, name, type) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
+
+    // ---- обращения (WhatsApp): общие помощники ----
+    const IB_CHIP = { new: ['warn', 'Новое'], lead: ['ok', 'Сделка'], ignored: ['neutral', 'Не заказ'] };
+    const KIND_NAME = { text: 'сообщение', image: 'изображение', doc: 'документ', audio: 'голосовое сообщение', video: 'видео' };
+    const dialogLink = id => `#/crmdialog?id=${encodeURIComponent(id)}`;
+    const ftime = ts => { if (!ts) return ''; const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleString('ru-RU', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', ''); };
+    const scoreChip = d => d.level === 'hot' ? chip('h', { h: ['ok', `похоже на заказ · ${d.score}`] }) : d.level === 'warm' ? chip('w', { w: ['neutral', `возможно, заказ · ${d.score}`] }) : '';
+    const markHtml = t => CR.inboxMark(t).map(x => x.hit ? `<mark class="crm-hit">${esc(x.t)}</mark>` : esc(x.t)).join('');
+    const ibFileHref = (did, f) => `/api/crm/inbox/${encodeURIComponent(did)}/files/${encodeURIComponent(f.key)}`;
+    const ibFile = (did, f) => f.rejected ? `<div class="faint f">📎 ${esc(f.name)} — файл не принят: ${esc(f.rejected)}</div>`
+      : f.image ? `<a href="${ibFileHref(did, f)}" target="_blank" rel="noopener" title="${esc(f.name)}"><img src="${ibFileHref(did, f)}" alt="${esc(f.name)}" loading="lazy"></a>`
+        : `<div class="f"><a href="${ibFileHref(did, f)}" target="_blank" rel="noopener">⬇ ${esc(f.name)}</a> <span class="faint">${Math.max(1, Math.round(f.size / 1024))} КБ</span></div>`;
+    const msgHtml = (did, m) => `<div class="crm-msg${m.fromMe ? ' me' : ''}"><div class="b">${m.text ? `<div class="tx">${m.fromMe ? esc(m.text) : markHtml(m.text)}</div>` : ''}${(m.files || []).map(f => ibFile(did, f)).join('')}${!m.text && !(m.files || []).length ? `<div class="faint">[${esc(KIND_NAME[m.kind] || m.kind)}]</div>` : ''}<div class="tm">${m.fromMe ? 'мы · ' : ''}${ftime(m.ts)}</div></div></div>`;
+    const waBlock = l => (l.whatsapp || []).length ? '<h2>Переписка WhatsApp</h2>' + l.whatsapp.map(w => `<div class="card crm-wa"><div class="h"><b>${esc(w.name || w.phoneText || 'WhatsApp')}</b><span class="faint">${esc(w.name ? w.phoneText + ' · ' : '')}сообщений: ${w.count} · последнее ${ftime(w.lastAt)}</span><a href="${dialogLink(w.id)}">Открыть диалог →</a></div><div class="crm-feed">${w.messages.map(m => msgHtml(w.id, m)).join('') || '<div class="faint">сообщений нет</div>'}</div>${w.count > w.messages.length ? `<div class="faint" style="margin-top:6px">показаны последние ${w.messages.length} из ${w.count}</div>` : ''}</div>`).join('') : '';
 
     // ---- форма лида ----
     const leadFields = (m, l) => [
@@ -269,13 +300,13 @@ ${ta('scope', 'Состав работ', 8, '# группа, далее пунк
 <div class="card"><div class="label">Воронка по статусам</div><div class="crm-bars">${fn.byStatus.map(x => `<div class="r"><span>${esc(x.status)}</span><div class="bar"><i style="width:${Math.round(x.n / maxN * 100)}%"></i></div><span class="num">${x.n} · ${mln(x.sum)}</span></div>`).join('')}</div><div class="faint">суммы без НДС</div></div>
 <div class="card"><div class="label">Причины отказов</div>${fn.reasons.length ? `<div class="kv">${fn.reasons.map(r => `<span>${esc(r.reason)}</span><b>${r.n} · ${mln(r.sum)}</b>`).join('')}</div>` : '<div class="faint">отказов нет</div>'}</div>
 <div class="card"><div class="label">Средняя ставка без НДС, ₸/м²</div>${fn.rates.length ? `<div class="tbl-inner"><table style="width:100%;font-size:13px"><tr><th style="text-align:left">Тип</th><th class="num">КП</th><th class="num">Договоры</th></tr>${fn.rates.map(r => `<tr><td>${esc(r.type)}</td><td class="num">${r.kp.n ? mln(r.kp.rate) + ` <span class="faint">(${r.kp.n})</span>` : '—'}</td><td class="num">${r.won.n ? mln(r.won.rate) + ` <span class="faint">(${r.won.n})</span>` : '—'}</td></tr>`).join('')}</table></div>` : '<div class="faint">нет лидов с площадью и суммой</div>'}<div class="faint" style="margin-top:6px">взвешено по площади</div></div></div>`;
-      main.innerHTML = head('Лиды и воронка', `${rows.length} лидов · в работе ${fn.open} на ${mln(fn.openSum)} ₸ без НДС`, btns) +
+      main.innerHTML = head('Лиды и воронка', `${rows.length} лидов · в работе ${fn.open} на ${mln(fn.openSum)} ₸ без НДС${fn.inbox && fn.inbox.new ? ` · <a href="#/crminbox">новых обращений: ${fn.inbox.new}</a>` : ''}`, btns) +
         `<div class="grid g4 crm-kpi" style="margin-bottom:14px">
 <div class="card"><div class="label">В работе</div><div class="val">${fn.open}</div><div class="foot">${mln(fn.openSum)} ₸ без НДС</div></div>
 <div class="card"><div class="label">Конверсия КП → договор</div><div class="val">${pct(fn.conversion)}</div><div class="foot">всех закрытых лидов: ${pct(fn.conversionAll)}</div></div>
 <div class="card"><div class="label">Договоры</div><div class="val">${fn.won}</div><div class="foot">${mln(fn.wonSum)} ₸ без НДС</div></div>
 <div class="card"><div class="label">Отказы</div><div class="val">${fn.lost}</div><div class="foot">${fn.reasons[0] ? 'чаще всего: ' + esc(fn.reasons.slice().sort((a, b) => b.n - a.n)[0].reason) : '—'}</div></div></div>` +
-        `<div class="tabs"><a href="#/crmleads?${qsOf({ view: 'board', period })}" class="${view === 'board' ? 'active' : ''}">Канбан</a><a href="#/crmleads?${qsOf({ view: 'table', period })}" class="${view === 'table' ? 'active' : ''}">Таблица</a></div>` +
+        `<div class="tabs"><a href="#/crmleads?${qsOf({ view: 'board', period })}" class="${view === 'board' ? 'active' : ''}">Канбан</a><a href="#/crmleads?${qsOf({ view: 'table', period })}" class="${view === 'table' ? 'active' : ''}">Таблица</a>${fn.inbox ? `<a href="#/crminbox" title="Личные сообщения номеру WhatsApp бюро">Обращения${fn.inbox.new ? ` <small class="crm-over">${fn.inbox.new}</small>` : ''}</a>` : ''}</div>` +
         `<div class="filters">${sel('crm-st', [['open', 'В работе'], ...m.statuses], f.st, 'Все статусы')}${sel('crm-type', m.objectTypes, f.type, 'Все типы')}${sel('crm-period', [['all', 'Аналитика: всё время'], ['year', 'Аналитика: с начала года']], period)}${sel('crm-mine', [['', 'Все ответственные'], ['1', 'Мои']], f.mine ? '1' : '')}<input id="crm-text" placeholder="Поиск: заказчик, объект, №" value="${esc(q.get('text') || '')}"></div>` +
         (view === 'table' ? table : board) + analytics;
       main.querySelectorAll('[data-open]').forEach(el => el.onclick = () => { location.hash = leadLink(el.dataset.open); });
@@ -302,14 +333,56 @@ ${kv('Сумма', l.calc.sum ? `<b>${money(l.calc.sum)}</b> ${l.vatIncluded ? '
 ${kv('Источник', esc(l.source))}${kv('Ответственный', esc(l.respName || pname(l.respId)))}${kv('Следующий контакт', l.nextDate && CR.OPEN(l.status) ? `<span class="${l.overdue ? 'crm-over' : ''}">${fdate(l.nextDate)}</span> ${esc(l.nextStep || '')}` : '')}
 ${kv('Отказ', l.status === 'Отказ' ? esc([l.reason, l.reasonNote].filter(Boolean).join(': ')) : '')}${kv('КП', l.proposal ? `${esc(l.proposal.title)} · ${money(l.proposal.sum)} · ${esc(l.proposal.status)}` : '')}
 ${kv('Договор', l.contractNo || l.contract ? `№ ${esc(l.contractNo || '—')} от ${fdate(l.contractDate)} · ${esc(l.company || '')}${l.contract ? ` <span class="faint">(реестр: ${esc(l.contract.name)})</span>` : ''}` : '')}
-${kv('Проект', l.pm ? `${pmpLink(l.pm.id, `${esc(TRACK(l.pm.track))} · ${esc(l.pm.name)}`)} · ${esc(l.pm.status)}` : '')}${kv('Заметка', esc(l.note))}
-</div></div><div class="card"><div class="label">Коммерческое предложение${l.kpNo ? ' · ' + esc(l.kpNo) : ''}</div>${kpVersions(l, l.kpVersions, m.rights.leader)}<div class="label" style="margin-top:12px">История</div><ol class="crm-hist">${(l.history || []).slice().reverse().map(h => `<li>${fdate(h.at)} · <b>${esc(h.status)}</b>${h.note ? ' — ' + esc(h.note) : ''} <span class="faint">${esc(h.byName || '')}</span></li>`).join('') || '<li>—</li>'}</ol></div></div>` +
+${kv('Проект', l.pm ? `${pmpLink(l.pm.id, `${esc(TRACK(l.pm.track))} · ${esc(l.pm.name)}`)} · ${esc(l.pm.status)}` : '')}${kv('Заметка', l.note ? `<span style="white-space:pre-wrap">${esc(l.note)}</span>` : '')}
+</div></div><div class="card"><div class="label">Коммерческое предложение${l.kpNo ? ' · ' + esc(l.kpNo) : ''}</div>${kpVersions(l, l.kpVersions, m.rights.leader)}<div class="label" style="margin-top:12px">История</div><ol class="crm-hist">${(l.history || []).slice().reverse().map(h => `<li>${fdate(h.at)} · <b>${esc(h.status)}</b>${h.note ? ' — ' + esc(h.note) : ''} <span class="faint">${esc(h.byName || '')}</span></li>`).join('') || '<li>—</li>'}</ol></div></div>` + waBlock(l) +
         (m.rights.payments && (l.status === 'Договор' || (l.payments || []).length) ? `<h2>График платежей</h2><div class="actions" style="margin-bottom:8px"><button class="btn sm" data-act="crmSched" data-id="${l.id}">Изменить график</button><button class="btn sm" data-act="crmPayAdd" data-id="${l.id}">+ платёж</button><button class="btn sm" data-act="crmLink" data-id="${l.id}">Проект…</button>${m.rights.leader ? '<button class="btn sm danger" data-act="crmDelLead">Удалить лид</button>' : ''}</div>` + payTable(l, names) : (m.rights.leader ? `<div class="actions" style="margin-top:14px"><button class="btn sm danger" data-act="crmDelLead">Удалить лид</button></div>` : ''));
       ui.ACT.crmKp = () => kpDialog(l); ui.ACT.crmKpUp = () => kpUpload(l);
       ui.ACT.crmKpDel = async ({ v }) => { if (!confirm(`Удалить редакцию ${v} (готовый файл) вместе с файлами?`)) return; await api(`/crm/leads/${encodeURIComponent(l.id)}/kp/${v}`, { method: 'DELETE' }); toast('Редакция удалена'); rerender(); };
 ui.ACT.crmEditLead = () => editLead(l); ui.ACT.crmSt = ({ st }) => setStatus(l, st); ui.ACT.crmSign = () => signLead(l);
       ui.ACT.crmDelLead = async () => { if (!confirm('Удалить лид вместе с графиком платежей?')) return; await api('/crm/leads/' + l.id, { method: 'DELETE' }); toast('Удалено'); location.hash = '#/crmleads'; };
       bind(main);
+    };
+
+    // ---- раздел «Обращения» (WhatsApp) ----
+    ui.SECTIONS.crminbox = async main => {
+      const q = params(); const st = q.get('st') == null ? (CR.canEditLeads(ui.state.user) ? 'new' : '') : q.get('st');
+      const d = await api('/crm/inbox' + (st ? '?status=' + encodeURIComponent(st) : '')); const cn = d.counts || {};
+      const tab = (v, label, n) => `<a href="#/crminbox?st=${v}" class="${st === v ? 'active' : ''}">${label}${n ? ` <small>${n}</small>` : ''}</a>`;
+      const row = x => `<a class="crm-ib${x.unread ? ' unread' : ''}" href="${dialogLink(x.id)}"><div class="t"><b>${esc(x.name || x.phoneText || x.extId)}</b>${x.name && x.phoneText ? `<span class="faint">${esc(x.phoneText)}</span>` : ''}<span class="w">${ftime(x.lastAt)}</span></div>
+<div class="x">${esc(ui.cut(x.firstText || '—', 180))}</div>
+<div class="m">${chip(x.status, IB_CHIP)}${scoreChip(x)}${x.words.length ? `<span class="faint">${esc(x.words.join(', '))}</span>` : ''}<span class="faint">сообщений: ${x.count}${x.unread ? ` · непрочитанных: ${x.unread}` : ''} · первое ${ftime(x.firstAt)}</span>${x.lead ? `<span class="faint">сделка № ${x.lead.no} · ${esc(ui.cut(x.lead.client || x.lead.object, 40))}</span>` : ''}</div></a>`;
+      main.innerHTML = head('Обращения', 'Личные сообщения номеру WhatsApp бюро. Телефон из текущей сделки — переписка сразу в её карточке; остальные ждут разбора здесь.') +
+        `<div class="tabs crm-tabs">${tab('new', 'Новые', cn.new)}${tab('lead', 'Сделки', cn.lead)}${tab('ignored', 'Не заказ', cn.ignored)}${tab('', 'Все', 0)}<a href="#/crmleads">← Воронка</a></div>` +
+        (d.items.length ? `<div class="crm-ibl">${d.items.map(row).join('')}</div>` : empty(st === 'new' ? 'Новых обращений нет' : 'Обращений нет'));
+      bind(main); badges(true);
+    };
+
+    // ---- карточка диалога: лента сообщений (только чтение) и действия ----
+    ui.SECTIONS.crmdialog = async main => {
+      const id = params().get('id'); const d = await api('/crm/inbox/' + encodeURIComponent(id)); const m = await meta();
+      const title = d.name || d.phoneText || 'Обращение';
+      const btns = !d.canEdit ? '' : d.status === 'new' ? `<button class="btn primary" data-act="crmIbLead">+ Создать сделку</button><button class="btn" data-act="crmIbLink">Привязать к сделке…</button><button class="btn" data-act="crmIbIgnore">Не заказ</button>`
+        : d.status === 'lead' ? `${d.lead ? `<a class="btn primary" href="${leadLink(d.lead.id)}">Открыть сделку</a>` : ''}<button class="btn" data-act="crmIbLink">Другая сделка…</button><button class="btn" data-act="crmIbUnlink">Отвязать</button>`
+          : `<button class="btn primary" data-act="crmIbRestore">Вернуть в обращения</button>`;
+      const kv = (k, v) => v ? `<b>${esc(k)}</b><span>${v}</span>` : '';
+      main.innerHTML = head(title, `WhatsApp${d.phoneText ? ' · ' + esc(d.phoneText) : ''} · ${chip(d.status, IB_CHIP)} ${scoreChip(d)} · <a href="#/crminbox${d.status === 'new' ? '' : '?st=' + d.status}">← к обращениям</a>`, btns) +
+        `<div class="card" style="margin-bottom:14px"><div class="crm-kv">${kv('Контакт', esc(d.name))}${kv('Телефон', esc(d.phoneText))}${kv('Сообщений', `${d.count} · первое ${ftime(d.firstAt)} · последнее ${ftime(d.lastAt)}`)}
+${kv('Ключевые слова', d.words.length ? d.words.map(w => `<mark class="crm-hit">${esc(w)}</mark>`).join(' ') : '<span class="faint">не найдены</span>')}
+${kv('Сделка', d.lead ? `<a href="${leadLink(d.lead.id)}">№ ${d.lead.no} · ${esc(d.lead.client || '—')}${d.lead.object ? ' · ' + esc(ui.cut(d.lead.object, 60)) : ''}</a> · ${esc(d.lead.status)}${d.linkedBy === 'auto' ? ' <span class="faint">(привязано по номеру телефона)</span>' : ''}` : '')}</div></div>` +
+        `${d.total > d.messages.length ? `<div class="faint" style="margin-bottom:6px">показаны последние ${d.messages.length} из ${d.total} сообщений</div>` : ''}<div class="crm-feed">${d.messages.map(x => msgHtml(d.id, x)).join('') || '<div class="faint">сообщений нет</div>'}</div><p class="faint" style="margin-top:8px">Только чтение: отвечают заказчику в WhatsApp.</p>`;
+      const post = (act, body) => api(`/crm/inbox/${encodeURIComponent(d.id)}/${act}`, { method: 'POST', body: body || {} });
+      ui.ACT.crmIbLead = () => modal('Сделка из обращения', `<p class="sub">Телефон ${esc(d.phoneText || '—')}, источник «WhatsApp». В заметку попадут первые сообщения — остальное дополните в карточке.</p>` + formHtml([
+        { name: 'client', label: 'Заказчик', required: true, half: true }, { name: 'contact', label: 'Контактное лицо', half: true }, { name: 'object', label: 'Объект' },
+        { name: 'objectType', label: 'Тип объекта', type: 'select', options: m.objectTypes, half: true }, { name: 'track', label: 'Стадия', type: 'select', options: Object.entries(m.tracks), half: true }],
+      { client: d.name || d.phoneText, contact: d.name, objectType: 'Прочее', track: 'rp' }, 'Создать сделку'), async v => { const r = await post('lead', v); toast(`Сделка № ${r.lead.no} создана`); badges(true); location.hash = leadLink(r.lead.id); });
+      ui.ACT.crmIbLink = async () => { const leads = (await api('/crm/leads')).sort((a, b) => CR.OPEN(b.status) - CR.OPEN(a.status));
+        if (!leads.length) return toast('Сделок пока нет — создайте сделку из обращения');
+        modal('Привязать к сделке', formHtml([{ name: 'leadId', label: 'Сделка', type: 'select', required: true, options: [['', '— выберите —'], ...leads.map(l => [l.id, `№ ${l.no} · ${l.client || '—'} · ${ui.cut(l.object, 40)} · ${l.status}`])] }], { leadId: d.leadId }, 'Привязать'), async v => { if (!v.leadId) throw new Error('Выберите сделку'); await post('link', v); toast('Переписка привязана к сделке'); badges(true); rerender(); }); };
+      ui.ACT.crmIbUnlink = async () => { if (!confirm('Отвязать переписку от сделки? Диалог вернётся в новые обращения.')) return; await post('link', { leadId: '' }); toast('Отвязано'); badges(true); rerender(); };
+      ui.ACT.crmIbIgnore = async () => { if (!confirm('Пометить «Не заказ»? Новые сообщения этого контакта не будут возвращать диалог в новые.')) return; await post('ignore', { ignored: true }); toast('Помечено: не заказ'); badges(true); location.hash = '#/crminbox'; };
+      ui.ACT.crmIbRestore = async () => { await post('ignore', { ignored: false }); toast('Возвращено в обращения'); badges(true); rerender(); };
+      bind(main);
+      if (d.canEdit && d.unread) post('read').then(() => badges(true)).catch(() => { });
     };
 
     // ---- раздел «График платежей» ----
