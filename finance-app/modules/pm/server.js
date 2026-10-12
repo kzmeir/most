@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const PM = require('./domain');
+const CHAT = require('./chat'); // переписка проектов (группы WhatsApp): приём от моста, привязка к проектам, лента, копия файлов в папку проекта
 
 const CONTRACT_FIELDS = ['contractNo', 'contractDate', 'contractTerm', 'contractTermUnit', 'contractStartRule', 'dueNote'];
 const FIELDS = ['name', 'no', 'client', 'address', 'area', 'status', 'risk', 'gipId', 'pmId', 'start', 'due', 'forecast', 'comment', 'projectId', 'members', 'miroUrl', 'folder'].concat(CONTRACT_FIELDS);
@@ -198,11 +199,14 @@ function handle(ctx) {
     if (method === 'PUT') {
       if (!['owner', 'partner'].includes(user.role)) return err(403, 'Менять настройки модуля могут владелец и партнёр');
       const next = Object.assign({}, S); if ('staffOwnProjects' in body) next.staffOwnProjects = body.staffOwnProjects === true || body.staffOwnProjects === 'true' || body.staffOwnProjects === 1;
+      for (const k of ['chatForMembers', 'chatFilesToFolder']) if (k in body) next[k] = body[k] === true || body[k] === 'true' || body[k] === 1; // переписка: чтение участниками, копия файлов в папку проекта
+      if ('chatFolderName' in body) next.chatFolderName = PM.chatFolderName(body.chatFolderName);
       for (const [k, roles] of [['defaultEpPmId', ['pm', 'owner', 'partner']], ['defaultRpGipId', ['gip', 'owner', 'partner']]]) if (k in body) {
         const id = String(body[k] || ''); if (id && !db.users.some(u => u.id === id && u.active !== false && roles.includes(u.role))) return err(400, k === 'defaultEpPmId' ? 'ПМ по умолчанию — пользователь с ролью ПМ' : 'ГИП по умолчанию — пользователь с ролью ГИП'); next[k] = id; }
       db.settings = Object.assign({}, db.settings, { pm: next }); store.save(); store.audit(user.id, 'update', 'settings', 'pm', next); return ok(next);
     }
   }
+  if (a === 'chats') return CHAT.handle(ctx); // группы WhatsApp: приём, привязка, файлы (права — внутри)
   const t = ctx.today(); const now = () => new Date().toISOString(); const findP = id => db.pmProjects.find(p => p.id === id);
   const visibleP = p => !!p && (!staff || PM.staffSees(user, p, db.pmItems)); // сотрудник видит только свои проекты
   const projOut = p => { const o = Object.assign({}, p); if (!PM.canBudget(user, p)) delete o.budget; return o; };
@@ -212,7 +216,8 @@ function handle(ctx) {
   const card = p => {
     const items = db.pmItems.filter(i => i.pid === p.id).sort((x, y) => x.stage - y.stage || x.order - y.order);
     const h = PM.health(p, db.pmItems, t);
-    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i), waiting: PM.waitingFor(items, i), kcol: PM.itemKanban(i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [], logN: logs().filter(r => r.pid === p.id).length, canLog: PM.canLogAdd(user, p, db.pmItems) };
+    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i), waiting: PM.waitingFor(items, i), kcol: PM.itemKanban(i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [], logN: logs().filter(r => r.pid === p.id).length, canLog: PM.canLogAdd(user, p, db.pmItems), canChat: PM.canChatRead(user, p, S, db.pmItems) };
+    if (out.canChat) out.chatN = CHAT.countOf(db, p.id);
     if (staff) { out.staff = true; out.blockers = out.blockers.filter(x => x.ownerId === user.id); out.contractors = []; }
     const hrMod = ctx.modules && ctx.modules.hr; if (hrMod && hrMod.laborHours && !staff) out.hours = hoursOf(ctx, hrMod, p, user, out.canBudget); // вкладка «Часы» — только при включённом модуле hr
     if (out.canBudget) out.throughput = PM.throughput(p, h);
@@ -277,7 +282,7 @@ function handle(ctx) {
     if (p && !c && method === 'DELETE') {
       if (!PM.isLeader(user)) return err(403, 'Удалять может руководитель');
       db.pmItems = db.pmItems.filter(i => i.pid !== p.id); db.pmBlockers = db.pmBlockers.filter(x => x.pid !== p.id); db.pmProjects = db.pmProjects.filter(x => x.id !== p.id);
-      db.pmLog = logs().filter(r => r.pid !== p.id); dropLogDir(ctx, p.id);
+      db.pmLog = logs().filter(r => r.pid !== p.id); dropLogDir(ctx, p.id); CHAT.onProjectDelete(db, p.id); // группы WhatsApp проекта снова «не привязаны», сообщения остаются
       for (const q of db.pmProjects) for (const k of ['epId', 'rpId', 'conceptId']) if (q[k] === p.id) delete q[k];
       store.save(); store.audit(user.id, 'delete', 'pmProjects', p.id); return ok({ ok: true });
     }
@@ -330,9 +335,11 @@ function handle(ctx) {
     // журнал проекта: лента (записи + события), добавить запись, импорт пачкой
     if (p && c === 'log' && !d && method === 'GET') {
       const blk = db.pmBlockers.filter(x => x.pid === p.id && (!staff || x.ownerId === user.id));
-      const events = PM.projectFeed(p, db.pmItems, blk, logs(), {}).map(e => e.kind === 'log' ? Object.assign(e, { canEdit: PM.canLogEdit(user, p, e), files: (e.files || []).map(f => Object.assign({}, f, { url: `/api/pm/log/${e.id}/files/${f.key}` })) }) : e);
+      const extra = PM.canChatRead(user, p, S, db.pmItems) ? CHAT.dayEvents(db, p.id) : []; // переписка: строка на день и группу — только тем, кто её читает
+      const events = PM.projectFeed(p, db.pmItems, blk, logs(), { extra }).map(e => e.kind === 'log' ? Object.assign(e, { canEdit: PM.canLogEdit(user, p, e), files: (e.files || []).map(f => Object.assign({}, f, { url: `/api/pm/log/${e.id}/files/${f.key}` })) }) : e);
       return ok({ events, canAdd: PM.canLogAdd(user, p, db.pmItems), canEdit: PM.isManager(user, p), types: PM.LOG_TYPES, today: t, maxFile: PM.LOG_MAX_FILE, maxFiles: PM.LOG_MAX_FILES });
     }
+    if (p && c === 'chat' && !d && method === 'GET') return CHAT.projectChat(ctx, p); // вкладка «Переписка»
     if (p && c === 'log' && !d && method === 'POST') {
       if (!PM.canLogAdd(user, p, db.pmItems)) return err(403, 'Добавлять записи могут участники проекта и те, кто ведёт его пункты');
       const r = PM.cleanLog(body, t); if (r.error) return err(400, r.error);
@@ -471,4 +478,4 @@ function handle(ctx) {
   return err(404, 'Нет такого действия');
 }
 
-module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers', 'pmLog'], handle, createProject, collapseConcept, importClickup, hoursOf, logHistory, rebuildItems, domain: PM };
+module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers', 'pmLog', 'pmChats', 'pmChatMessages'], handle, chat: CHAT, createProject, collapseConcept, importClickup, hoursOf, logHistory, rebuildItems, domain: PM };

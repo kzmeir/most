@@ -17,6 +17,7 @@ function pmModule(T) {
       { id: S('my'), label: 'Мои задачи', icon: '☑' },
       { id: S('bl'), label: 'Блокеры', icon: '⛔', can: u => u.role !== 'staff' },
       { id: S('team'), label: 'Исполнители', icon: '👤', can: u => ['owner', 'pm', 'gip'].includes(u.role) },
+      { id: S('wa'), label: 'WhatsApp', icon: '💬', can: u => ['owner', 'partner', 'pm', 'gip'].includes(u.role) }, // группы WhatsApp: привязка к проектам, мост, настройки
     ],
     routes: [S('p'), ...(T === 'rp' ? ['pmp', 'pm', 'pmrp', 'pmmy', 'pmbl', 'pmown'] : ['pmep'])], // карточка #/ep/p?id=… и #/rp/p?id=…; старые адреса → редирект
     canOpen: u => !!window.MostPM && window.MostPM.canOpen(u, PM_ACCESS) && pmTrackOpen(u, T),
@@ -103,6 +104,16 @@ function pmHelp(T) {
 <li><b>Поиск</b> — по тексту, типу, участникам, автору, дате; <b>«⇩ CSV»</b> — показанная лента в файл для Excel.</li>
 <li>Добавлять записи могут ГИП/ПМ проекта, руководители, участники проекта и все, кто ведёт хотя бы один его пункт (в том числе сотрудник в своём проекте). Изменить или удалить запись — её автор или ГИП/ПМ проекта и руководители.</li>
 </ul>`, S('p')],
+    ['Переписка (WhatsApp)', `
+<p>Проектные группы WhatsApp загружаются в ERP сами: отдельная служба-мост читает группы и присылает сообщения и файлы. В карточке проекта — вкладка <b>«Переписка»</b> (после «Журнала»).</p>
+<ul>
+<li><b>Лента</b> как в мессенджере: по дням, автор, время, цитата, картинки, документы, голосовые. Показываются последние 100 сообщений, «↑ Показать раньше» подгружает ещё. Поиск по тексту и автору, «только файлы». Только чтение — ответить из ERP нельзя.</li>
+<li><b>«→ В журнал»</b> у сообщения создаёт запись журнала проекта (тип на выбор: Решение, Замечание, Письмо заказчику…) с текстом, картинками и PDF сообщения и ссылкой на него.</li>
+<li>В <b>«Журнале»</b> переписка видна одной строкой на день и группу: «WhatsApp: N сообщений, M файлов» — ссылка открывает переписку на эту дату.</li>
+<li><b>Раздел «WhatsApp»</b> в меню (владелец, партнёр; ПМ и ГИП — свои проекты): новая группа появляется «не привязанной» — выберите проект (система подсказывает по названию). «Не грузить» — для посторонних групп. Там же состояние моста.</li>
+<li><b>Файлы в папку проекта</b>: если у проекта задана папка на сетевом диске, файлы из группы копируются в подпапку «00-Входящие WhatsApp \\ дата». Существующие файлы не перезаписываются; если диск недоступен — файл остаётся в ERP, в разделе «WhatsApp» кнопка «Повторить».</li>
+<li><b>Кто читает</b>: владелец, партнёр, ПМ и ГИП проекта. Остальным участникам проекта — только если владелец включил это в настройках.</li>
+</ul>`, S('p')],
     ['Канбан', `
 <ul>
 <li><b>Проекты</b>: в реестре переключатель «Список | Канбан». Колонки — статусы (В работе, Ждём заказчика, Ждём госорган, На паузе, Готово; «Отменён» свёрнут). Перетащите карточку в другую колонку — статус проекта сменится. Двигать могут руководитель и ГИП/ПМ проекта; у остальных карточки без кнопки «⇄».</li>
@@ -159,6 +170,19 @@ h1[data-ie]{display:inline-block;padding:0 4px;margin-left:-4px}
 .pm-log-text{white-space:pre-wrap;word-break:break-word}
 .pm-log-files{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-top:6px}.pm-log-img{max-width:160px;max-height:120px;border-radius:6px;border:1px solid var(--line);display:block}
 .pm-lb-tbl{max-height:40vh;overflow:auto;margin:8px 0}.pm-lb-tbl table{width:100%;font-size:12.5px;border-collapse:collapse}.pm-lb-tbl td{border-bottom:1px solid var(--line);padding:4px 6px;vertical-align:top}.pm-lb-tbl td:last-child{white-space:pre-wrap;word-break:break-word}
+.pm-wa{max-width:860px}.pm-wa-filters{align-items:center}.pm-wa-chk{display:inline-flex;gap:6px;align-items:center;font-size:13px;white-space:nowrap;min-height:34px;cursor:pointer}.pm-wa-chk input{width:16px;height:16px;margin:0}
+.pm-wa-info{margin:0 0 8px;font-size:12.5px}.pm-wa-more{text-align:center;margin:8px 0}
+.pm-wa-day{margin-bottom:10px}.pm-wa-date{text-align:center;margin:10px 0 8px;position:sticky;top:0;z-index:1}.pm-wa-date>span{display:inline-block;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:2px 12px;font-size:12px;font-weight:600}.pm-wa-date .faint{font-weight:400}
+.pm-wa-grp{font-size:11.5px;color:var(--ink-faint);margin:8px 0 3px 2px}
+.pm-wa-m{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 12px;margin-bottom:5px;font-size:13.5px;min-width:0}.pm-wa-m.del{background:transparent;border-style:dashed}
+.pm-wa-h{display:flex;gap:4px 10px;flex-wrap:wrap;align-items:center;margin-bottom:2px;font-size:12.5px}.pm-wa-h .actions{margin-left:auto}
+.pm-wa-q{border-left:3px solid var(--line-strong);background:var(--panel-2);border-radius:4px;padding:3px 8px;margin:3px 0;font-size:12.5px;color:var(--ink-soft);white-space:pre-wrap;word-break:break-word}
+.pm-wa-t{white-space:pre-wrap;word-break:break-word}.pm-wa-files{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-top:6px}.pm-wa-f{min-width:0;max-width:100%}.pm-wa-f .chip{max-width:100%;white-space:normal;word-break:break-all}
+.pm-wa-audio{display:inline-flex;flex-direction:column;gap:2px;max-width:100%}.pm-wa-audio audio{max-width:100%;width:260px;height:36px}
+.pm-wa-saved{font-size:12px;color:var(--ink-soft);margin-top:4px;display:flex;gap:4px 8px;flex-wrap:wrap;align-items:center}
+.pm-wa-sys{text-align:center;font-size:12px;color:var(--ink-soft);margin:6px 0}
+.pm-wa-last{font-size:12px;margin-top:2px;white-space:normal;word-break:break-word}.pm-wa-sg{margin-top:4px;font-size:12px;color:var(--ink-soft)}.pm-wa-sg .btn{white-space:normal;text-align:left}
+@media(max-width:600px){.pm-wa-m .btn.sm{min-height:36px}.pm-wa-audio audio{width:220px}}
 .pm-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:none}.pm-seg a{padding:6px 12px;font-size:13px;color:var(--ink-soft);text-decoration:none;min-height:34px;display:inline-flex;align-items:center}.pm-seg a.active{background:var(--accent);color:#fff}
 .pm-kb{display:flex;gap:10px;align-items:flex-start;overflow-x:auto;width:0;min-width:100%;padding-bottom:8px;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
 .pm-kb-col{flex:0 0 272px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;max-height:calc(100vh - 220px);scroll-snap-align:start}
@@ -311,7 +335,7 @@ h1[data-ie]{display:inline-block;padding:0 4px;margin-left:-4px}
       const id = params().get('id'); if (!id) { location.hash = listHash(T); return; }
       const c = await api('/pm/projects/' + encodeURIComponent(id)); const p = c.project, s = c.summary, h = c.health; ctxData = { leader: c.leader, financeProjects: c.financeProjects || [] };
       if (pmTrackPath(p.track) !== T) { location.hash = cardLink(p.id, p.track) + (params().get('tab') ? '&tab=' + encodeURIComponent(params().get('tab')) : ''); return; } // карточка другой стадии — в её раздел
-      const tabs = [['stages', 'Этапы'], ['log', `Журнал${c.logN ? ' ' + c.logN : ''}`], ['kanban', 'Канбан'], ['charter', `Устав${c.charterOk ? '' : ' ⚠'}`], ['blockers', `Блокеры${c.blockers.filter(b => b.status !== 'closed').length ? ' ' + c.blockers.filter(b => b.status !== 'closed').length : ''}`], ...(c.canBudget ? [['budget', 'Бюджет']] : []), ...(c.hours ? [['hours', `Часы${c.hours.total.hours ? ' ' + Math.round(c.hours.total.hours) : ''}`]] : []), ['retro', `Ретро${(c.retros || []).length ? ' ' + c.retros.length : ''}`], ...(window.MostBoard && window.MostBoard.embed && ['ep', 'rp', 'concept'].includes(p.track) ? [['board', 'Доска']] : []), ...(p.track === 'ep' || p.track === 'concept' || p.miroUrl ? [['miro', 'Миро']] : []), ['info', 'О проекте']];
+      const tabs = [['stages', 'Этапы'], ['log', `Журнал${c.logN ? ' ' + c.logN : ''}`], ...(c.canChat ? [['chat', `Переписка${c.chatN ? ' ' + c.chatN : ''}`]] : []), ['kanban', 'Канбан'], ['charter', `Устав${c.charterOk ? '' : ' ⚠'}`], ['blockers', `Блокеры${c.blockers.filter(b => b.status !== 'closed').length ? ' ' + c.blockers.filter(b => b.status !== 'closed').length : ''}`], ...(c.canBudget ? [['budget', 'Бюджет']] : []), ...(c.hours ? [['hours', `Часы${c.hours.total.hours ? ' ' + Math.round(c.hours.total.hours) : ''}`]] : []), ['retro', `Ретро${(c.retros || []).length ? ' ' + c.retros.length : ''}`], ...(window.MostBoard && window.MostBoard.embed && ['ep', 'rp', 'concept'].includes(p.track) ? [['board', 'Доска']] : []), ...(p.track === 'ep' || p.track === 'concept' || p.miroUrl ? [['miro', 'Миро']] : []), ['info', 'О проекте']];
       const tab = tabs.some(t => t[0] === params().get('tab')) ? params().get('tab') : 'stages';
       const link = t => `${cardLink(p.id, p.track)}&tab=${t}`;
       const next = PM.NEXT_TRACK[p.track];
@@ -330,9 +354,10 @@ h1[data-ie]{display:inline-block;padding:0 4px;margin-left:-4px}
         noEditHtml(c) + hintHtml() +
         (h.zone === 'none' && c.canEdit ? `<div class="notice" style="margin-bottom:12px">Сроки не заданы — буфер и прогноз не считаются. <b>Задайте старт и срок</b> в «✎ Редактировать проект» (или «Дата по договору» из договора), затем <b>⇶ Разложить сроки</b> по пунктам.</div>` : '') +
         `<div class="tabs pm-tabs">${tabs.map(t => `<a href="${link(t[0])}" class="${t[0] === tab ? 'active' : ''}">${esc(t[1])}</a>`).join('')}</div>` +
-        (tab === 'stages' ? stagesHtml(c) : tab === 'log' ? '<div id="pm-log"><p class="faint">Загрузка журнала…</p></div>' : tab === 'kanban' ? itemKanbanHtml(c) : tab === 'charter' ? charterHtml(c) : tab === 'retro' ? retroHtml(c) : tab === 'blockers' ? blockersHtml(c) : tab === 'budget' ? budgetHtml(c) : tab === 'hours' ? hoursHtml(c) : tab === 'board' ? '<div id="pm-board"></div>' : tab === 'miro' ? miroHtml(c) : infoHtml(c));
+        (tab === 'stages' ? stagesHtml(c) : tab === 'log' ? '<div id="pm-log"><p class="faint">Загрузка журнала…</p></div>' : tab === 'chat' ? '<div id="pm-chat"><p class="faint">Загрузка переписки…</p></div>' : tab === 'kanban' ? itemKanbanHtml(c) : tab === 'charter' ? charterHtml(c) : tab === 'retro' ? retroHtml(c) : tab === 'blockers' ? blockersHtml(c) : tab === 'budget' ? budgetHtml(c) : tab === 'hours' ? hoursHtml(c) : tab === 'board' ? '<div id="pm-board"></div>' : tab === 'miro' ? miroHtml(c) : infoHtml(c));
       // доска проекта (модуль board): встраивается после отрисовки, сам показывает доски проекта, «+ Доска» по правам и «На весь экран»
       if (tab === 'log') loadLog(document.getElementById('pm-log'), p);
+      if (tab === 'chat') loadChat(document.getElementById('pm-chat'), p);
       bindHint(main);
       { const h1 = main.querySelector('.head h1'); if (h1 && c.canEdit) h1.outerHTML = `<h1${ieAttr('proj', p.id, 'name', p.name)}>${esc(p.name)}</h1>`; }
       if (tab === 'board' && window.MostBoard && window.MostBoard.embed) window.MostBoard.embed(document.getElementById('pm-board'), { pmProjectId: p.id, height: '72vh' });
@@ -444,7 +469,9 @@ h1[data-ie]{display:inline-block;padding:0 4px;margin-left:-4px}
     // ---- журнал проекта: быстрый ввод, лента с событиями, поиск, CSV, импорт списком ----
     const logState = { q: '', mode: pmStore.get('pm-log-mode') === 'log' ? 'log' : 'all', type: 'note', date: '' };
     const LOG_CHIP = { meeting: 'accent', decision: 'ok', client: 'neutral', remark: 'warn', issue: 'ok', photo: 'neutral', note: 'neutral' };
-    const AUTO_ICON = { created: '✦', status: '◆', dates: '📅', item: '＋', done: '✓', undone: '↩', blocker: '⛔', 'blocker-closed': '✔', retro: '⟲' };
+    const AUTO_ICON = { created: '✦', status: '◆', dates: '📅', item: '＋', done: '✓', undone: '↩', blocker: '⛔', 'blocker-closed': '✔', retro: '⟲', chat: '💬' };
+    const chatHref = date => `#/${T}/p?id=${encodeURIComponent(params().get('id') || '')}&tab=chat&date=${encodeURIComponent(date || '')}`;
+    const chatTabOn = () => !!document.querySelector('.pm-tabs a[href$="&tab=chat"]');
     const wday = d => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? '' : x.toLocaleDateString('ru-RU', { weekday: 'short' }); };
     const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ';
     const readFile = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok({ name: f.name, type: f.type, data: String(r.result).replace(/^data:[^,]*,/, '') }); r.onerror = () => no(new Error(`${f.name}: не удалось прочитать`)); r.readAsDataURL(f); });
@@ -453,9 +480,9 @@ h1[data-ie]{display:inline-block;padding:0 4px;margin-left:-4px}
       for (const f of list) { if (!PM.LOG_FILE_TYPES[f.type]) return `${f.name}: разрешены картинки (PNG, JPG, WebP, GIF) и PDF`; if (f.size > d.maxFile) return `${f.name}: больше ${Math.round(d.maxFile / 1048576)} МБ`; } return ''; };
     const uploadFiles = async (rid, files) => { for (const f of [...(files || [])]) await api(`/pm/log/${encodeURIComponent(rid)}/files`, { method: 'POST', body: await readFile(f) }); };
     const logEntryHtml = e => {
-      if (e.kind !== 'log') return `<div class="pm-log-e auto"><span aria-hidden="true">${AUTO_ICON[e.type] || '•'}</span><span>${esc(e.text)}</span>${e.by ? `<span class="faint">· ${esc(pname(e.by))}</span>` : ''}${e.titles ? `<details><summary>список (${e.titles.length})</summary>${e.titles.map(x => esc(x)).join('<br>')}</details>` : ''}</div>`;
+      if (e.kind !== 'log') return `<div class="pm-log-e auto"><span aria-hidden="true">${AUTO_ICON[e.type] || '•'}</span><span>${esc(e.text)}</span>${e.chatDate ? `<a href="${chatHref(e.chatDate)}">открыть переписку →</a>` : ''}${e.by ? `<span class="faint">· ${esc(pname(e.by))}</span>` : ''}${e.titles ? `<details><summary>список (${e.titles.length})</summary>${e.titles.map(x => esc(x)).join('<br>')}</details>` : ''}</div>`;
       const files = (e.files || []).map(f => f.type === 'application/pdf' ? `<a class="chip neutral" href="${esc(f.url)}" target="_blank" rel="noopener">📄 ${esc(cut(f.name || f.key, 40))} · ${kb(f.size || 0)}</a>` : `<a href="${esc(f.url)}" target="_blank" rel="noopener" title="${esc(f.name || '')}"><img class="pm-log-img" src="${esc(f.url)}" alt="${esc(f.name || 'вложение')}" loading="lazy"></a>`).join('');
-      return `<div class="pm-log-e"><div class="pm-log-h"><span class="chip ${LOG_CHIP[e.type] || 'neutral'}">${esc(PM.logTypeLabel(e.type))}</span><span class="faint">${esc(pname(e.by))}</span>${e.participants ? `<span class="faint">👥 ${esc(e.participants)}</span>` : ''}${e.canEdit ? `<span class="actions"><button class="btn sm" data-logedit="${esc(e.id)}" title="Изменить запись">✎<span class="pm-lbl"> Изменить</span></button><button class="btn sm danger" data-logdel="${esc(e.id)}" title="Удалить запись">✕</button></span>` : ''}</div><div class="pm-log-text"${e.canEdit ? ieAttr('log', e.id, 'text', e.text, 'textarea') : ''}>${esc(e.text)}</div>${files ? `<div class="pm-log-files">${files}</div>` : ''}</div>`;
+      return `<div class="pm-log-e"><div class="pm-log-h"><span class="chip ${LOG_CHIP[e.type] || 'neutral'}">${esc(PM.logTypeLabel(e.type))}</span><span class="faint">${esc(pname(e.by))}</span>${e.participants ? `<span class="faint">👥 ${esc(e.participants)}</span>` : ''}${e.chatRef && chatTabOn() ? `<a class="faint" href="${chatHref(e.chatRef.date)}" title="Запись создана из сообщения WhatsApp${e.chatRef.chat ? ` · ${esc(e.chatRef.chat)}` : ''}">💬 из переписки →</a>` : e.chatRef ? '<span class="faint">💬 из переписки</span>' : ''}${e.canEdit ? `<span class="actions"><button class="btn sm" data-logedit="${esc(e.id)}" title="Изменить запись">✎<span class="pm-lbl"> Изменить</span></button><button class="btn sm danger" data-logdel="${esc(e.id)}" title="Удалить запись">✕</button></span>` : ''}</div><div class="pm-log-text"${e.canEdit ? ieAttr('log', e.id, 'text', e.text, 'textarea') : ''}>${esc(e.text)}</div>${files ? `<div class="pm-log-files">${files}</div>` : ''}</div>`;
     };
     function logListHtml(d) {
       const list = PM.filterFeed(d.events, { q: logState.q, mode: logState.mode, nameOf: pname }); const nLog = d.events.filter(e => e.kind === 'log').length;
@@ -698,6 +725,100 @@ h1[data-ie]{display:inline-block;padding:0 4px;margin-left:-4px}
       bind(main);
     };
 
+    // ---- переписка проекта (группы WhatsApp): лента только для чтения, порциями; «→ В журнал» ----
+    const chatState = { q: '', files: false, chat: '' };
+    const waHue = s => { let h = 0; for (const ch of String(s || '')) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
+    const waDay = ts => PM.almatyDate(ts);
+    const waFileHtml = (f, mgr) => {
+      const body = /^image\//.test(f.type) ? `<a href="${esc(f.url)}" target="_blank" rel="noopener" title="${esc(f.name || '')}"><img class="pm-log-img" src="${esc(f.url)}" alt="${esc(f.name || 'картинка')}" loading="lazy"></a>`
+        : /^audio\//.test(f.type) ? `<span class="pm-wa-audio"><audio controls preload="none" src="${esc(f.url)}"></audio><span class="faint">🎤 ${esc(cut(f.name || 'аудио', 30))} · ${kb(f.size || 0)}</span></span>`
+        : `<a class="chip neutral" href="${esc(f.url)}" target="_blank" rel="noopener" title="${esc(f.name || '')}">${f.type === 'application/pdf' ? '📄' : '📎'} ${esc(cut(f.name || f.key, 40))} · ${kb(f.size || 0)}</a>`;
+      const saved = f.savedTo ? `<div class="pm-wa-saved">сохранён в папку: <span class="pm-path">${esc(f.savedTo)}</span> <button type="button" class="btn sm" data-wacopy="${esc(f.savedTo)}">скопировать путь</button></div>` : f.savedError && mgr ? `<div class="pm-wa-saved warn-text">в папку проекта не сохранён: ${esc(f.savedError)}</div>` : '';
+      return `<div class="pm-wa-f">${body}${saved}</div>`;
+    };
+    const waMsgHtml = (m, d) => {
+      if (m.kind === 'system') return `<div class="pm-wa-sys" id="pm-wa-${esc(m.id)}">${esc(m.text || '')} <span class="faint">${esc(PM.chatTime(m.ts))}</span></div>`;
+      const who = m.author || m.phone || 'без имени';
+      const act = m.deleted ? '' : m.inLog ? '<span class="chip ok" title="Это сообщение уже есть в журнале проекта">✓ в журнале</span>' : d.canLog ? `<button type="button" class="btn sm" data-walog="${esc(m.id)}" title="Создать запись журнала из этого сообщения">→ В журнал</button>` : '';
+      return `<div class="pm-wa-m${m.deleted ? ' del' : ''}" id="pm-wa-${esc(m.id)}"><div class="pm-wa-h"><b style="color:hsl(${waHue(who)} 55% 40%)"${m.phone && m.author ? ` title="${esc(m.phone)}"` : ''}>${esc(who)}</b><span class="faint">${esc(PM.chatTime(m.ts))}${m.editedAt ? ' · изменено' : ''}</span>${act ? `<span class="actions">${act}</span>` : ''}</div>` +
+        (m.deleted ? '<div class="faint">🚫 сообщение удалено</div>' : `${m.quoted ? `<div class="pm-wa-q">${esc(m.quoted)}</div>` : ''}${m.text ? `<div class="pm-wa-t">${esc(m.text)}</div>` : ''}${(m.files || []).length ? `<div class="pm-wa-files">${m.files.map(f => waFileHtml(f, d.canBind || d.canLog)).join('')}</div>` : ''}`) + '</div>';
+    };
+    async function loadChat(el, p) {
+      if (!el) return; const base = `/pm/projects/${encodeURIComponent(p.id)}/chat`; const st = { list: [], moreBefore: false, moreAfter: false, d: null };
+      const page = o => api(base + '?' + qsOf(Object.assign({ q: chatState.q, files: chatState.files ? '1' : '', chat: chatState.chat }, o)));
+      const jump = params().get('date') || '';
+      const listHtml = () => {
+        const d = st.d; if (!d.all) return empty('Переписки пока нет. Группа WhatsApp появится здесь после привязки к проекту — раздел «WhatsApp» в меню слева.');
+        if (!st.list.length) return empty(chatState.q || chatState.files ? 'Ничего не найдено' : 'Сообщений нет');
+        const days = []; for (const m of st.list) { const day = waDay(m.ts); if (!days.length || days[days.length - 1].date !== day) days.push({ date: day, list: [] }); days[days.length - 1].list.push(m); }
+        const multi = d.chats.length > 1 && !chatState.chat; const cname = id => (d.chats.find(c => c.id === id) || {}).name || '';
+        return (st.moreBefore ? '<p class="pm-wa-more"><button type="button" class="btn" id="pm-wa-before">↑ Показать раньше</button></p>' : '') +
+          days.map(g => `<div class="pm-wa-day" data-day="${g.date}"><div class="pm-wa-date"><span>${fdate(g.date)} <span class="faint">${wday(g.date)}</span></span></div>${g.list.map((m, i) => (multi && (!i || g.list[i - 1].chatId !== m.chatId) ? `<div class="pm-wa-grp">${esc(cname(m.chatId))}</div>` : '') + waMsgHtml(m, d)).join('')}</div>`).join('') +
+          (st.moreAfter ? '<p class="pm-wa-more"><button type="button" class="btn" id="pm-wa-after">↓ Показать позже</button></p>' : '');
+      };
+      const set = (r, mode) => { st.d = r; if (mode === 'before') { st.list = r.messages.concat(st.list); st.moreBefore = r.moreBefore; } else if (mode === 'after') { st.list = st.list.concat(r.messages); st.moreAfter = r.moreAfter; } else { st.list = r.messages; st.moreBefore = r.moreBefore; st.moreAfter = r.moreAfter; } };
+      const info = () => { const d = st.d; return `${d.total === d.all ? `Сообщений: ${d.all}` : `Найдено ${d.total} из ${d.all}`} · показано ${st.list.length}${d.folder ? ` · файлы копируются в <span class="pm-path">${esc(d.folder)}</span>` : ''}`; };
+      const draw = () => { const box = el.querySelector('#pm-wa-list'); box.innerHTML = listHtml(); el.querySelector('#pm-wa-info').innerHTML = info(); bindList(box); };
+      const reload = async o => { try { set(await page(o || {})); draw(); } catch (e) { toast(e.message, 4000); } };
+      function bindList(box) {
+        const bb = box.querySelector('#pm-wa-before'); if (bb) bb.onclick = async () => { bb.disabled = true; const h0 = document.documentElement.scrollHeight, y0 = window.scrollY; try { set(await page({ before: st.list[0].id }), 'before'); draw(); window.scrollTo(0, y0 + document.documentElement.scrollHeight - h0); } catch (e) { toast(e.message, 4000); bb.disabled = false; } };
+        const ba = box.querySelector('#pm-wa-after'); if (ba) ba.onclick = async () => { ba.disabled = true; const y0 = window.scrollY; try { set(await page({ after: st.list[st.list.length - 1].id }), 'after'); draw(); window.scrollTo(0, y0); } catch (e) { toast(e.message, 4000); ba.disabled = false; } };
+        box.querySelectorAll('[data-wacopy]').forEach(b => b.onclick = () => copy(b.dataset.wacopy));
+        box.querySelectorAll('[data-walog]').forEach(b => b.onclick = () => { const m = st.list.find(x => x.id === b.dataset.walog); if (m) toLogModal(m); });
+      }
+      function toLogModal(m) {
+        const text = [m.author ? `${m.author}: ` : '', String(m.text || '').trim() || ((m.files || []).length ? `файл из переписки — ${m.files.map(f => f.name).join(', ')}` : '')].join('');
+        const nImg = (m.files || []).filter(f => PM.LOG_FILE_TYPES[f.type]).length, nOther = (m.files || []).length - nImg;
+        modal('Сообщение → в журнал проекта', `<p class="faint" style="margin:0 0 10px">Будет создана запись журнала от ${fdate(waDay(m.ts))} со ссылкой на это сообщение.${nImg ? ` Вложения (картинки и PDF: ${nImg}) скопируются в запись.` : ''}${nOther ? ` Остальные файлы (${nOther}) останутся в переписке — в записи будет их список.` : ''}</p>` +
+          formHtml([{ name: 'type', label: 'Тип записи', type: 'select', options: st.d.types }, { name: 'text', label: 'Текст записи', type: 'textarea', required: true }], { type: 'decision', text }),
+          async v => { await api(`/pm/chats/messages/${encodeURIComponent(m.id)}/to-log`, { method: 'POST', body: { type: v.type, text: v.text } }); m.inLog = true; toast('Добавлено в журнал'); draw(); });
+      }
+      try { set(await page(jump ? { date: jump } : {})); } catch (e) { el.innerHTML = `<div class="error">${esc(e.message)}</div>`; return; }
+      const d0 = st.d;
+      el.innerHTML = `<div class="filters pm-wa-filters"><input type="search" id="pm-wa-q" placeholder="Поиск по переписке" value="${esc(chatState.q)}" aria-label="Поиск по переписке">${d0.chats.length > 1 ? `<select id="pm-wa-chat" aria-label="Группа"><option value="">Все группы (${d0.chats.length})</option>${d0.chats.map(c => `<option value="${esc(c.id)}"${c.id === chatState.chat ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>` : ''}<label class="pm-wa-chk"><input type="checkbox" id="pm-wa-files"${chatState.files ? ' checked' : ''}> только файлы</label></div>
+        <p class="faint pm-wa-info" id="pm-wa-info"></p>${d0.chats.length === 1 ? `<p class="faint" style="margin:-4px 0 8px;font-size:12.5px">Группа WhatsApp: <b>${esc(d0.chats[0].name)}</b> · только чтение</p>` : ''}<div id="pm-wa-list" class="pm-wa"></div>`;
+      draw();
+      let timer = 0; el.querySelector('#pm-wa-q').oninput = e => { chatState.q = e.target.value; clearTimeout(timer); timer = setTimeout(() => reload(), 300); };
+      el.querySelector('#pm-wa-files').onchange = e => { chatState.files = e.target.checked; reload(); };
+      const cs = el.querySelector('#pm-wa-chat'); if (cs) cs.onchange = () => { chatState.chat = cs.value; reload(); };
+      // последние сообщения — внизу (как в мессенджере); по ссылке из журнала — к нужному дню
+      const target = jump ? el.querySelector(`.pm-wa-day[data-day="${CSS.escape(jump)}"]`) || el.querySelector('.pm-wa-day') : el.querySelector('#pm-wa-list').lastElementChild;
+      if (target && st.list.length) setTimeout(() => target.scrollIntoView({ block: jump ? 'start' : 'end' }), 0);
+    }
+
+    // ---- раздел «WhatsApp»: состояние моста, группы и их привязка к проектам, настройки ----
+    ui.SECTIONS[S('wa')] = async main => {
+      let d; try { d = await api('/pm/chats'); } catch (e) { main.innerHTML = head('WhatsApp') + `<div class="notice warn">${esc(e.message)}</div>`; return; }
+      const BR = { connected: 'ok', qr: 'warn', disconnected: 'crit' }; const b = d.bridge; const dt = v => { const x = new Date(v); return isNaN(x) ? '' : `${fdate(PM.almatyDate(v))} ${PM.chatTime(v)}`; };
+      const bridge = b ? `<div class="card" style="margin-bottom:14px"><div class="label">Мост WhatsApp → ERP</div><div class="pm-sub" style="margin-top:6px"><span class="chip ${b.state && !b.stale ? BR[b.state] : 'neutral'}">${esc(b.stale ? 'нет сигнала' : b.label)}</span>${b.at ? `<span>сигнал: <b>${dt(b.at)}</b></span>` : ''}${b.stale ? `<span class="faint">последнее состояние: ${esc(b.label)}</span>` : ''}${b.since && b.since !== b.at ? `<span class="faint">в этом состоянии с ${dt(b.since)}</span>` : ''}${b.info ? `<span class="faint">${esc(b.info)}</span>` : ''}${b.by ? `<span class="faint">ключ: ${esc(b.by)}</span>` : ''}${b.lastIngestAt ? `<span>последняя пачка: <b>${dt(b.lastIngestAt)}</b> (${b.lastIngestN})</span>` : ''}</div><div class="faint" style="margin-top:4px">Мост — отдельная служба: читает группы WhatsApp и присылает сообщения в ERP. Состояние хранится до перезапуска ERP.${b.state === 'qr' && !b.stale ? ' <b>Ждёт QR-код</b> — откройте мост и отсканируйте код телефоном (WhatsApp → Связанные устройства).' : ''}</div></div>` : '';
+      const st = d.settings; const tog = (key, on, yes, no) => `<div class="pm-sub" style="margin-top:8px"><span>${on ? yes : no}</span> <button class="btn sm" data-act="pmWaSet" data-key="${key}" data-on="${on ? '1' : '0'}">${on ? 'Выключить' : 'Включить'}</button></div>`;
+      const settings = st ? `<div class="card" style="margin-bottom:14px"><div class="label">Настройки переписки</div>` +
+        tog('chatForMembers', st.chatForMembers, 'Переписку читают и участники проекта (члены команды и исполнители пунктов)', 'Переписку читают только владелец, партнёр, ПМ и ГИП проекта (по умолчанию)') +
+        tog('chatFilesToFolder', st.chatFilesToFolder, 'Файлы из групп копируются в папку проекта на сетевом диске', 'Файлы из групп в папку проекта не копируются (хранятся только в ERP)') +
+        `<div class="pm-sub" style="margin-top:8px"><span>Подпапка в папке проекта:</span> <input id="pm-wa-folder" value="${esc(st.chatFolderName)}" maxlength="80" style="max-width:260px" aria-label="Подпапка для файлов WhatsApp"> <button class="btn sm" data-act="pmWaFolder">Сохранить</button><span class="faint">файл ляжет в «папка проекта \\ ${esc(st.chatFolderName)} \\ ГГГГ-ММ-ДД \\ имя»; существующие файлы не перезаписываются</span></div>` +
+        (d.saveFailed ? `<div class="pm-sub" style="margin-top:8px"><span class="crit-text"><b>Не удалось сохранить в папку: ${d.saveFailed}</b></span> <button class="btn sm primary" data-act="pmWaSave">Повторить</button><span class="faint">файлы целы в ERP; причина — у группы в таблице</span></div>` : '') + '</div>' : '';
+      const popt = (c) => `<option value="">— не привязана —</option>` + d.projects.map(p => `<option value="${esc(p.id)}"${p.id === c.pid ? ' selected' : ''}>${esc(PM.TRACK_SHORT[p.track] || '')} · ${esc(cut(p.name, 46))}${PM.ACTIVE(p.status) ? '' : ` (${esc(p.status)})`}</option>`).join('') + (c.pid && !d.projects.some(p => p.id === c.pid) ? `<option value="${esc(c.pid)}" selected>${esc(c.project || 'проект')}</option>` : '');
+      const rows = d.chats.map(c => `<tr${c.muted ? ' style="opacity:.6"' : ''}><td style="min-width:190px;white-space:normal"><b>${esc(c.name)}</b>${c.pid ? '' : ' <span class="chip warn">не привязана</span>'}${c.last ? `<div class="faint pm-wa-last">${esc(c.last.author || '')}${c.last.author ? ': ' : ''}${esc(cut(c.last.text || '', 70))}</div>` : ''}</td>
+        <td>${c.canBind ? `<select data-wabind="${esc(c.id)}" aria-label="Проект группы ${esc(c.name)}" style="min-width:190px;max-width:260px">${popt(c)}</select>` : esc(c.project || '—')}${!c.pid && c.suggest && c.canBind ? `<div class="pm-wa-sg">похоже на: <button class="btn sm primary" data-act="pmWaBind" data-id="${esc(c.id)}" data-pid="${esc(c.suggest.pid)}" title="Привязать группу к этому проекту">→ ${esc(PM.TRACK_SHORT[c.suggest.track] || '')} · ${esc(cut(c.suggest.name, 40))}</button></div>` : ''}${c.pid ? `<div><a href="${cardLink(c.pid, c.track)}&tab=chat">открыть переписку →</a></div>` : ''}</td>
+        <td class="amt num">${c.count || ''}</td><td class="amt num">${c.files || ''}</td><td class="nowrap">${c.lastMsgAt ? dt(c.lastMsgAt) : '—'}</td>
+        <td>${c.pid ? (c.folder ? `<span class="pm-path">${esc(c.folder)}</span>` : `<span class="faint">${esc(c.folderNote || '—')}</span>`) + (c.saveErrors ? `<div class="crit-text">не сохранено: ${c.saveErrors}</div>` : '') + (c.unsaved && c.folder ? `<div><button class="btn sm" data-act="pmWaSave" data-id="${esc(c.id)}" title="Скопировать в папку проекта уже принятые файлы">Досохранить файлы в папку (${c.unsaved})</button></div>` : '') : '<span class="faint">—</span>'}</td>
+        <td>${d.leader ? `<label class="pm-wa-chk"><input type="checkbox" data-wamute="${esc(c.id)}"${c.muted ? ' checked' : ''}> не грузить</label>` : c.muted ? 'не грузится' : ''}</td></tr>`);
+      const nUn = d.chats.filter(c => !c.pid).length;
+      main.innerHTML = head('WhatsApp · переписка проектов', `Групп: ${d.chats.length}${nUn ? ` · <b class="warn-text">не привязано: ${nUn}</b>` : ''} · сообщения появляются во вкладке «Переписка» карточки проекта`) + bridge + settings +
+        (d.chats.length ? tbl([{ t: 'Группа' }, { t: 'Проект' }, { t: 'Сообщений', cls: 'amt' }, { t: 'Файлов', cls: 'amt' }, { t: 'Последнее' }, { t: 'Папка проекта' }, { t: '' }], rows) : empty('Групп пока нет. Они появятся сами, когда мост пришлёт первое сообщение из группы WhatsApp.')) +
+        (d.leader ? '' : '<p class="faint" style="margin-top:10px">Вы видите непривязанные группы и группы своих проектов. Привязать можно только к своему проекту; отвязать или выключить загрузку — владелец или партнёр.</p>');
+      main.querySelectorAll('.tbl').forEach(x => x.classList.add('pm-scroll')); bind(main);
+      const put = async (id, body, msg) => { try { const r = await api('/pm/chats/' + encodeURIComponent(id), { method: 'PUT', body }); toast(msg + (r.moved ? ` · сообщений: ${r.moved}` : '')); } catch (e) { toast(e.message, 5000); } rerender(); };
+      main.querySelectorAll('[data-wabind]').forEach(s => s.onchange = () => { const c = d.chats.find(x => x.id === s.dataset.wabind); const to = d.projects.find(p => p.id === s.value);
+        if (c.pid && !confirm(to ? `Перепривязать группу «${c.name}» к проекту «${to.name}»? Вся её переписка перейдёт в этот проект.` : `Отвязать группу «${c.name}» от проекта? Переписка исчезнет из карточки (сообщения сохранятся).`)) { s.value = c.pid; return; }
+        put(c.id, { pid: s.value }, to ? `Привязано: ${to.name}` : 'Группа отвязана'); });
+      main.querySelectorAll('[data-wamute]').forEach(x => x.onchange = () => put(x.dataset.wamute, { muted: x.checked }, x.checked ? 'Группа не загружается' : 'Загрузка группы включена'));
+      ui.ACT.pmWaBind = ({ id, pid }) => { const to = d.projects.find(p => p.id === pid); put(id, { pid }, `Привязано: ${to ? to.name : ''}`); };
+      ui.ACT.pmWaSet = async ({ key, on }) => { try { await api('/pm/settings', { method: 'PUT', body: { [key]: on !== '1' } }); toast('Сохранено'); } catch (e) { toast(e.message, 5000); } rerender(); };
+      ui.ACT.pmWaFolder = async () => { try { const r = await api('/pm/settings', { method: 'PUT', body: { chatFolderName: $('#pm-wa-folder').value } }); toast(`Подпапка: ${r.chatFolderName}`); } catch (e) { toast(e.message, 5000); } rerender(); };
+      ui.ACT.pmWaSave = async ({ id }) => { try { const r = await api('/pm/chats/save-files', { method: 'POST', body: id ? { chatId: id } : {} }); toast(`Сохранено в папку: ${r.saved}${r.failed ? ` · не удалось: ${r.failed}${r.errors && r.errors[0] ? ` (${r.errors[0]})` : ''}` : ''}${!r.saved && !r.failed && r.notes && r.notes[0] ? ` · ${r.notes[0]}` : ''}`, 6000); } catch (e) { toast(e.message, 5000); } rerender(); };
+    };
+
     // ---- сводка ----
     ui.SECTIONS[T] = async main => {
       const d = await api('/pm/overview?track=' + T); ctxData = { leader: d.leader, financeProjects: d.financeProjects }; badges(true);
@@ -715,7 +836,7 @@ h1[data-ie]{display:inline-block;padding:0 4px;margin-left:-4px}
         const pr = await api('/pm/assign-defaults', { method: 'POST', body: { dry: true, track: T } }); const mine = pr.plan;
         if (!mine.length) return toast(v ? 'Все активные проекты уже назначены' : 'Сначала выберите, кого назначать');
         modal(`Назначить ${defWho}: ${mine.length}`, `<p>Будет назначен <b>${esc(pname(v))}</b> в активных проектах, где ${defWho} не указан:</p><div style="max-height:300px;overflow:auto"><ol>${mine.map(x => `<li>${esc(x.name)}</li>`).join('')}</ol></div><form><button class="btn primary block" type="submit">Назначить (${mine.length})</button></form>`, async () => { const r = await api('/pm/assign-defaults', { method: 'POST', body: { track: T } }); toast(`Назначено: ${r.done}`); route(); }); };
-      const settingsCard = d.canSettings && d.settings ? `<div class="card" style="margin-bottom:14px"><div class="label">Доступ рядовых сотрудников (staff) к «Проектам»</div><div class="pm-sub" style="margin-top:6px"><span>${d.settings.staffOwnProjects ? 'включён: сотрудник видит проекты, где он исполнитель пункта или участник — только чтение и отметки «сделано» у своих пунктов, без бюджета, финансов и чужих блокеров' : 'выключен (по умолчанию): сотрудники модуль не видят'}</span> <button class="btn sm" data-act="pmStaffToggle" data-on="${d.settings.staffOwnProjects ? '1' : '0'}">${d.settings.staffOwnProjects ? 'Выключить' : 'Включить'}</button></div></div>` : '';
+      const settingsCard = d.canSettings && d.settings ? `<div class="card" style="margin-bottom:14px"><div class="label">Доступ рядовых сотрудников (staff) к «Проектам»</div><div class="pm-sub" style="margin-top:6px"><span>${d.settings.staffOwnProjects ? 'включён: сотрудник видит проекты, где он исполнитель пункта или участник — только чтение и отметки «сделано» у своих пунктов, без бюджета, финансов и чужих блокеров' : 'выключен (по умолчанию): сотрудники модуль не видят'}</span> <button class="btn sm" data-act="pmStaffToggle" data-on="${d.settings.staffOwnProjects ? '1' : '0'}">${d.settings.staffOwnProjects ? 'Выключить' : 'Включить'}</button></div><div class="label" style="margin-top:12px">Переписка проектов (WhatsApp)</div><div class="pm-sub" style="margin-top:6px"><span>${d.settings.chatForMembers ? 'читают и участники проекта (члены команды, исполнители пунктов)' : 'читают только владелец, партнёр, ПМ и ГИП проекта (по умолчанию)'}</span> <button class="btn sm" data-act="pmChatToggle" data-on="${d.settings.chatForMembers ? '1' : '0'}">${d.settings.chatForMembers ? 'Только ПМ и ГИП' : 'Открыть участникам'}</button> <a href="#/${S('wa')}">Группы, мост и папки →</a></div></div>` : '';
       const statusRow = `<div class="pm-sub" style="margin-bottom:14px">${Object.entries(d.byStatus).map(([k, n]) => `${chip(k, STATUS_CHIP)} <b>${n}</b>`).join(' ') || '<span class="faint">Активных проектов нет</span>'}</div>`;
       const funnel = tr => { const f = d.byTrack[tr]; const max = Math.max(1, ...f.funnel.map(x => x.n)); return `<div class="card"><div class="label">Воронка ${esc(PM.TRACKS[tr])} <a href="${listHash(tr)}">→</a><span>${f.n} в работе${f.late ? ` · <span class="crit-text">${f.late} просрочено</span>` : ''}</span></div>${f.funnel.map(x => `<div style="display:grid;grid-template-columns:1fr 36px;gap:8px;align-items:center;font-size:12.5px;margin-top:6px"><div><div class="${x.n ? '' : 'faint'}" style="margin-bottom:2px">${esc(x.name)}</div><div class="bar"><i style="width:${Math.round(x.n / max * 100)}%"></i></div></div><b class="right">${x.n}</b></div>`).join('')}</div>`; };
       const funnels = `<div class="grid g2" style="margin-bottom:14px">${funnel(T)}${T === 'ep' && d.byTrack.concept && d.byTrack.concept.all ? funnel('concept') : ''}</div>`;
@@ -731,6 +852,7 @@ h1[data-ie]{display:inline-block;padding:0 4px;margin-left:-4px}
       main.innerHTML = head(`Сводка · ${TU.full}`, `Сегодня ${fdate(t)} · шаблон ${TU.title}: ${d.templates[T]} пунктов`, (d.canCreate ? `<button class="btn primary" data-act="pmNew" data-track="${T}">+ Проект</button> ` : '') + `<button class="btn" data-act="pmExport" title="Реестр ${TU.title} и блокеры — в Excel">⇩ Excel</button> ` + (d.leader ? (T === 'ep' ? '<button class="btn" data-act="pmClickup">⇪ Импорт из ClickUp</button>' : '<button class="btn" data-act="pmImport">⇪ Импорт реестра</button>') : '')) + kpi + statusRow + settingsCard + defCard + portfolio + funnels + `<div class="grid g2"><div>${load}</div><div></div></div>` + gantt;
       main.querySelectorAll('.tbl, .cal-wrap').forEach(el => el.classList.add('pm-scroll'));
       main.querySelectorAll('tr.pm-row').forEach(tr => tr.onclick = () => { location.hash = cardLink(tr.dataset.id, tr.dataset.track); });
+      ui.ACT.pmChatToggle = async ({ on }) => { const r = await api('/pm/settings', { method: 'PUT', body: { chatForMembers: on !== '1' } }); toast(r.chatForMembers ? 'Переписку читают и участники проектов' : 'Переписку читают только ПМ, ГИП и руководители'); rerender(); };
       ui.ACT.pmStaffToggle = async ({ on }) => { const r = await api('/pm/settings', { method: 'PUT', body: { staffOwnProjects: on !== '1' } }); toast(r.staffOwnProjects ? 'Доступ сотрудников к своим проектам включён' : 'Доступ сотрудников выключен'); rerender(); };
       ui.ACT.pmImport = () => modal('Импорт реестра проектов', `<p class="faint" style="margin:0 0 10px">JSON готовит скрипт <code>modules/pm/tools/import_pm.py</code> из реестра MOST_Планирование_проектов.xlsx и таблицы бюджетов. Проекты с таким же названием и стадией пропускаются (или пересоздаются в режиме «заменить»).</p><form><div class="field"><label>Файл JSON</label><input type="file" id="pm-imp-file" accept=".json,application/json" required></div><div class="field"><label>Если проект уже есть</label><select name="mode"><option value="skip">Пропустить</option><option value="replace">Заменить (удалить и создать заново)</option></select></div><div class="error"></div><button class="btn primary block" type="submit">Импортировать</button></form>`, async v => {
         const f = $('#pm-imp-file').files[0]; if (!f) throw new Error('Выберите файл'); let data; try { data = JSON.parse(await f.text()); } catch { throw new Error('Файл не читается как JSON'); }

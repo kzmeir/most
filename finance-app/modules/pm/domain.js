@@ -210,7 +210,7 @@
   const LEADERS = ['owner', 'partner'];
   const PM_ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm', 'gip', 'lead'];
   // настройки модуля (db.settings.pm). staffOwnProjects — рядовые сотрудники (staff) видят проекты, где они исполнители пунктов или участники (members); по умолчанию выключено
-  const SETTINGS_DEFAULT = { staffOwnProjects: false, defaultEpPmId: '', defaultRpGipId: '' }; // ПМ по умолчанию для ЭП, ГИП по умолчанию для РП
+  const SETTINGS_DEFAULT = { staffOwnProjects: false, defaultEpPmId: '', defaultRpGipId: '', chatForMembers: false, chatFilesToFolder: true, chatFolderName: '00-Входящие WhatsApp' }; // chatForMembers — переписку (WhatsApp) читают и участники проекта; chatFilesToFolder / chatFolderName — копировать принятые файлы в подпапку папки проекта; // ПМ по умолчанию для ЭП, ГИП по умолчанию для РП
   const pmSettings = db => Object.assign({}, SETTINGS_DEFAULT, (db && db.settings && db.settings.pm) || {});
   const isStaff = u => !!u && u.role === 'staff';
   const canOpen = (u, s) => !!u && (PM_ROLES.includes(u.role) || (isStaff(u) && !!(s && s.staffOwnProjects)));
@@ -738,10 +738,11 @@
       add({ type: 'blocker', date: b.since || almatyDate(b.createdAt), at: b.createdAt || '', by: b.createdBy || '', text: `Блокер: ${b.what}${b.holder ? ` — ждём: ${b.holder}` : ''}`, ref: b.id });
       if (b.status === 'closed' && b.closedAt) add({ type: 'blocker-closed', date: b.closedAt, by: b.closedBy || '', text: `Блокер снят: ${b.what}`, ref: b.id });
     }
+    for (const e of opts.extra || []) add(e); // готовые события извне (переписка WhatsApp — одной строкой на день и группу)
     for (const r of p.retros || []) { const s = r.snapshot || {}; add({ type: 'retro', date: r.date, by: r.by || '', text: `Ретроспектива${s.progress != null ? `: выполнено ${Math.round(s.progress * 100)} %` : ''}${r.interpret ? ` — ${String(r.interpret).slice(0, 200)}` : ''}`, ref: r.id }); }
     return ev.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.at || '').localeCompare(String(a.at || '')) || (a.kind === 'log' ? -1 : 0) - (b.kind === 'log' ? -1 : 0));
   }
-  const AUTO_LABEL = { created: 'Проект', status: 'Статус', dates: 'Сроки', item: 'Пункт', done: 'Сделано', undone: 'Возврат', blocker: 'Блокер', 'blocker-closed': 'Блокер снят', retro: 'Ретро' };
+  const AUTO_LABEL = { created: 'Проект', status: 'Статус', dates: 'Сроки', item: 'Пункт', done: 'Сделано', undone: 'Возврат', blocker: 'Блокер', 'blocker-closed': 'Блокер снят', retro: 'Ретро', chat: 'WhatsApp' };
   const feedLabel = e => e.kind === 'log' ? logTypeLabel(e.type) : (AUTO_LABEL[e.type] || 'Событие');
   // фильтр ленты: mode 'log' — только записи; q — слова через пробел (все должны встретиться в тексте, типе, участниках, авторе)
   function filterFeed(events, o) {
@@ -756,9 +757,113 @@
     return rows.map(r => r.map(q).join(';')).join('\r\n');
   }
 
+  // ---- Переписка (WhatsApp): группы pmChats и сообщения pmChatMessages. Сообщения присылает служба-мост (POST /api/pm/chats/ingest), ERP только хранит и показывает ----
+  const CHAT_KINDS = ['text', 'image', 'doc', 'audio', 'video', 'system'];
+  const CHAT_MAX_BATCH = 200, CHAT_MAX_BYTES = 25 * 1024 * 1024, CHAT_MAX_FILE = 20 * 1024 * 1024, CHAT_MAX_TEXT = 10000, CHAT_PAGE = 100;
+  const CHAT_BRIDGE_STATES = { connected: 'подключён', qr: 'ждёт QR-код', disconnected: 'отключён' };
+  const CHAT_FOLDER_DEFAULT = '00-Входящие WhatsApp'; // подпапка в папке проекта, куда копируются принятые файлы
+  // что принимаем: картинки, PDF, офисные документы, аудио (видео и прочее — нет: сообщение сохраняется без файла)
+  const CHAT_FILE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'application/pdf': 'pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'application/msword': 'doc', 'application/vnd.ms-excel': 'xls', 'application/vnd.ms-powerpoint': 'ppt',
+    'audio/ogg': 'ogg', 'audio/opus': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'aac', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/amr': 'amr' };
+  const CHAT_EXT_MIME = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    doc: 'application/msword', xls: 'application/vnd.ms-excel', ppt: 'application/vnd.ms-powerpoint', ogg: 'audio/ogg', mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', amr: 'audio/amr' };
+  const CHAT_KEY_RE = /^[a-z0-9]+-[a-z0-9]+\.(png|jpg|webp|gif|pdf|docx|xlsx|pptx|doc|xls|ppt|ogg|mp3|m4a|aac|wav|amr)$/;
+  const CHAT_INLINE = ['png', 'jpg', 'webp', 'gif', 'pdf', 'ogg', 'mp3', 'm4a', 'aac', 'wav', 'amr']; // офисные документы отдаются только на скачивание
+  // расширение по типу («audio/ogg; codecs=opus» → ogg); если тип неизвестен или общий — по расширению имени; '' — не принимаем
+  function chatFileExt(type, name) {
+    const base = String(type || '').split(';')[0].trim().toLowerCase(); if (CHAT_FILE_TYPES[base]) return CHAT_FILE_TYPES[base];
+    if (base && base !== 'application/octet-stream' && base !== 'binary/octet-stream') return '';
+    let e = (String(name || '').toLowerCase().match(/\.([a-z0-9]{2,5})$/) || [])[1] || ''; if (e === 'jpeg') e = 'jpg'; if (e === 'opus' || e === 'oga') e = 'ogg';
+    return CHAT_EXT_MIME[e] ? e : '';
+  }
+  // сигнатура содержимого: картинки и PDF — как в журнале; docx/xlsx/pptx — zip, doc/xls/ppt — OLE2, аудио — заголовок контейнера
+  function chatFileSig(ext, bytes) {
+    const b = bytes || []; const s = (i, n) => String.fromCharCode.apply(null, Array.prototype.slice.call(b, i, i + n));
+    if (['png', 'jpg', 'gif', 'webp', 'pdf'].includes(ext)) return logFileSig(ext, b);
+    if (['docx', 'xlsx', 'pptx'].includes(ext)) return b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
+    if (['doc', 'xls', 'ppt'].includes(ext)) return b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0;
+    if (ext === 'ogg') return s(0, 4) === 'OggS';
+    if (ext === 'mp3') return s(0, 3) === 'ID3' || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0);
+    if (ext === 'm4a') return s(4, 4) === 'ftyp';
+    if (ext === 'aac') return (b[0] === 0xff && (b[1] & 0xf6) === 0xf0) || s(4, 4) === 'ftyp';
+    if (ext === 'wav') return s(0, 4) === 'RIFF' && s(8, 4) === 'WAVE';
+    if (ext === 'amr') return s(0, 5) === '#!AMR';
+    return false;
+  }
+  const chatIsImage = f => /^image\//.test(String((f && f.type) || ''));
+  // имя файла для папки проекта: только последний сегмент пути, без запрещённых в Windows символов и управляющих, без точек и пробелов по краям,
+  // служебные имена (CON, NUL, COM1…) — с подчёркиванием, длина ≤ 120, пустое → «файл»; расширение — строго ext (из списка принимаемых)
+  const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+  function chatSafeName(name, ext) {
+    let s = String(name == null ? '' : name).replace(/\\/g, '/').split('/').pop().replace(/[\u0000-\u001f\u007f<>:"|?*]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '');
+    ext = String(ext || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const m = s.match(/^(.*)\.([A-Za-z0-9]{1,5})$/); let stem = s;
+    if (m) { let e = m[2].toLowerCase(); if (e === 'jpeg') e = 'jpg'; if (e === 'opus' || e === 'oga') e = 'ogg'; if (!ext || e === ext) stem = m[1]; }
+    stem = stem.replace(/^[. ]+|[. ]+$/g, ''); if (!stem) stem = 'файл'; if (WIN_RESERVED.test(stem)) stem = '_' + stem;
+    const max = 120 - (ext ? ext.length + 1 : 0); if (stem.length > max) stem = stem.slice(0, max).replace(/[. ]+$/g, '') || 'файл';
+    return ext ? `${stem}.${ext}` : stem;
+  }
+  // имя подпапки: один сегмент, те же правила; пустое или некорректное → по умолчанию
+  function chatFolderName(v) {
+    const raw = String(v == null ? '' : v).trim(); if (!raw || /[\\/]/.test(raw) || raw.includes('..')) return CHAT_FOLDER_DEFAULT;
+    const s = raw.replace(/[\u0000-\u001f\u007f<>:"|?*]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '').slice(0, 80).replace(/[. ]+$/g, '');
+    return !s || WIN_RESERVED.test(s) ? CHAT_FOLDER_DEFAULT : s;
+  }
+  // следующее свободное имя: «план.pdf» → «план (2).pdf» → «план (3).pdf»
+  const chatNumbered = (name, n) => { if (n < 2) return name; const i = name.lastIndexOf('.'); return i > 0 ? `${name.slice(0, i)} (${n})${name.slice(i)}` : `${name} (${n})`; };
+  // читают переписку: владелец и партнёр, ПМ и ГИП проекта (и любой ГИП для РП — isManager); остальные участники проекта
+  // (members или исполнитель пункта) — только при включённой настройке chatForMembers
+  const canChatRead = (u, p, settings, items) => !!u && !!p && (isManager(u, p) || (!!(settings && settings.chatForMembers) && staffSees(u, p, items)));
+  // привязать группу к проекту: владелец и партнёр — к любому, ПМ/ГИП — к своему
+  const canChatBind = (u, p) => isManager(u, p);
+  const CHAT_STOP = new Set(['most', 'мост', 'рп', 'эп', 'ап', 'проект', 'проекты', 'проектирование', 'группа', 'чат', 'рабочая', 'рабочий', 'общий', 'общая', 'жк', 'бц', 'тоо', 'whatsapp', 'architects', 'project', 'очередь', 'объект', 'бизнес', 'центр', 'жилой', 'комплекс', 'эскиз', 'эскизный', 'концепция', 'концепт', 'рабочка']);
+  const chatTokens = s => normTitle(s).split(' ').filter(x => x && (x.length > 1 || /\d/.test(x)));
+  const chatTokEq = (a, b) => { if (a === b) return true; if (a.length < 5 || b.length < 5) return false; const n = Math.max(4, Math.min(a.length, b.length) - 2); return a.slice(0, n) === b.slice(0, n); };
+  // подсказка проекта по названию группы: общие слова названий (нормализация normTitle, служебные слова не считаются, окончания прощаются),
+  // «РП» / «ЭП» в названии группы — предпочесть эту стадию, при равенстве — активный проект. → { pid, name, track, score } или null
+  function chatSuggest(name, projects) {
+    const all = chatTokens(name); const gt = all.filter(x => !CHAT_STOP.has(x)); if (!gt.length) return null;
+    const hint = all.includes('рп') ? 'rp' : (all.includes('эп') || all.some(x => /^(эскиз|концеп)/.test(x))) ? 'ep' : '';
+    let best = null;
+    for (const p of projects || []) {
+      if (!p || !shownTrack(p.track)) continue; const pt = [...new Set(chatTokens(p.name).filter(x => !CHAT_STOP.has(x)))]; if (!pt.length) continue;
+      const common = pt.filter(x => gt.some(y => chatTokEq(x, y))).length; const gHit = gt.filter(y => pt.some(x => chatTokEq(x, y))).length; if (!common || (common / pt.length < 0.5 && gHit < gt.length)) continue; // половина слов проекта или все слова группы
+      const score = common / pt.length * 0.7 + Math.min(1, common / gt.length) * 0.3 + (hint && trackPath(p.track) === hint ? 0.15 : 0) + (ACTIVE(p.status) ? 0.05 : 0);
+      if (!best || score > best.score) best = { pid: p.id, name: p.name, track: p.track, score: Math.round(score * 100) / 100 };
+    }
+    return best;
+  }
+  // сообщение от моста → { msg } или { error }. ts — ISO или число (секунды / миллисекунды эпохи); будущее дальше суток — ошибка
+  function cleanChatMessage(m, nowMs) {
+    m = m || {}; const extId = String(m.extId == null ? '' : m.extId).trim().slice(0, 200); if (!extId) return { error: 'нет extId' };
+    const d = typeof m.ts === 'number' || /^\d{9,13}$/.test(String(m.ts || '')) ? new Date(Number(m.ts) < 1e12 ? Number(m.ts) * 1000 : Number(m.ts)) : new Date(String(m.ts || ''));
+    if (isNaN(d)) return { error: 'нет времени ts' }; if (d.getTime() > (nowMs || Date.now()) + 864e5) return { error: 'время ts в будущем' }; if (d.getTime() < Date.parse('2009-01-01')) return { error: 'слишком раннее время ts' };
+    const str = (v, n) => String(v == null ? '' : v).split(String.fromCharCode(0)).join('').slice(0, n); const ed = m.editedAt ? new Date(m.editedAt) : null;
+    return { msg: { extId, ts: d.toISOString(), author: str(m.author, 120).trim(), phone: str(m.phone, 40).trim(), text: str(m.text, CHAT_MAX_TEXT), quoted: str(m.quoted, 300).trim(), kind: CHAT_KINDS.includes(m.kind) ? m.kind : 'text', editedAt: ed && !isNaN(ed) ? ed.toISOString() : '', deleted: m.deleted === true || m.deleted === 'true' || m.deleted === 1 } };
+  }
+  const plural = (n, forms) => { const a = Math.abs(n) % 100, b = a % 10; return forms[a > 10 && a < 20 ? 2 : b === 1 ? 0 : b >= 2 && b <= 4 ? 1 : 2]; };
+  // события «Журнала»: одна строка на день (по Алматы) и группу — «WhatsApp «Группа»: N сообщений, M файлов (в папке проекта: K)»; собираются на лету, удалённые сообщения не считаются
+  function chatDayEvents(msgs, chats, pid) {
+    const names = new Map((chats || []).map(c => [c.id, c.name || ''])); const by = new Map();
+    for (const m of msgs || []) { if (m.pid !== pid || m.deleted) continue; const date = almatyDate(m.ts); if (!date) continue; const k = m.chatId + '|' + date;
+      const g = by.get(k) || { chatId: m.chatId, date, n: 0, files: 0, saved: 0, at: '' }; g.n++; g.files += (m.files || []).length; g.saved += (m.files || []).filter(f => f.savedTo).length; if (m.ts > g.at) g.at = m.ts; by.set(k, g); }
+    return [...by.values()].map(g => ({ kind: 'auto', type: 'chat', date: g.date, at: g.at, by: '', chatId: g.chatId, chatDate: g.date, n: g.n, nFiles: g.files, nSaved: g.saved,
+      text: `WhatsApp${names.get(g.chatId) ? ` «${names.get(g.chatId)}»` : ''}: ${g.n} ${plural(g.n, ['сообщение', 'сообщения', 'сообщений'])}, ${g.files} ${plural(g.files, ['файл', 'файла', 'файлов'])}${g.saved ? ` (в папке проекта: ${g.saved})` : ''}` }));
+  }
+  // фильтр ленты переписки: q — все слова в тексте, авторе, цитате или именах файлов; files — только сообщения с файлами; chatId — одна группа
+  function chatFilter(msgs, o) {
+    o = o || {}; const words = String(o.q || '').toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(Boolean);
+    return (msgs || []).filter(m => (!o.chatId || m.chatId === o.chatId) && (!o.files || (!m.deleted && (m.files || []).length > 0)) && (!words.length || (!m.deleted && (s => words.every(w => s.includes(w)))([m.text, m.author, m.quoted, (m.files || []).map(f => f.name).join(' ')].join(' ').toLowerCase().replace(/ё/g, 'е')))));
+  }
+  const chatTime = ts => { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleTimeString('ru-RU', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' }); };
+
   return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, TEMPLATE_VERSION, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, normCode, depItems, waitingFor, roadmapStatus, PM_ROLES, SETTINGS_DEFAULT, pmSettings, isStaff, memberIds, staffSees, STAFF_ITEM_FIELDS, trackPath, defaultTracks, userTracks, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
     parseCsv, CLICKUP_FIELDS, clickupAutoMap, parseAnyDate, splitList, CLICKUP_DONE, clickupStatus, normTitle, findItemByTitle, matchUser, clickupToProjects, crc32, zipStore, xlsx, registryExport, ZONE_NAME_RU,
     W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot,
     KANBAN, KANBAN_KEYS, KANBAN_OPEN, KANBAN_PROJECT_HIDDEN, rmKanban, itemKanban, kanbanPatch, canMoveProject,
-    LOG_TYPES, LOG_TYPE_KEYS, logTypeLabel, LOG_MAX_TEXT, LOG_MAX_FILE, LOG_MAX_FILES, LOG_MAX_BATCH, LOG_FILE_TYPES, LOG_KEY_RE, logFileSig, canLogAdd, canLogEdit, logDate, cleanLog, logTypeFromText, parseLogBatch, almatyDate, PROJ_HIST_FIELDS, projectHistory, projectFeed, feedLabel, filterFeed, feedCsv };
+    LOG_TYPES, LOG_TYPE_KEYS, logTypeLabel, LOG_MAX_TEXT, LOG_MAX_FILE, LOG_MAX_FILES, LOG_MAX_BATCH, LOG_FILE_TYPES, LOG_KEY_RE, logFileSig, canLogAdd, canLogEdit, logDate, cleanLog, logTypeFromText, parseLogBatch, almatyDate, PROJ_HIST_FIELDS, projectHistory, projectFeed, feedLabel, filterFeed, feedCsv,
+    CHAT_KINDS, CHAT_MAX_BATCH, CHAT_MAX_BYTES, CHAT_MAX_FILE, CHAT_MAX_TEXT, CHAT_PAGE, CHAT_FOLDER_DEFAULT, CHAT_FILE_TYPES, CHAT_EXT_MIME, CHAT_KEY_RE, CHAT_INLINE, CHAT_BRIDGE_STATES, chatFileExt, chatFileSig, chatIsImage, chatSafeName, chatFolderName, chatNumbered, canChatRead, canChatBind, chatTokens, chatSuggest, cleanChatMessage, chatDayEvents, chatFilter, chatTime, plural };
 });
