@@ -15,7 +15,7 @@
   const TRACKS = { ep: 'ЭП', rp: 'РП', an: 'АН' };
   const normTrack = t => t === 'concept' ? 'ep' : TRACKS[t] ? t : 'rp';
   const trackName = t => TRACKS[normTrack(t)];
-  const SOURCES = ['Повторный заказчик', 'Рекомендация', 'Входящий звонок', 'Сайт / соцсети', 'Тендер', 'Прочее'];
+  const SOURCES = ['Повторный заказчик', 'Рекомендация', 'Входящий звонок', 'Сайт / соцсети', 'WhatsApp', 'Тендер', 'Прочее'];
   const OBJECT_TYPES = ['ЖК', 'Бизнес-центр / офисы', 'Коммерция / ТРЦ', 'Виллы / коттеджи', 'Гостиница', 'Социальный объект', 'Интерьер', 'Прочее'];
   const REASONS = ['Цена', 'Сроки', 'Выбрали другого', 'Проект заморожен', 'Нет ответа', 'Не наш профиль', 'Прочее'];
   const PAY_STATUS = ['Ожидается', 'Акт выставлен', 'Оплачен'];
@@ -255,7 +255,70 @@
     return { v: { no, date, area, rate, net, vat, gross, vatPct: Math.round(vat / net * 1000) / 10, extraNet, extraGross, comment: String(b.comment == null ? '' : b.comment).trim().slice(0, 2000) } };
   }
 
+  // ---- обращения (WhatsApp): телефон, признак «похоже на заказ» ----
+  const INBOX_STATUS = { new: 'Новое', lead: 'Сделка', ignored: 'Не заказ' };
+  const INBOX_KINDS = ['text', 'image', 'doc', 'audio', 'video'];
+  const canIngest = isLeader; // приём от службы-моста: руководитель или его ключ ИИ
+  // телефон → только цифры; казахстанские 8XXXXXXXXXX и 7XXXXXXXXX (без кода страны) → 7XXXXXXXXXX. JID «7701…:5@s.whatsapp.net» тоже годится
+  function normPhone(v) {
+    let d = String(v == null ? '' : v).replace(/@.*$/, '').replace(/:\d+$/, '').replace(/\D/g, '');
+    if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1); else if (d.length === 10 && d[0] === '7') d = '7' + d;
+    return d.length >= 10 && d.length <= 15 ? d : '';
+  }
+  // все телефоны из свободного текста («+7 701 123-45-67, 8(727)2500000, a@b.kz»)
+  const phonesIn = text => [...new Set((String(text || '').match(/\+?\d[\d\s().\-]{8,}\d/g) || []).map(normPhone).filter(Boolean))];
+  const fmtPhone = d => { d = String(d || ''); return /^7\d{10}$/.test(d) ? `+7 ${d.slice(1, 4)} ${d.slice(4, 7)} ${d.slice(7, 9)} ${d.slice(9)}` : d ? '+' + d : ''; };
+  // ключевые слова заказа (RU + базовые KZ): счёт = сколько разных групп встретилось во входящих сообщениях. Ничего не отбрасывается — только подсветка.
+  const KL = '[а-яәғқңөұүһі]*', END = '(?![\\p{L}\\p{N}])';
+  const INBOX_WORDS = [
+    ['проект', 'проект' + KL + '|жоба' + KL],
+    ['эскиз', 'эскиз' + KL + '|нобай' + KL + '|концепци' + KL + '|эп' + END],
+    ['рабочий проект', 'рабоч' + KL + ' проект' + KL + '|рабочк' + KL + '|рп' + END],
+    ['участок', 'участ(?:ок|ка|ке|ку|ком|ки|ков)' + END + '|жер телім' + KL],
+    ['га', '\\d+(?:[.,]\\d+)?\\s*(?:га|гектар' + KL + '|сот(?:ок|ки|ка|ых)?)' + END],
+    ['м²', '\\d+(?:[  ]\\d{3})*(?:[.,]\\d+)?\\s*(?:м2|м²|кв\\.?\\s*м|квадрат' + KL + '|шаршы метр' + KL + ')'],
+    ['коттедж', 'коттедж' + KL + '|вилл' + KL + '|таунхаус' + KL + '|частн' + KL + ' дом' + KL],
+    ['ЖК', 'жк' + END + '|жил' + KL + ' (?:комплекс|дом)' + KL + '|тұрғын үй' + KL],
+    ['гостиница', 'гостиниц' + KL + '|отел' + KL + '|қонақ үй' + KL],
+    ['коммерция', 'бизнес[- ]центр' + KL + '|офисн' + KL + '|торгов' + KL + ' центр' + KL + '|трц' + END + '|ресторан' + KL],
+    ['стоимость', 'стоимост' + KL + '|сколько (?:будет )?стои' + KL + '|цен(?:а|у|ы|е|ой)' + END + '|расценк' + KL + '|прайс' + KL + '|баға' + KL + '|құны' + END + '|қанша (?:тұрады|болады)'],
+    ['КП', 'кп' + END + '|коммерческ' + KL],
+    ['договор', 'договор' + KL + '|келісімшарт' + KL + '|шарт' + END],
+    ['сроки', 'срок' + KL + '|мерзім' + KL],
+    ['архитектура', 'архитект' + KL + '|сәулет' + KL + '|фасад' + KL + '|планировк' + KL + '|генплан' + KL],
+    ['интерьер', 'интерьер' + KL + '|дизайн' + KL],
+    ['строительство', 'строительств' + KL + '|застро' + KL + '|построить|реконструкц' + KL + '|құрылыс' + KL],
+    ['заказ', 'заказ(?:ать|а|у|ы)?' + END + '|тапсырыс' + KL + '|тендер' + KL + '|техзадани' + KL + '|тз' + END],
+    ['экспертиза', 'экспертиз' + KL + '|апз' + END + '|смет' + KL],
+  ];
+  let inboxRe = null; // собирается при первом вызове (\\p{L} — нужен флаг u)
+  const inboxRes = () => inboxRe || (inboxRe = INBOX_WORDS.map(([w, p]) => [w, new RegExp('(^|[^\\p{L}\\p{N}])(' + p + ')', 'giu')]));
+  const lowText = t => String(t == null ? '' : t).toLowerCase().replace(/ё/g, 'е'); // длина строки не меняется — позиции совпадают с исходным текстом
+  // совпадения в тексте: [{ from, to, word }] по возрастанию, без пересечений
+  function inboxHits(text) {
+    const s = lowText(text); const hits = []; if (!s.trim()) return hits;
+    for (const [word, re] of inboxRes()) { re.lastIndex = 0; let m; while ((m = re.exec(s))) { const from = m.index + m[1].length; hits.push({ from, to: from + m[2].length, word }); if (re.lastIndex === m.index) re.lastIndex++; } }
+    hits.sort((a, b) => a.from - b.from || b.to - a.to); const out = []; let end = -1;
+    for (const h of hits) if (h.from >= end) { out.push(h); end = h.to; }
+    return out;
+  }
+  // счёт по набору текстов: { score, words } — число и список разных групп ключевых слов
+  function inboxScore(texts) {
+    const s = lowText([].concat(texts || []).join('\n')); const words = []; if (!s.trim()) return { score: 0, words };
+    for (const [word, re] of inboxRes()) { re.lastIndex = 0; if (re.test(s)) words.push(word); }
+    return { score: words.length, words };
+  }
+  const inboxLevel = score => score >= 2 ? 'hot' : score >= 1 ? 'warm' : '';
+  // текст → куски [{ t, hit }] для подсветки ключевых слов
+  function inboxMark(text) {
+    const s = String(text == null ? '' : text); const out = []; let pos = 0; let hits = []; try { hits = inboxHits(s); } catch (e) { hits = []; }
+    for (const h of hits) { if (h.from > pos) out.push({ t: s.slice(pos, h.from), hit: false }); out.push({ t: s.slice(h.from, h.to), hit: true }); pos = h.to; }
+    if (pos < s.length) out.push({ t: s.slice(pos), hit: false });
+    return out;
+  }
+
   return { stageCodes, STATUSES, OPEN, KP_STAGE, TRACKS, normTrack, trackName, SOURCES, OBJECT_TYPES, REASONS, PAY_STATUS, COMPANIES, PAY_TEMPLATES, FIELDS, DEFAULT_TEMPLATES, KP_STATUS,
     isLeader, canOpen, canEditLeads, canPayments, canDocs, canEditTemplates, canSign, canSeeLead, ownLead,
+    INBOX_STATUS, INBOX_KINDS, INBOX_WORDS, canIngest, normPhone, phonesIn, fmtPhone, inboxHits, inboxScore, inboxLevel, inboxMark,
     kpExternal, isoDate, stageByName, leadCalc, funnel, leadOverdue, leadFromProposal, schedule, stageState, paymentState, expected, words, inWords, moneyStr, fdate, docData, fill, docPage, csv1c, row1c, num, today, addDays, days };
 });
