@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const PM = require('./domain');
+const TEAM = require('./team'); // «Квартал», «Офис проекта», переносы сроков, проверка пунктов, напоминания
 const CHAT = require('./chat'); // переписка проектов (группы WhatsApp): приём от моста, привязка к проектам, лента, копия файлов в папку проекта
 
 const CONTRACT_FIELDS = ['contractNo', 'contractDate', 'contractTerm', 'contractTermUnit', 'contractStartRule', 'dueNote'];
@@ -201,6 +202,7 @@ function handle(ctx) {
       const next = Object.assign({}, S); if ('staffOwnProjects' in body) next.staffOwnProjects = body.staffOwnProjects === true || body.staffOwnProjects === 'true' || body.staffOwnProjects === 1;
       for (const k of ['chatForMembers', 'chatFilesToFolder']) if (k in body) next[k] = body[k] === true || body[k] === 'true' || body[k] === 1; // переписка: чтение участниками, копия файлов в папку проекта
       if ('chatFolderName' in body) next.chatFolderName = PM.chatFolderName(body.chatFolderName);
+      for (const [k, lo, hi] of [['overloadLimit', 1, 100], ['silentDays', 1, 60]]) if (k in body) { const n = Math.round(Number(body[k])); if (!(n >= lo && n <= hi)) return err(400, k === 'overloadLimit' ? 'Порог перегрузки — от 1 до 100 пунктов' : '«Кто молчит» — от 1 до 60 дней'); next[k] = n; } // «Офис проекта»
       for (const [k, roles] of [['defaultEpPmId', ['pm', 'owner', 'partner']], ['defaultRpGipId', ['gip', 'owner', 'partner']]]) if (k in body) {
         const id = String(body[k] || ''); if (id && !db.users.some(u => u.id === id && u.active !== false && roles.includes(u.role))) return err(400, k === 'defaultEpPmId' ? 'ПМ по умолчанию — пользователь с ролью ПМ' : 'ГИП по умолчанию — пользователь с ролью ГИП'); next[k] = id; }
       db.settings = Object.assign({}, db.settings, { pm: next }); store.save(); store.audit(user.id, 'update', 'settings', 'pm', next); return ok(next);
@@ -216,7 +218,7 @@ function handle(ctx) {
   const card = p => {
     const items = db.pmItems.filter(i => i.pid === p.id).sort((x, y) => x.stage - y.stage || x.order - y.order);
     const h = PM.health(p, db.pmItems, t);
-    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i), waiting: PM.waitingFor(items, i), kcol: PM.itemKanban(i) })), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [], logN: logs().filter(r => r.pid === p.id).length, canLog: PM.canLogAdd(user, p, db.pmItems), canChat: PM.canChatRead(user, p, S, db.pmItems) };
+    const out = { project: projOut(p), items: items.map(i => Object.assign({}, i, { canEdit: PM.canEditItem(user, p, i), waiting: PM.waitingFor(items, i), kcol: PM.itemKanban(i) }, TEAM.itemFlags(user, p, i, db.users))), blockers: db.pmBlockers.filter(x => x.pid === p.id).map(blockerOut), canEdit: PM.isManager(user, p), canBudget: PM.canBudget(user, p), leader: PM.isLeader(user), summary: PM.summary(p, db.pmItems, db.pmBlockers, t), stageNames: PM.stageNamesOf(items, p.track), contractors: contractorsOf(db, p), folderHint: PM.folderName(p), health: h, charterOk: PM.charterComplete(p.charter), retros: p.retros || [], logN: logs().filter(r => r.pid === p.id).length, canLog: PM.canLogAdd(user, p, db.pmItems), canChat: PM.canChatRead(user, p, S, db.pmItems) };
     if (out.canChat) out.chatN = CHAT.countOf(db, p.id);
     if (staff) { out.staff = true; out.blockers = out.blockers.filter(x => x.ownerId === user.id); out.contractors = []; }
     const hrMod = ctx.modules && ctx.modules.hr; if (hrMod && hrMod.laborHours && !staff) out.hours = hoursOf(ctx, hrMod, p, user, out.canBudget); // вкладка «Часы» — только при включённом модуле hr
@@ -242,9 +244,13 @@ function handle(ctx) {
       if (p.pmId === user.id && ['ПМ', 'Заказчик'].includes(it.role)) return true;
       return PM.isLeader(user) && !!it.due && it.due < t; });
   };
+  if (TEAM.handle(ctx, { logHistory, visibleP, staff, S, t })) return; // квартал, офис, переносы, проверка, напоминания (права — внутри)
+  const flags = (p, i) => TEAM.itemFlags(user, p, i, db.users);
+  const decN = tr => { const x = TEAM.decisions(user, db, tr, visibleP); return x.shifts.length + x.review.length; };
   const inTrackQ = p => { const q = ctx.qs && ctx.qs.track; return !q || PM.trackPath(p.track) === PM.trackPath(q); }; // ?track=ep|rp — раздел интерфейса (concept считается ЭП)
   if (a === 'badges' && method === 'GET') { const my = myItems().filter(it => it.due && it.due < t); const bl = db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && (!staff || x.ownerId === user.id) && x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE(q.status); });
     const byTrack = { ep: { my: 0, bl: 0 }, rp: { my: 0, bl: 0 } }; for (const it of my) { const q = findP(it.pid); if (q) byTrack[PM.trackPath(q.track)].my++; } for (const x of bl) byTrack[PM.trackPath(findP(x.pid).track)].bl++;
+    for (const tr of ['ep', 'rp']) byTrack[tr].dec = staff ? 0 : decN(tr); // «Ждут решения»: запросы переносов и пункты на проверке
     return ok({ pmmy: my.length, pmbl: bl.length, byTrack }); }
   if (false) return ok({ pmmy: myItems().filter(it => it.due && it.due < t).length, pmbl: db.pmBlockers.filter(x => { const q = findP(x.pid); return !!q && PM.shownTrack(q.track) && (!staff || x.ownerId === user.id) && x.status !== 'closed' && PM.blockerAge(x, t) > 14 && PM.ACTIVE(q.status); }).length });
   if (a === 'overview' && method === 'GET') {
@@ -252,9 +258,9 @@ function handle(ctx) {
     const blockersIn = db.pmBlockers.filter(x => pset.has(x.pid) && (!staff || x.ownerId === user.id)); // блокеры только проектов сводки (стадия, видимость, staff)
     const dash = PM.dashboard(projs, db.pmItems, blockersIn, t); // АН скрыт из сводки (данные и карточки по API остаются)
     dash.rows = dash.rows.map(r => Object.assign(projOut(r), { canEdit: PM.isManager(user, r), canBudget: PM.canBudget(user, r) }, PM.canBudget(user, r) ? { throughput: PM.throughput(r, r.health) } : {}));
-    return ok(Object.assign(dash, { blockersList: blockersIn.map(blockerOut), settings: PM.isLeader(user) ? S : undefined, canSettings: ['owner', 'partner'].includes(user.role), staff, canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])) }));
+    return ok(Object.assign(dash, { blockersList: blockersIn.map(blockerOut), settings: PM.isLeader(user) ? S : undefined, canSettings: ['owner', 'partner'].includes(user.role), staff, canCreate: PM.canCreate(user), leader: PM.isLeader(user), financeProjects: PM.isLeader(user) ? finProjects() : [], templates: Object.fromEntries(TRACKS.map(k => [k, PM.templateCount(k)])), decisions: staff ? 0 : decN(ctx.qs && ctx.qs.track) }));
   }
-  if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it), waiting: PM.waitingFor(db.pmItems.filter(x => x.pid === it.pid), it), kcol: PM.itemKanban(it) }); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
+  if (a === 'my' && method === 'GET') return ok(myItems().map(it => { const p = findP(it.pid); return Object.assign({}, it, { project: p.name, track: p.track, canEdit: PM.canEditItem(user, p, it), waiting: PM.waitingFor(db.pmItems.filter(x => x.pid === it.pid), it), kcol: PM.itemKanban(it) }, flags(p, it)); }).sort((x, y) => String(x.due || '9').localeCompare(String(y.due || '9'))));
   if (a === 'finance' && b === 'projects' && method === 'GET') { if (!PM.isLeader(user)) return err(403, 'Только руководитель'); return ok(finProjects()); }
   if (a === 'projects') {
     if (!b && method === 'GET') return ok(db.pmProjects.filter(p => (!ctx.qs.track || p.track === ctx.qs.track) && visibleP(p)).map(p => Object.assign(projOut(PM.summary(p, db.pmItems, db.pmBlockers, t)), { canEdit: PM.isManager(user, p) })));
@@ -376,10 +382,15 @@ function handle(ctx) {
       if ('stage' in patch) { patch.stage = Number(patch.stage) || it.stage; const same = db.pmItems.find(i => i.pid === p.id && i.stage === patch.stage && i.id !== it.id); patch.stageName = same ? same.stageName : (PM.stageNames(p.track)[patch.stage - 1] || `Этап ${patch.stage}`); }
       if ('weeks' in patch) patch.weeks = num(patch.weeks) || it.weeks;
       if ('contractor' in patch) patch.contractor = String(patch.contractor || '').trim();
-      logHistory(it, patch, user.id);
+      if ('due' in patch) patch.due = String(patch.due || '').slice(0, 10);
+      if ('due' in patch && it.due && patch.due && patch.due !== it.due) { // прямая правка срока — «перенос без запроса» в истории переносов; открытый запрос закрывается
+        const pend = PM.shiftPending(it); if (pend) Object.assign(pend, { status: 'cancelled', decidedAt: now(), decidedBy: user.id, comment: 'срок изменён напрямую' });
+        it.shifts = (Array.isArray(it.shifts) ? it.shifts : []).concat([{ id: store.id(), at: now(), by: user.id, assigneeId: it.assigneeId || '', from: it.due, to: patch.due, days: PM.days(it.due, patch.due), reason: '', status: 'direct' }]).slice(-30);
+        logHistory(it, { due: patch.due }, user.id, 'перенос без запроса'); const rest = Object.assign({}, patch); delete rest.due; logHistory(it, rest, user.id);
+      } else logHistory(it, patch, user.id);
       Object.assign(it, patch, { updatedAt: now(), updatedBy: user.id }); store.save(); store.audit(user.id, 'update', 'pmItems', it.id, patch.done !== undefined ? { done: patch.done } : null);
       if (patch.done === true) ctx.emit('pm.item.done', { item: it, project: p });
-      return ok(Object.assign({}, it, { canEdit: true, kcol: PM.itemKanban(it) }));
+      return ok(Object.assign({}, it, { canEdit: true, kcol: PM.itemKanban(it) }, flags(p, it)));
     }
     if (method === 'DELETE') { if (!PM.isManager(user, p)) return err(403, 'Удалять пункты может ГИП/ПМ проекта'); db.pmItems = db.pmItems.filter(i => i.id !== it.id); store.save(); store.audit(user.id, 'delete', 'pmItems', b); return ok({ ok: true }); }
   }
@@ -478,4 +489,4 @@ function handle(ctx) {
   return err(404, 'Нет такого действия');
 }
 
-module.exports = { id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers', 'pmLog', 'pmChats', 'pmChatMessages'], handle, chat: CHAT, createProject, collapseConcept, importClickup, hoursOf, logHistory, rebuildItems, domain: PM };
+module.exports = { team: TEAM, id: 'pm', api: 'pm', collections: ['pmProjects', 'pmItems', 'pmBlockers', 'pmLog', 'pmChats', 'pmChatMessages'], handle, chat: CHAT, createProject, collapseConcept, importClickup, hoursOf, logHistory, rebuildItems, domain: PM };

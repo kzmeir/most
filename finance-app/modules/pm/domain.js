@@ -210,7 +210,7 @@
   const LEADERS = ['owner', 'partner'];
   const PM_ROLES = ['owner', 'partner', 'accountant', 'secretary', 'pm', 'gip', 'lead'];
   // настройки модуля (db.settings.pm). staffOwnProjects — рядовые сотрудники (staff) видят проекты, где они исполнители пунктов или участники (members); по умолчанию выключено
-  const SETTINGS_DEFAULT = { staffOwnProjects: false, defaultEpPmId: '', defaultRpGipId: '', chatForMembers: false, chatFilesToFolder: true, chatFolderName: '00-Входящие WhatsApp' }; // chatForMembers — переписку (WhatsApp) читают и участники проекта; chatFilesToFolder / chatFolderName — копировать принятые файлы в подпапку папки проекта; // ПМ по умолчанию для ЭП, ГИП по умолчанию для РП
+  const SETTINGS_DEFAULT = { staffOwnProjects: false, defaultEpPmId: '', defaultRpGipId: '', chatForMembers: false, chatFilesToFolder: true, chatFolderName: '00-Входящие WhatsApp', overloadLimit: 8, silentDays: 5 }; // chatForMembers — переписку (WhatsApp) читают и участники проекта; chatFilesToFolder / chatFolderName — копировать принятые файлы в подпапку папки проекта; // ПМ по умолчанию для ЭП, ГИП по умолчанию для РП
   const pmSettings = db => Object.assign({}, SETTINGS_DEFAULT, (db && db.settings && db.settings.pm) || {});
   const isStaff = u => !!u && u.role === 'staff';
   const canOpen = (u, s) => !!u && (PM_ROLES.includes(u.role) || (isStaff(u) && !!(s && s.staffOwnProjects)));
@@ -234,6 +234,18 @@
   const canEditItem = (u, p, it) => isManager(u, p) || (!!u && u.role === 'lead' && !!u.section && itemSection(it) === u.section) || (!!u && !!it && !!it.assigneeId && it.assigneeId === u.id);
   const canBudget = (u, p) => isLeader(u) || (!!u && !!u.seeBudget && !!p && (p.gipId === u.id || p.pmId === u.id));
   const itemSection = it => (it && (it.section || ROLE_SECTION[it.role])) || '';
+  // ---- переносы сроков и проверка пунктов (14.10.2026) ----
+  // перенос: { id, at, by, assigneeId, from, to, days, reason, status: pending|approved|rejected|direct|cancelled, decidedAt, decidedBy, comment }
+  const SHIFT_STATUS = { pending: 'ждёт решения', approved: 'утверждён', rejected: 'отклонён', direct: 'перенос без запроса', cancelled: 'отменён' };
+  const shiftPending = it => (it && Array.isArray(it.shifts) && it.shifts.find(s => s.status === 'pending')) || null;
+  // запросить перенос: исполнитель пункта, ГИП/ПМ, руководитель раздела (все, кто правит пункт), кроме владельца и партнёра — они меняют срок сами
+  const canShiftRequest = (u, p, it) => !!u && !!p && !!it && !isLeader(u) && !it.done && !it.na && canEditItem(u, p, it);
+  // решить: руководитель проекта (isManager), но не сам автор; если автор сам ведёт проект (ГИП/ПМ) — только владелец или партнёр
+  const canShiftDecide = (u, p, s, author) => !!u && !!p && !!s && s.status === 'pending' && isManager(u, p) && s.by !== u.id && (!(author && isManager(author, p)) || isLeader(u));
+  // принять / вернуть пункт на проверке — руководитель проекта
+  const canReview = (u, p, it) => !!it && !it.done && !it.na && itemKanban(it) === 'review' && isManager(u, p);
+  // сколько раз переносили срок (утверждённые и без запроса) и на сколько дней суммарно
+  function shiftStats(it) { const l = ((it && it.shifts) || []).filter(s => s.status === 'approved' || s.status === 'direct'); return { n: l.length, days: l.reduce((a, s) => a + (Number(s.days) || 0), 0), direct: l.filter(s => s.status === 'direct').length, requested: ((it && it.shifts) || []).filter(s => s.status !== 'direct').length }; }
 
   // ---- даты ----
   const iso = d => d.toISOString().slice(0, 10);
@@ -727,6 +739,13 @@
         const x = { type: on ? 'done' : 'undone', date: almatyDate(e.at), at: e.at, by: e.by, text: `${on ? 'Сделано' : 'Возвращён в работу'}: ${it.title}${e.note ? ` (${e.note})` : ''}`, ref: it.id, title: it.title, note: e.note || '' };
         if (e.note) { const k = [x.type, x.date, x.by, e.note].join('|'); if (!bulk.has(k)) bulk.set(k, []); bulk.get(k).push(x); } else add(x);
       }
+      for (const e of it.history || []) if (e.field === 'review' && e.to === 'returned') add({ type: 'review', date: almatyDate(e.at), at: e.at, by: e.by, text: `Возвращено с замечанием: ${it.title}${e.note ? ` — ${e.note}` : ''}`, ref: it.id });
+      for (const x of it.shifts || []) {
+        const span = `${fmtD(x.from)} → ${fmtD(x.to)}`;
+        if (x.status === 'direct') { add({ type: 'shift', date: almatyDate(x.at), at: x.at, by: x.by, text: `Срок перенесён без запроса: ${it.title} — ${span}`, ref: it.id }); continue; }
+        add({ type: 'shift', date: almatyDate(x.at), at: x.at, by: x.by, text: `Запрошен перенос срока: ${it.title} — ${span}${x.reason ? `. Причина: ${x.reason}` : ''}`, ref: it.id });
+        if (x.decidedAt && x.status !== 'pending') add({ type: 'shift', date: almatyDate(x.decidedAt), at: x.decidedAt, by: x.decidedBy || '', text: `Перенос ${x.status === 'approved' ? 'утверждён' : x.status === 'rejected' ? 'отклонён' : 'отменён'}: ${it.title} — ${span}${x.comment ? `. ${x.comment}` : ''}`, ref: it.id });
+      }
       if (it.done && !doneSeen && it.doneAt && /^\d{4}-\d{2}-\d{2}$/.test(it.doneAt)) add({ type: 'done', date: it.doneAt, by: it.doneBy && !['import', 'clickup'].includes(it.doneBy) ? it.doneBy : '', text: `Сделано: ${it.title}${it.doneNote ? ` (${it.doneNote})` : ''}`, ref: it.id });
     }
     for (const list of bulk.values()) {
@@ -742,7 +761,7 @@
     for (const r of p.retros || []) { const s = r.snapshot || {}; add({ type: 'retro', date: r.date, by: r.by || '', text: `Ретроспектива${s.progress != null ? `: выполнено ${Math.round(s.progress * 100)} %` : ''}${r.interpret ? ` — ${String(r.interpret).slice(0, 200)}` : ''}`, ref: r.id }); }
     return ev.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.at || '').localeCompare(String(a.at || '')) || (a.kind === 'log' ? -1 : 0) - (b.kind === 'log' ? -1 : 0));
   }
-  const AUTO_LABEL = { created: 'Проект', status: 'Статус', dates: 'Сроки', item: 'Пункт', done: 'Сделано', undone: 'Возврат', blocker: 'Блокер', 'blocker-closed': 'Блокер снят', retro: 'Ретро', chat: 'WhatsApp' };
+  const AUTO_LABEL = { created: 'Проект', status: 'Статус', dates: 'Сроки', item: 'Пункт', done: 'Сделано', undone: 'Возврат', blocker: 'Блокер', 'blocker-closed': 'Блокер снят', retro: 'Ретро', chat: 'WhatsApp', shift: 'Перенос', review: 'Проверка' };
   const feedLabel = e => e.kind === 'log' ? logTypeLabel(e.type) : (AUTO_LABEL[e.type] || 'Событие');
   // фильтр ленты: mode 'log' — только записи; q — слова через пробел (все должны встретиться в тексте, типе, участниках, авторе)
   function filterFeed(events, o) {
@@ -860,7 +879,7 @@
   }
   const chatTime = ts => { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleTimeString('ru-RU', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' }); };
 
-  return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, TEMPLATE_VERSION, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, normCode, depItems, waitingFor, roadmapStatus, PM_ROLES, SETTINGS_DEFAULT, pmSettings, isStaff, memberIds, staffSees, STAFF_ITEM_FIELDS, trackPath, defaultTracks, userTracks, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
+  return { TRACKS, TRACK_SHORT, TRACK_ORDER, VISIBLE_TRACKS, HIDDEN_TRACKS, normalizeTrack, shownTrack, CONCEPT_STAGE, NEXT_TRACK, LEAD_FIELD, STATUS, ACTIVE, RISK, SECTIONS, ROLE_SECTION, ITEM_ROLES, HOLDERS, BLOCKER_STATUS, BUDGET_SECTIONS, EXECUTORS, FOLDER_SECTIONS, folderName, TEMPLATES, TEMPLATE_VERSION, AN_MONTHLY, stageNames, stageNamesOf, templateCount, stageIndex, normCode, depItems, waitingFor, roadmapStatus, PM_ROLES, SETTINGS_DEFAULT, pmSettings, isStaff, memberIds, staffSees, STAFF_ITEM_FIELDS, trackPath, defaultTracks, userTracks, canOpen, isLeader, isManager, canCreate, canEditItem, canBudget, itemSection, SHIFT_STATUS, shiftPending, canShiftRequest, canShiftDecide, canReview, shiftStats, itemsFromTemplate, plan, progress, summary, dashboard, budgetCalc, blockerAge, ganttMonths, ganttLoad, inMonth, miroEmbed, addDays, days, ym, addMonths, monthsDiff, mname, today, KZ_FIXED, KZ_KURBAN, holidaysOf, isWorkDay, nextWorkDay, addWorkDays, workDaysBetween, TERM_UNITS, termEnd, contractLabel,
     parseCsv, CLICKUP_FIELDS, clickupAutoMap, parseAnyDate, splitList, CLICKUP_DONE, clickupStatus, normTitle, findItemByTitle, matchUser, clickupToProjects, crc32, zipStore, xlsx, registryExport, ZONE_NAME_RU,
     W, WMAX, chain, ZONES, ZONE_RANK, zone, health, throughput, priority, CHARTER_FIELDS, charterPhrase, charterComplete, retroSnapshot,
     KANBAN, KANBAN_KEYS, KANBAN_OPEN, KANBAN_PROJECT_HIDDEN, rmKanban, itemKanban, kanbanPatch, canMoveProject,
