@@ -269,6 +269,15 @@ chk "история пункта пишет смену колонки" true "$(c
 chk "«Мои задачи» отдают колонку kcol" true "$(call LEAD GET /pm/my | js 'd.length>0 && d.every(i=>["todo","doing","review"].includes(i.kcol))')"
 chk "statuses дорожной карты → колонки: A1 «Готово», B2 (У ЗАКАЗЧИКА) «На проверке», C3 (В РАБОТЕ) «В работе»" "done/review/doing" "$(call OWN GET /pm/projects/$RMID | js '(()=>{const by=Object.fromEntries(d.items.filter(i=>i.code).map(i=>[i.code,i]));return [by.A1.kcol,by.B2.kcol,by.C3.kcol].join("/")})()')"
 chk "без сервера: колонка ↔ done, права, событие pm.item.done при «Готово» (+ crm onItemDone)" ok "$(node modules/pm/tests/kanban_test.js | tail -1)"
+echo "== квартал, офис проекта, переносы (по HTTP) =="
+chk "квартал РП: owner 200, gip 200, lead 403, accountant 403" "200/200/403/403" "$(code OWN GET '/pm/quarter?track=rp')/$(code GIP GET '/pm/quarter?track=rp')/$(code LEAD GET '/pm/quarter?track=rp')/$(code ACC GET '/pm/quarter?track=rp')"
+chk "квартал РП: строки без бюджета, есть зона и этажи" true "$(call OWN GET '/pm/quarter?track=rp' | js 'd.rows.length>0 && d.rows.every(r=>!("budget" in r) && r.zone && r.stages>0)')"
+chk "офис проекта: owner 200, accountant 403" "200/403" "$(code OWN GET /pm/projects/$RPID/office)/$(code ACC GET /pm/projects/$RPID/office)"
+SH=$(call OWN GET /pm/projects/$RPID | js 'd.items.find(i=>!i.done && !i.na && i.due).id')
+chk "перенос: владелец не запрашивает (400), gip запросил без причины (400) и с причиной (200)" "400/400/200" "$(code OWN POST /pm/items/$SH/shift "{\"due\":\"$DUE\",\"reason\":\"x\"}")/$(code GIP POST /pm/items/$SH/shift "{\"due\":\"$DUE\"}")/$(code GIP POST /pm/items/$SH/shift "{\"due\":\"$DUE\",\"reason\":\"ждём ТУ\"}")"
+SID=$(call OWN GET /pm/projects/$RPID | js 'd.items.find(i=>i.id==="'$SH'").shift.id')
+chk "запрос ГИПа: ГИП не утверждает (403), владелец утвердил — срок новый" "403/$DUE" "$(code GIP POST /pm/items/$SH/shift/$SID '{"action":"approve"}')/$(call OWN POST /pm/items/$SH/shift/$SID '{"action":"approve"}' | js 'd.due')"
+chk "без сервера: переносы сроков с утверждением, проверка (принять / вернуть), «Офис проекта» (кто молчит, перегрузка, пустые разделы), «Квартал», напоминания" ok "$(node modules/pm/tests/team_test.js | tail -1)"
 chk "без сервера: правка на месте — поля шапки, пункта и журнала по ролям (ПМ, руководитель раздела, сотрудник, секретарь)" ok "$(node modules/pm/tests/inline_test.js | tail -1)"
 chk "без сервера: журнал проекта — права, задним числом, импорт пачкой, вложения (сигнатура, 20 МБ), авто-события, поиск, CSV" ok "$(node modules/pm/tests/log_test.js | tail -1)"
 chk "без сервера: переписка WhatsApp — приём, дубли, лимиты, сигнатуры, привязка и pid, права чтения, порции, журнал, «→ В журнал», файлы в папку проекта (только внутрь подпапки, без перезаписи, «только чтение»)" ok "$(node modules/pm/tests/chat_test.js | tail -1)"
