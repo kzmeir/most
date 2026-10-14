@@ -22,7 +22,7 @@ const MAX_OPS = 3000;
 // ---------- модули ERP: modules/<id>/server.js (API + коллекции), domain.js и ui.js (браузер). Контракт — docs/ARCHITECTURE.md ----------
 const MODULES_DIR = path.join(__dirname, 'modules');
 // порядок в меню и переключателе: первый видимый модуль открывается при входе (на ERP — «Проекты», в «Финансах» после самих финансов — «Коммерция»)
-const MODULE_ORDER = ['pm', 'board', 'kb', 'office', 'hr', 'crm', 'mkt', 'analytics', 'ai', 'sys'];
+const MODULE_ORDER = ['pm', 'board', 'kb', 'office', 'hr', 'crm', 'mkt', 'analytics', 'ai', 'tg', 'sys'];
 const MODULES = (fs.existsSync(MODULES_DIR) ? fs.readdirSync(MODULES_DIR) : []).sort((a, b) => ((MODULE_ORDER.indexOf(a) + 1) || 99) - ((MODULE_ORDER.indexOf(b) + 1) || 99) || a.localeCompare(b))
   .filter(n => /^[a-z][a-z0-9]*$/.test(n) && fs.existsSync(path.join(MODULES_DIR, n, 'server.js')))
   .map(n => Object.assign(require(path.join(MODULES_DIR, n, 'server.js')), { dir: path.join(MODULES_DIR, n), id: n }));
@@ -35,7 +35,7 @@ function emit(ctx, name, data) { for (const m of MODULES) { const h = m.on && m.
 const pickKeys = (o, keys) => Object.fromEntries(keys.filter(k => k in (o || {})).map(k => [k, o[k]]));
 // скрипты модулей для браузера: /m/<id>/domain.js, /m/<id>/ui.js (подключаются в index.html перед app.js)
 // какие модули включены на этом сервере: «Настройки → Модули» (settings.enabledModules); в режиме разработки — все
-const MODULE_TITLES = { pm: 'Проекты', kb: 'Знания и обучение', hr: 'Персонал и табель', crm: 'Коммерция', sys: 'Сервис' };
+const MODULE_TITLES = { pm: 'Проекты', kb: 'Знания и обучение', hr: 'Персонал и табель', crm: 'Коммерция', mkt: 'Маркетинг', board: 'Доска', office: 'Документы', analytics: 'Панель директора', ai: 'ИИ-панель', tg: 'Telegram', sys: 'Сервис' };
 const moduleOn = m => !!process.env.DEV_USER || ((store.get().settings || {}).enabledModules || []).includes(m.id);
 // сайты: 'fin' — только финансы, 'erp' — только модули, 'all' — всё вместе (режим разработки на одном порту)
 // на каком сайте модуль: m.site ('erp' по умолчанию, 'fin' — «Коммерция» у финансов, ['erp','fin'] — на обоих, например ИИ-панель)
