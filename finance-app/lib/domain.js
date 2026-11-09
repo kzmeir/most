@@ -495,8 +495,9 @@
     const planIncome = stages.reduce((s, x) => s + num(x.planSum), 0) || cts.reduce((s, c) => s + num(c.sum), 0) || num(project.contractNoVat);
     const planCost = stages.reduce((s, x) => s + num(x.planCost), 0) || num(project.targetCost);
     const progress = stages.length ? Math.round(stages.reduce((s, x) => s + num(x.progress) * (num(x.planSum) || 1), 0) / (stages.reduce((s, x) => s + (num(x.planSum) || 1), 0) || 1)) : null;
+    const pc = projectClient(project, db);
     return {
-      project, client: project.client || (cts[0] && (cts[0].clientShort || cts[0].client)) || '', admin: !!admin,
+      project, client: pc.client || project.client || (cts[0] && (cts[0].clientShort || cts[0].client)) || '', clientGroup: pc.group, clientAuto: pc.source && pc.source !== 'manual', admin: !!admin,
       contracts: cts.map(c => Object.assign({}, c, admin ? contractFacts(c, db, resolve, projects) : { actsN: acts.filter(d => d.contractId === c.id).length })),
       acts, subcontracts: subs, stages: stageRows, progress,
       plan: { income: planIncome, expense: planCost, margin: planIncome - planCost },
@@ -587,24 +588,58 @@
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
 
-  // ---- справочник групп-заказчиков: юрлицо → «Эверест/Хаят/Интегра…» по полю clientShort договоров ----
-  // та же привязка, что в колонке «Заказчик» реестра договоров (#/contracts): clientShort — группа, client — юрлицо.
+  // ---- единый справочник заказчиков: юрлицо → группа «Эверест/Хаят/Интегра/BI…» ----
+  // Единый источник правды — поле group у контрагента (#/counterparties). Пока оно не заполнено, группа
+  // берётся из поля clientShort договоров (#/contracts) — это же значение заносится в справочник кнопкой
+  // «Группы из договоров». Второго маппинга нет: и дебиторка, и проекты, и реестр читают отсюда.
   function customerGroups(db) {
     const resolve = cpResolver(db.counterparties || []);
     const byCp = new Map(), byProj = new Map();
+    // 1) основной источник — справочник контрагентов (counterparties.group)
+    for (const cp of db.counterparties || []) { const g = String(cp.group || '').trim(); if (g) byCp.set(cp.id, g); }
+    // 2) запасной источник/засев — clientShort договоров (для контрагентов, которым группу ещё не проставили)
     for (const c of db.contracts || []) {
       const g = String(c.clientShort || '').trim(); if (!g) continue;
       const cp = resolve(c.client) || resolve(c.clientShort);
       if (cp && !byCp.has(cp.id)) byCp.set(cp.id, g);
       for (const pk of [c.code, c.name]) { const k = cpNorm(pk); if (k && k.length >= 4 && !byProj.has(k)) byProj.set(k, g); }
     }
-    // группа записи: по юрлицу (через справочник контрагентов) или, запасной путь, по названию проекта
+    // группа записи: по юрлицу (через справочник) или, запасной путь, по названию проекта
     const groupOf = rec => {
-      const cp = resolve(rec.client); if (cp && byCp.has(cp.id)) return byCp.get(cp.id);
-      const k = cpNorm(rec.project); if (k && byProj.has(k)) return byProj.get(k);
-      return String(rec.client || '').trim() || '—';
+      const cp = resolve(rec && rec.client); if (cp && byCp.has(cp.id)) return byCp.get(cp.id);
+      const k = cpNorm(rec && rec.project); if (k && byProj.has(k)) return byProj.get(k);
+      return String((rec && rec.client) || '').trim() || '—';
     };
-    return { resolve, byCp, byProj, groupOf, groups: new Set(byCp.values()) };
+    // каноническое имя юрлица по справочнику (как в договоре/выписке пишут по-разному → одно имя)
+    const nameOf = raw => { const cp = resolve(raw); return (cp && cp.name) || String(raw || '').trim(); };
+    return { resolve, byCp, byProj, groupOf, nameOf, groups: new Set(byCp.values()) };
+  }
+
+  // засев групп в справочник из поля clientShort договоров: для контрагентов без group — проставить группу.
+  // Возвращает список {id, name, group} для обновления (контрагенты, у кого group ещё нет, но заказчик договора — это он).
+  function seedCustomerGroups(db) {
+    const resolve = cpResolver(db.counterparties || []);
+    const has = new Map((db.counterparties || []).map(c => [c.id, c]));
+    const want = new Map();
+    for (const c of db.contracts || []) {
+      const g = String(c.clientShort || '').trim(); if (!g) continue;
+      const cp = resolve(c.client) || resolve(c.clientShort); if (!cp) continue;
+      const cur = has.get(cp.id); if (!cur || String(cur.group || '').trim()) continue; // уже есть group — не трогаем
+      if (!want.has(cp.id)) want.set(cp.id, { id: cp.id, name: cur.name, group: g });
+    }
+    return [...want.values()];
+  }
+
+  // заказчик проекта автоматически: по цепочке проект → договор → контрагент (справочник), без ручного ввода.
+  // Возвращает { client (каноническое юрлицо), group (группа-заказчик), source }.
+  function projectClient(project, db, cg) {
+    if (!project) return { client: '', group: '', source: '' };
+    cg = cg || customerGroups(db);
+    const cts = contractsOf(project.id, db.contracts || [], db.projects || []);
+    const ct = cts.find(c => c.client || c.clientShort) || cts[0];
+    if (ct) { const client = cg.nameOf(ct.client || ct.clientShort); return { client, group: cg.groupOf({ client: ct.client || ct.clientShort, project: project.name }), source: 'contract' }; }
+    if (project.client) return { client: cg.nameOf(project.client), group: cg.groupOf({ client: project.client, project: project.name }), source: 'manual' };
+    const g = cg.groupOf({ project: project.name }); return { client: '', group: g !== '—' ? g : '', source: g !== '—' ? 'project' : '' };
   }
 
   // ---- дебиторка: неоплаченные акты по срокам + договоры «на оплату» ----
@@ -719,5 +754,5 @@
     return cols;
   }
 
-  return { ocrNormalize, SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, subProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, customerGroups, receivables, cashForecast };
+  return { ocrNormalize, SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, subProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, customerGroups, seedCustomerGroups, projectClient, receivables, cashForecast };
 });

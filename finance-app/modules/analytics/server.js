@@ -99,10 +99,13 @@ function projectsBlock(ctx, t) {
   const track = p => PM.normalizeTrack ? PM.normalizeTrack(p.track) : p.track; // старые концепции — среди ЭП
   const portfolio = {}; for (const p of all) { const tr = track(p); const r = portfolio[tr] || (portfolio[tr] = { track: tr, label: PM.TRACK_SHORT[tr] || tr, total: 0, byStatus: {} }); r.total++; r.byStatus[p.status || 'В работе'] = (r.byStatus[p.status || 'В работе'] || 0) + 1; }
   const active = all.filter(p => PM.ACTIVE(p.status));
+  // заказчик проекта — автоматически по цепочке проект → договор → контрагент (единый справочник), без ручного ввода
+  const cg = ctx.D.customerGroups(db); const finById = new Map((db.projects || []).map(x => [x.id, x]));
+  const clientOf = p => { const fin = (p.projectId && finById.get(p.projectId)) || { id: p.id, name: p.name, client: p.client }; const pc = ctx.D.projectClient(fin, db, cg); return pc.group || pc.client || p.client || ''; };
   const list = active.map(p => {
     const s = PM.summary(p, items, blockers, t); let h = null; try { h = PM.health(p, items, t); } catch (e) { h = null; }
     const end = p.forecast || (h && h.forecast && h.forecast.realistic) || '';
-    return { id: p.id, name: p.name, track: track(p), trackLabel: PM.TRACK_SHORT[track(p)] || track(p), client: p.client || '', status: p.status, risk: p.risk || '', start: p.start || '', due: p.due || '', forecast: end, gip: un(p.gipId), pm: un(p.pmId), gipId: p.gipId || '', pmId: p.pmId || '',
+    return { id: p.id, name: p.name, track: track(p), trackLabel: PM.TRACK_SHORT[track(p)] || track(p), client: clientOf(p), status: p.status, risk: p.risk || '', start: p.start || '', due: p.due || '', forecast: end, gip: un(p.gipId), pm: un(p.pmId), gipId: p.gipId || '', pmId: p.pmId || '',
       pct: s.pct, stageName: s.stageName, overdue: s.overdue || 0, zone: h ? h.zone : '', consumption: h ? h.consumption : 0, progress: h ? h.progress : (s.pct || 0) / 100, promised: h ? h.promised : '',
       late: !!p.due && p.due < t, soon: !!p.due && p.due >= t && daysBetween(t, p.due) <= AN.LIMITS.dueSoonDays, forecastLate: !!(p.due && end && end > p.due) };
   });

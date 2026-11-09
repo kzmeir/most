@@ -187,5 +187,25 @@ chk('акт Номад без платежа — не помечен', false, re
 const recNo = D.receivables({ docs: recDb.docs, contracts: recDb.contracts, counterparties: recDb.counterparties }, '2026-11-09');
 chk('без ops: сверки нет, разрез по заказчику сохраняется', [false, 'Эверест', 30000000], [recNo.totals.matched, recNo.byCustomer[0].group, recNo.totals.real]);
 
+// ---- единый справочник: группа у контрагента — источник правды, автопривязка заказчика проекта ----
+console.log('== единый справочник заказчиков и автопривязка ==');
+// засев групп из clientShort договоров
+const seedDb = { counterparties: recDb.counterparties.map(c => Object.assign({}, c)), contracts: recDb.contracts };
+const upd = D.seedCustomerGroups(seedDb);
+chk('засев групп из договоров: QPC, MD, Nomad получают «Эверест»', [3, 'Эверест'], [upd.length, upd[0].group]);
+for (const u of upd) seedDb.counterparties.find(c => c.id === u.id).group = u.group;
+chk('повторный засев ничего не меняет (идемпотентно)', 0, D.seedCustomerGroups(seedDb).length);
+// теперь группа берётся из справочника даже без clientShort на договоре
+const noShort = { counterparties: seedDb.counterparties, contracts: recDb.contracts.map(c => Object.assign({}, c, { clientShort: '' })) };
+chk('группа из counterparties.group (без clientShort)', 'Эверест', D.customerGroups(noShort).groupOf({ client: 'ТОО QPC' }));
+// ручное переопределение группы у контрагента имеет приоритет над clientShort
+const over = { counterparties: recDb.counterparties.map(c => c.id === 'cp-nomad' ? Object.assign({}, c, { group: 'Прочее' }) : Object.assign({}, c)), contracts: recDb.contracts };
+chk('counterparties.group приоритетнее clientShort договора', 'Прочее', D.customerGroups(over).groupOf({ client: 'ТОО Nomad Arena' }));
+// автопривязка заказчика проекта по цепочке проект → договор → контрагент
+const pcDb = { counterparties: seedDb.counterparties, contracts: [{ id: 'k1', code: 'PRX', name: 'Проект Икс', client: 'ТОО QPC', clientShort: 'Эверест', closed: false }], projects: [{ id: 'PRX', name: 'Проект Икс' }] };
+const pc = D.projectClient({ id: 'PRX', name: 'Проект Икс' }, pcDb);
+chk('заказчик проекта автоматически из договора', ['ТОО QPC', 'Эверест', 'contract'], [pc.client, pc.group, pc.source]);
+chk('проект без договора — заказчика нет (ручного не требуем)', ['', '', ''], (x => [x.client, x.group, x.source])(D.projectClient({ id: 'NONE', name: 'Пусто' }, pcDb)));
+
 console.log(`\nИтого overview: ${pass} ✓, ${fail} ✗`);
 process.exit(fail ? 1 : 0);

@@ -217,6 +217,14 @@ async function api(req, res, url, user, site) {
     store.audit(user.id, 'rebuild', 'counterparties', null, { added: fresh.length }); store.save(); return ok(res, { added: fresh.length, total: db.counterparties.length });
   }
   if (seg === 'counterparties' && id2 === 'stats' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.counterpartyStats(db)); }
+  // засев групп-заказчиков в справочник из поля clientShort договоров (единый источник правды — группа у контрагента)
+  if (seg === 'counterparties' && id2 === 'group-sync' && method === 'POST') {
+    if (!D.can(role, 'counterparties', 'write')) return err(res, 403, 'Только просмотр');
+    const upd = D.seedCustomerGroups(db); for (const u of upd) store.update('counterparties', u.id, { group: u.group });
+    if (upd.length) { store.audit(user.id, 'group-sync', 'counterparties', null, { updated: upd.length }); store.save(); }
+    const groups = [...new Set(db.counterparties.map(c => String(c.group || '').trim()).filter(Boolean))].sort();
+    return ok(res, { updated: upd.length, items: upd, groups });
+  }
   if (seg === 'counterparties' && id2 && seg3 === 'merge' && method === 'POST') {
     if (!D.can(role, 'counterparties', 'write')) return err(res, 403, 'Только просмотр');
     const src = store.find('counterparties', id2), dst = store.find('counterparties', body.into); if (!src || !dst || src.id === dst.id) return err(res, 400, 'Укажите, с кем объединить');
