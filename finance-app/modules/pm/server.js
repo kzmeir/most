@@ -211,7 +211,15 @@ function handle(ctx) {
   if (a === 'chats') return CHAT.handle(ctx); // группы WhatsApp: приём, привязка, файлы (права — внутри)
   const t = ctx.today(); const now = () => new Date().toISOString(); const findP = id => db.pmProjects.find(p => p.id === id);
   const visibleP = p => !!p && (!staff || PM.staffSees(user, p, db.pmItems)); // сотрудник видит только свои проекты
-  const projOut = p => { const o = Object.assign({}, p); if (!PM.canBudget(user, p)) delete o.budget; return o; };
+  // заказчик проекта — автоматически из единого справочника по цепочке проект → договор → контрагент (не вводится руками)
+  const cg = D.customerGroups ? D.customerGroups(db) : null;
+  const clientOf = p => { if (!cg) return null; const fp = finProject(db, p); return D.projectClient(fp || { id: p.id, name: p.name, client: p.client }, db, cg); };
+  const projOut = p => {
+    const o = Object.assign({}, p); if (!PM.canBudget(user, p)) delete o.budget;
+    const pc = clientOf(p);
+    if (pc && (pc.client || pc.group)) { if (pc.source === 'contract' || !o.client) o.client = pc.client || o.client; o.clientGroup = pc.group; o.clientAuto = !!(pc.source && pc.source !== 'manual'); }
+    return o;
+  };
   const finProjects = () => db.projects.map(x => ({ id: x.id, name: x.name, status: x.status || '' })).sort((x, y) => (x.status === 'archive') - (y.status === 'archive') || String(x.name).localeCompare(String(y.name), 'ru'));
   const blockerOut = x => { const p = findP(x.pid) || {}; return Object.assign({}, x, { project: p.name || '', track: p.track || '', days: PM.blockerAge(x, t), canEdit: PM.isManager(user, p) || x.createdBy === user.id }); };
   const logs = () => (db.pmLog = db.pmLog || []);
