@@ -587,17 +587,93 @@
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
 
+  // ---- справочник групп-заказчиков: юрлицо → «Эверест/Хаят/Интегра…» по полю clientShort договоров ----
+  // та же привязка, что в колонке «Заказчик» реестра договоров (#/contracts): clientShort — группа, client — юрлицо.
+  function customerGroups(db) {
+    const resolve = cpResolver(db.counterparties || []);
+    const byCp = new Map(), byProj = new Map();
+    for (const c of db.contracts || []) {
+      const g = String(c.clientShort || '').trim(); if (!g) continue;
+      const cp = resolve(c.client) || resolve(c.clientShort);
+      if (cp && !byCp.has(cp.id)) byCp.set(cp.id, g);
+      for (const pk of [c.code, c.name]) { const k = cpNorm(pk); if (k && k.length >= 4 && !byProj.has(k)) byProj.set(k, g); }
+    }
+    // группа записи: по юрлицу (через справочник контрагентов) или, запасной путь, по названию проекта
+    const groupOf = rec => {
+      const cp = resolve(rec.client); if (cp && byCp.has(cp.id)) return byCp.get(cp.id);
+      const k = cpNorm(rec.project); if (k && byProj.has(k)) return byProj.get(k);
+      return String(rec.client || '').trim() || '—';
+    };
+    return { resolve, byCp, byProj, groupOf, groups: new Set(byCp.values()) };
+  }
+
   // ---- дебиторка: неоплаченные акты по срокам + договоры «на оплату» ----
+  // Когда переданы db.ops и db.counterparties — акты сверяются с фактическими поступлениями из выписок (db.ops):
+  // платежи каждого заказчика (по справочнику контрагентов) разносятся на его акты от старых к новым (уже оплаченные
+  // акты «съедают» платёж первыми), и неоплаченный акт, полностью покрытый поступлениями не раньше его даты, помечается
+  // paidFound — «оплата найдена по выписке». Это сверка по сумме/заказчику: массово ничего не меняется, только подсказка.
   const AGE_BUCKETS = [[0, 30, '0–30 дн.'], [31, 60, '31–60'], [61, 90, '61–90'], [91, 180, '91–180'], [181, 1e9, 'больше 180']];
   function receivables(db, today) {
     today = today || todayStr();
-    const acts = (db.docs || []).filter(d => !d.paid && num(d.amount) > 0 && (d.status === 'done' || d.actDate)).map(d => { const from = d.actDate || String(d.createdAt || '').slice(0, 10) || today; return Object.assign({}, d, { from, age: daysBetween(from, today) }); }).sort((a, b) => b.age - a.age);
-    const buckets = AGE_BUCKETS.map(([a, b, label]) => { const l = acts.filter(x => x.age >= a && x.age <= b); return { label, from: a, to: b, n: l.length, sum: l.reduce((s, x) => s + num(x.amount), 0) }; });
+    const cats = db.categories || [];
+    const cg = customerGroups(db);
+    const mkAct = d => { const from = d.actDate || String(d.createdAt || '').slice(0, 10) || today; return Object.assign({}, d, { from, age: daysBetween(from, today), group: cg.groupOf(d) }); };
+    const isBill = d => num(d.amount) > 0 && (d.status === 'done' || d.actDate);
+    const acts = (db.docs || []).filter(d => !d.paid && isBill(d)).map(mkAct).sort((a, b) => b.age - a.age);
+
+    // сверка с поступлениями из банковских выписок
+    const incOps = (db.ops || []).filter(o => num(o.credit) > 0 && !['transfer', 'owner', 'payroll'].includes(catKind(cats, o.category)));
+    const matched = incOps.length > 0;
+    let recon = { matched, raw: 0, paidFoundN: 0, paidFoundSum: 0, real: 0 };
+    const receivedByGroup = new Map();
+    if (matched) {
+      const pool = new Map(); // группа → платежи [{date,left}] по возрастанию даты
+      for (const o of incOps) { const cp = cg.resolve(o.counterparty); const g = cp && cg.byCp.has(cp.id) ? cg.byCp.get(cp.id) : null; if (!g) continue; if (!pool.has(g)) pool.set(g, []); pool.get(g).push({ date: String(o.date || ''), left: num(o.credit) }); receivedByGroup.set(g, (receivedByGroup.get(g) || 0) + num(o.credit)); }
+      for (const arr of pool.values()) arr.sort((a, b) => a.date.localeCompare(b.date));
+      // в разнесение берём ВСЕ акты-счета заказчика (оплаченные тоже), от старых к новым: оплаченные съедают платёж первыми
+      const allByGroup = new Map();
+      for (const d of (db.docs || []).filter(isBill)) { const a = mkAct(d); if (!allByGroup.has(a.group)) allByGroup.set(a.group, []); allByGroup.get(a.group).push(a); }
+      const flag = new Map(); // id акта → {covered, paidFound, paymentDate}
+      for (const [g, list] of allByGroup) {
+        list.sort((a, b) => a.from.localeCompare(b.from));
+        const pay = (pool.get(g) || []).map(p => ({ date: p.date, left: p.left }));
+        for (const a of list) {
+          let need = num(a.amount), got = 0, last = '';
+          for (const p of pay) { if (p.left <= 0 || p.date < a.from) continue; const take = Math.min(p.left, need - got); if (take <= 0) continue; got += take; p.left -= take; last = p.date; if (got >= need - 1) break; }
+          if (!a.paid) flag.set(a.id, { covered: Math.round(got), paidFound: got >= need - 1, paymentDate: got >= need - 1 ? last : '' });
+        }
+      }
+      for (const a of acts) { const f = flag.get(a.id) || { covered: 0, paidFound: false, paymentDate: '' }; a.covered = f.covered; a.paidFound = f.paidFound; a.paymentFoundDate = f.paymentDate; }
+      recon.paidFoundN = acts.filter(a => a.paidFound).length;
+      recon.paidFoundSum = acts.filter(a => a.paidFound).reduce((s, a) => s + num(a.amount), 0);
+    }
+    recon.raw = acts.reduce((s, d) => s + num(d.amount), 0);
+    recon.real = recon.raw - recon.paidFoundSum;
+
+    const buckets = AGE_BUCKETS.map(([a, b, label]) => { const l = acts.filter(x => x.age >= a && x.age <= b); return { label, from: a, to: b, n: l.length, sum: l.reduce((s, x) => s + num(x.amount), 0), realSum: l.reduce((s, x) => s + (x.paidFound ? 0 : num(x.amount)), 0) }; });
+
+    // по юрлицу (как было)
     const by = new Map();
-    for (const d of acts) { const k = cpNorm(d.client) || '—'; const r = by.get(k) || { client: d.client || '—', n: 0, sum: 0, maxAge: 0, over90: 0 }; r.n++; r.sum += num(d.amount); r.maxAge = Math.max(r.maxAge, d.age); if (d.age > 90) r.over90 += num(d.amount); by.set(k, r); }
+    for (const d of acts) { const k = cpNorm(d.client) || '—'; const r = by.get(k) || { client: d.client || '—', n: 0, sum: 0, maxAge: 0, over90: 0, realSum: 0 }; r.n++; r.sum += num(d.amount); r.maxAge = Math.max(r.maxAge, d.age); if (d.age > 90) r.over90 += num(d.amount); if (!d.paidFound) r.realSum += num(d.amount); by.set(k, r); }
+
+    // по заказчику (группе): Эверест → внутри юрлица → акты
+    const gm = new Map();
+    for (const d of acts) {
+      const gk = d.group || '—';
+      let g = gm.get(gk); if (!g) { g = { group: gk, n: 0, sum: 0, over90: 0, maxAge: 0, realSum: 0, paidFoundSum: 0, received: receivedByGroup.get(gk) || 0, ents: new Map() }; gm.set(gk, g); }
+      g.n++; g.sum += num(d.amount); g.maxAge = Math.max(g.maxAge, d.age); if (d.age > 90) g.over90 += num(d.amount);
+      if (d.paidFound) g.paidFoundSum += num(d.amount); else g.realSum += num(d.amount);
+      const ek = cpNorm(d.client) || '—'; let e = g.ents.get(ek); if (!e) { e = { client: d.client || '—', n: 0, sum: 0, realSum: 0, acts: [] }; g.ents.set(ek, e); }
+      e.n++; e.sum += num(d.amount); if (!d.paidFound) e.realSum += num(d.amount); e.acts.push(d);
+    }
+    const byCustomer = [...gm.values()].map(g => { g.entities = [...g.ents.values()].sort((a, b) => b.sum - a.sum); delete g.ents; for (const e of g.entities) e.acts.sort((a, b) => b.age - a.age); return g; }).sort((a, b) => b.sum - a.sum);
+
     const active = (db.contracts || []).filter(c => !c.closed);
     const toPay = active.filter(c => num(c.toPay) > 0).sort((a, b) => num(b.toPay) - num(a.toPay));
-    return { today, acts, buckets, byClient: [...by.values()].sort((a, b) => b.sum - a.sum), contractsToPay: toPay, totals: { acts: acts.reduce((s, d) => s + num(d.amount), 0), actsN: acts.length, over90: acts.filter(d => d.age > 90).reduce((s, d) => s + num(d.amount), 0), toPay: toPay.reduce((s, c) => s + num(c.toPay), 0), remaining: active.reduce((s, c) => s + num(c.remaining), 0) } };
+    return {
+      today, acts, buckets, byClient: [...by.values()].sort((a, b) => b.sum - a.sum), byCustomer, recon, contractsToPay: toPay,
+      totals: { acts: recon.raw, actsN: acts.length, real: recon.real, paidFound: recon.paidFoundSum, paidFoundN: recon.paidFoundN, matched, over90: acts.filter(d => d.age > 90).reduce((s, d) => s + num(d.amount), 0), toPay: toPay.reduce((s, c) => s + num(c.toPay), 0), remaining: active.reduce((s, c) => s + num(c.remaining), 0) }
+    };
   }
 
   // ---- прогноз денег по неделям: остаток + ожидаемые поступления − счета, ЗП, налоги, обязательные ----
@@ -643,5 +719,5 @@
     return cols;
   }
 
-  return { ocrNormalize, SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, subProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, receivables, cashForecast };
+  return { ocrNormalize, SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, subProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, customerGroups, receivables, cashForecast };
 });

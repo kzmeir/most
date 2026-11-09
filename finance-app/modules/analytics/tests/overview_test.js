@@ -146,5 +146,46 @@ chk('сигнал КП без ответа не появляется', false, d2
 const d3 = AN.overview(ctxOf(makeDb([]), { pm: all.pm }), { today: T });
 chk('модули не подключены вовсе — только деньги', [true, null, null, null], [!!d3.money, d3.projects, d3.sales, d3.people]);
 
+// ---- дебиторка: разрез по заказчику и сверка с поступлениями из выписок ----
+console.log('== дебиторка: группы-заказчики и сверка с выписками ==');
+const recDb = {
+  settings: { vatRate: 0.16 },
+  categories: [{ id: 'Доход', kind: 'income' }, { id: 'Перевод', kind: 'transfer' }],
+  counterparties: [
+    { id: 'cp-qpc', name: 'ТОО QPC', aliases: ['QPC'] },
+    { id: 'cp-md', name: 'ТОО MD Invest', aliases: ['MD Invest'] },
+    { id: 'cp-nomad', name: 'ТОО Nomad Arena', aliases: [] },
+  ],
+  // clientShort = группа «Эверест» для нескольких юрлиц — как в реестре договоров
+  contracts: [
+    { id: 'c1', code: 'EV-1', name: 'Эверест башня', client: 'ТОО QPC', clientShort: 'Эверест', sum: 100000000, closed: false, remaining: 0, toPay: 0 },
+    { id: 'c2', code: 'EV-2', name: 'Эверест парк', client: 'ТОО MD Invest', clientShort: 'Эверест', sum: 50000000, closed: false, remaining: 0, toPay: 0 },
+    { id: 'c3', code: 'NM-1', name: 'Номад', client: 'ТОО Nomad Arena', clientShort: 'Эверест', sum: 20000000, closed: false, remaining: 5000000, toPay: 0 },
+  ],
+  docs: [
+    { id: 'a1', type: 'avr', client: 'ТОО QPC', amount: 10000000, status: 'done', actDate: '2024-02-10' },       // покрыт платежом QPC
+    { id: 'a2', type: 'avr', client: 'ТОО MD Invest', amount: 8000000, status: 'done', actDate: '2024-03-01' },  // покрыт платежом MD
+    { id: 'a3', type: 'avr', client: 'ТОО Nomad Arena', amount: 12000000, status: 'done', actDate: '2024-03-06' }, // платежей нет — реальная неоплата
+  ],
+  ops: [
+    { id: 'p1', date: '2024-06-01', credit: 10000000, debit: 0, category: 'Доход', counterparty: 'ТОО QPC' },
+    { id: 'p2', date: '2024-07-01', credit: 8000000, debit: 0, category: 'Доход', counterparty: 'MD Invest' },
+    { id: 'p3', date: '2024-05-01', credit: 99000000, debit: 0, category: 'Перевод', counterparty: 'ТОО Nomad Arena' }, // перевод — не поступление
+  ],
+  projects: [],
+};
+const rec = D.receivables(recDb, '2026-11-09');
+chk('сверка включена (есть ops)', true, rec.totals.matched);
+chk('все три юрлица сведены в одного заказчика «Эверест»', ['Эверест'], rec.byCustomer.map(g => g.group));
+chk('у «Эверест» три юрлица внутри', 3, rec.byCustomer[0].entities.length);
+chk('начислено по актам (raw)', 30000000, rec.totals.acts);
+chk('найдено оплат по выписке: 2 акта', [2, 18000000], [rec.totals.paidFoundN, rec.totals.paidFound]);
+chk('реально не оплачено = только Номад', 12000000, rec.totals.real);
+chk('перевод не считается поступлением', 18000000, rec.byCustomer[0].received);
+chk('акт QPC помечен «платёж найден»', true, rec.acts.find(a => a.id === 'a1').paidFound);
+chk('акт Номад без платежа — не помечен', false, rec.acts.find(a => a.id === 'a3').paidFound);
+const recNo = D.receivables({ docs: recDb.docs, contracts: recDb.contracts, counterparties: recDb.counterparties }, '2026-11-09');
+chk('без ops: сверки нет, разрез по заказчику сохраняется', [false, 'Эверест', 30000000], [recNo.totals.matched, recNo.byCustomer[0].group, recNo.totals.real]);
+
 console.log(`\nИтого overview: ${pass} ✓, ${fail} ✗`);
 process.exit(fail ? 1 : 0);
