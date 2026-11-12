@@ -207,5 +207,36 @@ const pc = D.projectClient({ id: 'PRX', name: 'Проект Икс' }, pcDb);
 chk('заказчик проекта автоматически из договора', ['ТОО QPC', 'Эверест', 'contract'], [pc.client, pc.group, pc.source]);
 chk('проект без договора — заказчика нет (ручного не требуем)', ['', '', ''], (x => [x.client, x.group, x.source])(D.projectClient({ id: 'NONE', name: 'Пусто' }, pcDb)));
 
+// ---- субподряд: «оплачено» производно от расходных операций (allocateExpense / subcontractPayments) ----
+console.log('== субподряд: оплата из расходных операций ==');
+const spDb = {
+  categories: [{ id: 'Субподряд', kind: 'expense' }, { id: 'Перевод', kind: 'transfer' }],
+  // один подрядчик, записан по-разному — объединён алиасами (нормализация обязательна)
+  counterparties: [{ id: 'cp-acd', name: 'ACD Smart Solutions', short: 'ACD', kind: 'contractor', aliases: ['ИП ACD SMART Solutions', 'Стас Тагин'] }],
+  projects: [{ id: 'P1', name: 'Проект 1' }, { id: 'P2', name: 'Проект 2' }],
+  subcontracts: [
+    { id: 's1', contractor: 'ACD Smart Solutions', project: 'Проект 1', title: '7-26-КЖ', sum: 10000000, paid: 2000000, closed: false },
+    { id: 's1ds', contractor: 'ИП ACD SMART Solutions', project: 'Проект 1', title: 'ДС №1 к Договору 7-26-КЖ', sum: 2000000, paid: 0, closed: false },
+    { id: 's2', contractor: 'Стас Тагин', project: 'Проект 2', title: '8-26-КЖ', sum: 5000000, paid: 0, closed: false },
+  ],
+  ops: [
+    { id: 'e1', date: '2026-02-01', debit: 6000000, credit: 0, category: 'Субподряд', counterparty: 'ИП ACD SMART Solutions', project: 'Проект 1' }, // → s1
+    { id: 'e2', date: '2026-03-01', debit: 8000000, credit: 0, category: 'Субподряд', counterparty: 'ACD Smart Solutions', project: 'Проект 1' },     // добивает s1 (10) и s1ds (2) + переплата 2
+    { id: 'e3', date: '2026-03-05', debit: 3000000, credit: 0, category: 'Субподряд', counterparty: 'Стас Тагин', project: 'Проект 3' },              // проект без договора → не привязано
+    { id: 'e4', date: '2026-03-06', debit: 1000000, credit: 0, category: 'Перевод', counterparty: 'ACD Smart Solutions', project: 'Проект 1' },       // перевод — не платёж
+  ],
+};
+const sp = D.subcontractPayments(spDb);
+chk('подрядчик сведён алиасами в одну запись', 1, sp.contractors.length);
+const acd = sp.contractors[0];
+chk('сумма договоров / оплачено по операциям (14 покрыто из 17, кэп по суммам)', [17000000, 12000000], [acd.sum, acd.paidFact]);
+chk('переплата по проекту сверх договоров', 2000000, acd.overpaidOnProjects);
+chk('ушло на проекты без договора (e3)', 3000000, acd.unmatchedToOtherProjects);
+chk('строка s1 оплачена из операций (кэп суммой)', [10000000, true], [sp.facts.s1.paidFact, sp.facts.s1.matched]);
+chk('ДС s1ds покрыт после основного', 2000000, sp.facts.s1ds.paidFact);
+chk('ни одна строка не превышает сумму договора', true, spDb.subcontracts.every(s => sp.facts[s.id].paidFact <= Number(s.sum)));
+chk('перевод не учтён; платёж на чужой проект — в «не привязано»', ['Проект 3', 3000000], [sp.unmatched[0].project, sp.unmatched[0].sum]);
+chk('s2 без платежей своего проекта — оплачено 0', [0, false], [sp.facts.s2.paidFact, sp.facts.s2.matched]);
+
 console.log(`\nИтого overview: ${pass} ✓, ${fail} ✗`);
 process.exit(fail ? 1 : 0);

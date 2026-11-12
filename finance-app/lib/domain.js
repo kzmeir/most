@@ -478,6 +478,81 @@
     return out;
   }
 
+  // ---- авторазнесение РАСХОДОВ по договорам субподряда (зеркало allocateIncome) ----
+  // Платёж (дебет) привязывается к субподряду по подрядчику (справочник контрагентов, с алиасами:
+  // «ACD Smart Solutions» = «ИП ACD SMART Solutions» и т.п.) + проекту операции. Номер договора в
+  // назначении — как уточнение. Надёжная гранулярность — (подрядчик, проект): у операции есть project.
+  const EXPENSE_SKIP = ['transfer', 'owner', 'payroll', 'tax'];
+  function subcontractIndex(db) {
+    const resolve = cpResolver(db.counterparties || []);
+    const cpKey = s => { const cp = resolve(s.contractor); return cp ? cp.id : cpNorm(s.contractor); };
+    const byCp = new Map();
+    for (const s of db.subcontracts || []) {
+      const k = cpKey(s); if (!k) continue;
+      let g = byCp.get(k); if (!g) { const cp = resolve(s.contractor); g = { key: k, name: (cp && cp.name) || s.contractor || '—', all: [], projs: new Map() }; byCp.set(k, g); }
+      g.all.push(s); const pk = cpNorm(s.project) || '—'; if (!g.projs.has(pk)) g.projs.set(pk, []); g.projs.get(pk).push(s);
+    }
+    const projNameNorm = new Map((db.projects || []).map(p => [cpNorm(p.id), cpNorm(p.name)]));
+    const matchProj = (opProj, projs) => { const o = cpNorm(opProj); if (!o) return null; if (projs.has(o)) return o; const nm = projNameNorm.get(o); if (nm && projs.has(nm)) return nm; for (const k of projs.keys()) { if (k !== '—' && k.length >= 5 && o.length >= 5 && (o.includes(k) || k.includes(o))) return k; } return null; };
+    // найти подрядчика операции: точный контрагент или подстрока нормализованного имени
+    const cpOf = o => { const cp = resolve(o.counterparty); const nk = cpNorm(o.counterparty); if (cp && byCp.has(cp.id)) return cp.id; if (nk && byCp.has(nk)) return nk; if (nk && nk.length >= 5) for (const k of byCp.keys()) if (k.length >= 5 && (nk.includes(k) || k.includes(nk))) return k; return cp ? cp.id : nk; };
+    return { resolve, byCp, matchProj, cpOf };
+  }
+  // расходные операции, относящиеся к подрядчикам субподряда, с привязкой к проекту-группе
+  function expenseOpsForSubs(db, idx) {
+    const cats = db.categories || []; idx = idx || subcontractIndex(db);
+    const out = [];
+    for (const o of db.ops || []) {
+      if (!(num(o.debit) > 0)) continue; if (EXPENSE_SKIP.includes(catKind(cats, o.category))) continue;
+      const cpk = idx.cpOf(o); const g = cpk && idx.byCp.get(cpk); if (!g) continue; // не наш подрядчик
+      const pk = idx.matchProj(o.project, g.projs);
+      out.push({ op: o, cpk, group: g, projKey: pk });
+    }
+    return out;
+  }
+  // производное «оплачено» субподряда: сумма расходов, привязанных к (подрядчик, проект), разнесённая
+  // по строкам проекта от большей к меньшей (ДС — после основного), с ограничением суммой договора.
+  function subcontractPayments(db) {
+    const idx = subcontractIndex(db);
+    const rel = expenseOpsForSubs(db, idx);
+    const groupPaid = new Map(); const contractorAll = new Map(); const unmatched = new Map();
+    for (const r of rel) {
+      contractorAll.set(r.cpk, (contractorAll.get(r.cpk) || 0) + num(r.op.debit));
+      if (!r.projKey) { const uk = r.cpk + '|' + (r.op.project || '—'); const u = unmatched.get(uk) || { contractor: r.group.name, project: r.op.project || '—', sum: 0, n: 0 }; u.sum += num(r.op.debit); u.n++; unmatched.set(uk, u); continue; }
+      const gk = r.cpk + '|' + r.projKey; const gp = groupPaid.get(gk) || { paid: 0, n: 0, last: '' }; gp.paid += num(r.op.debit); gp.n++; const d = String(r.op.date || ''); if (d > gp.last) gp.last = d; groupPaid.set(gk, gp);
+    }
+    const facts = {}; const overByCp = new Map();
+    for (const [cpk, g] of idx.byCp) for (const [pk, rows] of g.projs) {
+      const gp = groupPaid.get(cpk + '|' + pk) || { paid: 0, n: 0, last: '' };
+      const sorted = [...rows].sort((a, b) => num(b.sum) - num(a.sum)); let pool = gp.paid;
+      for (const s of sorted) { const take = Math.max(0, Math.min(pool, num(s.sum))); facts[s.id] = { paidFact: Math.round(take), paymentsN: gp.n, lastPayment: gp.last, matched: gp.n > 0 }; pool -= take; }
+      // переплата проекта (заплачено больше суммы договоров группы) — НЕ раздуваем строку, помечаем отдельно
+      if (pool > 0.5 && sorted[0]) { facts[sorted[0].id].overpay = Math.round(pool); overByCp.set(cpk, (overByCp.get(cpk) || 0) + pool); }
+    }
+    const contractors = [];
+    for (const [cpk, g] of idx.byCp) {
+      const sum = g.all.reduce((a, s) => a + num(s.sum), 0), manual = g.all.reduce((a, s) => a + num(s.paid), 0);
+      const paidFact = g.all.reduce((a, s) => a + ((facts[s.id] && facts[s.id].paidFact) || 0), 0);
+      const paidAllOps = Math.round(contractorAll.get(cpk) || 0);
+      contractors.push({ contractor: g.name, cpId: cpk, subsN: g.all.length, sum, paidManual: manual, paidFact, paidAllOps, overpaidOnProjects: Math.round(overByCp.get(cpk) || 0), unmatchedToOtherProjects: Math.max(0, paidAllOps - paidFact - Math.round(overByCp.get(cpk) || 0)), remaining: Math.max(0, sum - paidFact) });
+    }
+    contractors.sort((a, b) => b.sum - a.sum);
+    const unmatchedList = [...unmatched.values()].map(u => ({ contractor: u.contractor, project: u.project, sum: Math.round(u.sum), n: u.n })).sort((a, b) => b.sum - a.sum);
+    const hasOps = (db.ops || []).some(o => num(o.debit) > 0);
+    return { facts, contractors, unmatched: unmatchedList, matched: hasOps };
+  }
+  // пооперационные предложения привязки (расход → субподряд проекта-группы, представитель — основной договор)
+  function allocateExpense(db, opts) {
+    opts = opts || {}; const idx = subcontractIndex(db); const rel = expenseOpsForSubs(db, idx); const out = [];
+    for (const r of rel) {
+      if (opts.ids && !opts.ids.includes(r.op.id)) continue;
+      if (!r.projKey) continue;
+      const rows = (r.group.projs.get(r.projKey) || []).slice().sort((a, b) => num(b.sum) - num(a.sum)); const pick = rows[0]; if (!pick) continue;
+      out.push({ id: r.op.id, date: r.op.date, counterparty: r.op.counterparty, debit: num(r.op.debit), project: r.op.project || '', subcontractId: pick.id, contractor: r.group.name, title: pick.title || '', reason: rows.length > 1 ? 'подрядчик + проект (неск. договоров)' : 'подрядчик + проект' });
+    }
+    return out;
+  }
+
   // ---- стадии и карточка проекта: план/факт ----
   const STAGE_STATUS = { plan: 'План', work: 'В работе', done: 'Сдана', paid: 'Оплачена', hold: 'Пауза' };
   function projectCard(project, db, admin) {
@@ -754,5 +829,5 @@
     return cols;
   }
 
-  return { ocrNormalize, SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, subProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, customerGroups, seedCustomerGroups, projectClient, receivables, cashForecast };
+  return { ocrNormalize, SECTIONS, COLLECTIONS, PM_READ, ROLES, ADMIN, ROLE_LABEL, KINDS, DEFAULT_SETTINGS, can, isAdmin, num, todayStr, daysBetween, catKind, accountCompany, filterOps, totals, groupSum, projectSummary, monthsList, invoiceToOp, decorateDoc, dashboard, toCSV, parseCSV, CSV, buildHistory, suggest, isHoliday, vacationDays, vacationBalance, VACATION_TYPES, invoiceKey, invoicesFromRows, parseInvoiceText, companyOf, accountBalances, cashAnchor, paymentCalendar, CAL_LABEL, obligationInvoices, report, backupCollections, canDashboard, cpNorm, cpResolver, buildCounterparties, counterpartyStats, contractProject, contractsOf, docContract, contractFacts, allocateIncome, subcontractPayments, allocateExpense, STAGE_STATUS, projectCard, kpCalc, DEFAULT_TAX, settingsOf, contractProjectGuess, subProjectGuess, payrollTaxes, payrollMonthTaxes, taxCalendar, AGE_BUCKETS, customerGroups, seedCustomerGroups, projectClient, receivables, cashForecast };
 });

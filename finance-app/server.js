@@ -240,6 +240,8 @@ async function api(req, res, url, user, site) {
     return ok(res, { proposals: list, applied: body.apply ? list.length : 0 });
   }
   if (seg === 'contracts' && id2 === 'facts' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); const resolve = D.cpResolver(db.counterparties); const out = {}; for (const c of db.contracts) out[c.id] = D.contractFacts(c, db, resolve, db.projects); return ok(res, out); }
+  // «оплачено» субподряда производно от расходных операций (по подрядчику из справочника + проекту)
+  if (seg === 'subcontracts' && id2 === 'facts' && method === 'GET') { if (!D.isAdmin(role)) return err(res, 403, 'Нет доступа'); return ok(res, D.subcontractPayments(db)); }
   if (seg === 'projects' && id2 && seg3 === 'card' && method === 'GET') {
     if (!D.can(role, 'projects', 'read')) return err(res, 403, 'Нет доступа');
     const p = store.find('projects', id2) || db.projects.find(x => x.name === id2); if (!p) return err(res, 404, 'Проект не найден');
