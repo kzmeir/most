@@ -1,0 +1,13 @@
+{
+  "name": "most-wa-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Мост WhatsApp -> MOST ERP: читает группы и личные сообщения номера-архивариуса и передаёт их в ERP. Сам ничего не пишет в WhatsApp.",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": { "start": "node index.mjs" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "baileys": "7.0.0-rc14"
+  }
+}

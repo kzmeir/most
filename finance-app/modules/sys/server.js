@@ -1,0 +1,183 @@
+'use strict';
+// Модуль «Сервис»: /api/sys/*. Поток E. Контракт модулей — docs/ARCHITECTURE.md, задачи — modules/sys/README.md.
+// Уведомления (Telegram/WhatsApp/почта) отложены решением директора (docs/ARCHITECTURE.md, «Решения директора»,
+// 24.09.2026) — модуль отдаёт только статус сервера для экрана владельца/партнёра «Состояние системы». Только чтение.
+const fs = require('fs');
+const path = require('path');
+const { execFile } = require('child_process');
+
+const APP_VERSION = '2.0';
+const STALE_BACKUP_HOURS = 36;
+const BACKUP_TASK_NAME = 'MOST Финансы - бэкап';
+const TASK_CACHE_MS = 90 * 1000; // 60-120 с (координатор): execFileSync блокировал весь процесс на GET /api/sys/status
+const TASK_IDLE_STOP_MS = 10 * 60 * 1000; // таймер сам останавливается, если экран не открывали 10 минут
+// путь по умолчанию в tools/backup-gdrive.ps1 (-Dest) и install-backup-task.bat - используем, если задача
+// зарегистрирована без явного -Dest в аргументах (так было до этой правки на уже развёрнутых задачах)
+const DEFAULT_GDRIVE_DEST = 'G:\\Мой диск\\Финансы\\MOST-Финансы бэкап';
+
+function tunnelUrl(dataDir) {
+  try {
+    const f = path.join(dataDir, 'tunnel-url.txt');
+    if (!fs.existsSync(f)) return '';
+    if (Date.now() - fs.statSync(f).mtimeMs > 7 * 864e5) return '';
+    return fs.readFileSync(f, 'utf8').trim();
+  } catch { return ''; }
+}
+
+// последний бэкап с реальным временем изменения файла (не парсим имя - оно уже в UTC ISO-подобном виде,
+// но mtime надёжнее, если файл когда-то скопировали/восстановили)
+function lastBackupInfo(backupDir, name) {
+  if (!name) return null;
+  try {
+    const st = fs.statSync(path.join(backupDir, name));
+    const ageHours = (Date.now() - st.mtimeMs) / 3600e3;
+    return { name, size: st.size, mtime: st.mtime.toISOString(), ageHours: Math.round(ageHours * 10) / 10, stale: ageHours > STALE_BACKUP_HOURS };
+  } catch { return null; }
+}
+
+// ночной бэкап в Google Drive (tools/backup-gdrive.ps1 -Dest) - отдельно от локальных снимков в data\backups
+// (те делаются перед восстановлением/выкладкой, а не каждую ночь): экран «Сервис» иначе краснел бы при живом
+// ночном бэкапе, глядя только на локальную папку, где новых файлов может не появляться днями.
+function nightlyBackupInfo(destDir) {
+  try {
+    const files = fs.readdirSync(destDir).filter(f => /^MOST-Финансы_.*\.zip$/.test(f));
+    if (!files.length) return null;
+    let best = null;
+    for (const f of files) {
+      const st = fs.statSync(path.join(destDir, f));
+      if (!best || st.mtimeMs > best.mtimeMs) best = { name: f, size: st.size, mtimeMs: st.mtimeMs };
+    }
+    const ageHours = (Date.now() - best.mtimeMs) / 3600e3;
+    return { dir: destDir, name: best.name, size: best.size, mtime: new Date(best.mtimeMs).toISOString(), ageHours: Math.round(ageHours * 10) / 10, stale: ageHours > STALE_BACKUP_HOURS };
+  } catch { return null; }
+}
+
+// Get-ScheduledTaskInfo - только чтение, задачу не запускает. execFileSync блокировал бы весь процесс (в том
+// числе сайт «Финансы») до 5 с на каждый GET /api/sys/status - вместо этого фоновое обновление раз в
+// TASK_CACHE_MS через асинхронный execFile, запрос всегда читает уже готовый кэш, ничего не ждёт.
+// Ленивый запуск: модуль подключается всегда (даже выключенный в «Модулях»), поэтому таймер стартует не при
+// загрузке файла, а только при первом реальном открытии экрана - и сам останавливается после TASK_IDLE_STOP_MS
+// без запросов, чтобы не дёргать PowerShell круглые сутки на сервере, где экран никто не открывает.
+let taskCache = { status: 'checking' };
+let taskFetching = false;
+let taskTimer = null;
+let taskLastRequestAt = 0;
+// путь -Dest из аргументов самой задачи (Get-ScheduledTask, только чтение определения, не запускает) - если
+// задачу когда-то зарегистрировали без явного -Dest, здесь останется null и используется DEFAULT_GDRIVE_DEST
+let taskDestPath = null;
+function parseDest(argLine) {
+  if (!argLine) return null;
+  const m = String(argLine).match(/-Dest\s+"([^"]+)"|-Dest\s+'([^']+)'|-Dest\s+(\S+)/i);
+  return m ? (m[1] || m[2] || m[3]) : null;
+}
+function refreshScheduledTaskInfo(name) {
+  if (taskFetching) return;
+  taskFetching = true;
+  const ps = `try { ` +
+    `$t = Get-ScheduledTaskInfo -TaskName '${name.replace(/'/g, "''")}' -ErrorAction Stop; ` +
+    `$d = Get-ScheduledTask -TaskName '${name.replace(/'/g, "''")}' -ErrorAction SilentlyContinue; ` +
+    `$args = if ($d) { ($d.Actions | Select-Object -First 1).Arguments } else { $null }; ` +
+    `[PSCustomObject]@{ lastRunTime = $t.LastRunTime.ToString('o'); lastTaskResult = $t.LastTaskResult; arguments = $args } | ConvertTo-Json -Compress ` +
+    `} catch { '{}' }`;
+  execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 5000, windowsHide: true }, (error, stdout) => {
+    taskFetching = false;
+    if (error) { taskCache = { status: 'unavailable' }; return; }
+    try {
+      const out = String(stdout).trim();
+      const obj = out ? JSON.parse(out) : null;
+      if (obj && obj.lastRunTime) {
+        taskCache = { status: 'ok', lastRunTime: obj.lastRunTime, lastTaskResult: obj.lastTaskResult };
+        const dest = parseDest(obj.arguments);
+        if (dest) taskDestPath = dest;
+      } else {
+        taskCache = { status: 'unavailable' };
+      }
+    } catch { taskCache = { status: 'unavailable' }; }
+  });
+}
+function ensureTaskPolling(name) {
+  taskLastRequestAt = Date.now();
+  if (taskTimer) return; // уже крутится - следующий тик подхватит сам
+  refreshScheduledTaskInfo(name); // первый запрос (в том числе первый после простоя) - сразу освежаем
+  taskTimer = setInterval(() => {
+    if (Date.now() - taskLastRequestAt > TASK_IDLE_STOP_MS) { clearInterval(taskTimer); taskTimer = null; return; }
+    refreshScheduledTaskInfo(name);
+  }, TASK_CACHE_MS);
+  taskTimer.unref();
+}
+
+// PowerShell (Set-Content/Add-Content -Encoding utf8) пишет файлы с BOM - Node его не снимает сам
+const stripBOM = s => s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
+
+function deployLogTail(dataDir, n) {
+  try {
+    const logsDir = path.join(dataDir, 'logs');
+    const files = fs.readdirSync(logsDir).filter(f => /^deploy-.*\.log$/.test(f)).sort();
+    if (!files.length) return null;
+    const latest = files[files.length - 1];
+    const lines = stripBOM(fs.readFileSync(path.join(logsDir, latest), 'utf8')).split(/\r?\n/).filter(Boolean);
+    return { file: latest, lines: lines.slice(-n) };
+  } catch { return null; }
+}
+
+// VERSION пишет tools/deploy-to-server.ps1 при выкладке, в корень приложения (рядом с server.js)
+function readVersionFile() {
+  try {
+    const raw = stripBOM(fs.readFileSync(path.join(__dirname, '..', '..', 'VERSION'), 'utf8'));
+    const out = {};
+    for (const line of raw.split(/\r?\n/)) { const m = line.match(/^(\w+)=(.*)$/); if (m) out[m[1]] = m[2]; }
+    return Object.keys(out).length ? out : null;
+  } catch { return null; }
+}
+
+function diskSpace(dir) {
+  try {
+    const s = fs.statfsSync(dir);
+    return { freeBytes: s.bavail * s.bsize, totalBytes: s.blocks * s.bsize };
+  } catch { return null; }
+}
+
+function handle(ctx) {
+  const { parts, method, user, err, ok, db, store: st } = ctx;
+  if (!user) return err(401, 'Не авторизован');
+  const [, a] = parts;
+
+  if (a === 'status' && method === 'GET') {
+    if (!['owner', 'partner'].includes(user.role)) return err(403, 'Нет доступа');
+    ensureTaskPolling(BACKUP_TASK_NAME);
+    let dbSize = 0; try { dbSize = fs.statSync(st.DB_FILE).size; } catch { }
+    const backups = st.listBackups();
+    const lastBackup = lastBackupInfo(st.BACKUP_DIR, backups[0] && backups[0].name);
+    const nightlyBackup = nightlyBackupInfo(taskDestPath || DEFAULT_GDRIVE_DEST);
+
+    const split = !process.env.DEV_USER || !!process.env.DEV_SPLIT; // логика как в server.js: SPLIT
+    const enabled = new Set((db.settings.enabledModules || []));
+    const modules = Object.keys(ctx.modules).sort().map(id => {
+      const on = !!process.env.DEV_USER || enabled.has(id);
+      return { id, on, site: !on ? '—' : (split ? 'ERP' : 'все (один сайт, DEV_USER без DEV_SPLIT)') };
+    });
+
+    return ok({
+      version: APP_VERSION,
+      deployedVersion: readVersionFile(),
+      dbFile: st.DB_FILE,
+      dbSize,
+      disk: diskSpace(st.DATA_DIR),
+      backupsDir: st.BACKUP_DIR,
+      backupsCount: backups.length,
+      lastBackup,
+      nightlyBackup,
+      backupTask: taskCache,
+      lastDeploy: deployLogTail(st.DATA_DIR, 20),
+      uptimeSeconds: Math.round(process.uptime()),
+      tunnelUrl: tunnelUrl(st.DATA_DIR),
+      devMode: !!process.env.DEV_USER,
+      site: split ? 'split (Финансы/ERP на разных портах)' : 'all (один порт, DEV_USER)',
+      modules,
+    });
+  }
+
+  return err(404, 'Нет такого действия');
+}
+
+module.exports = { id: 'sys', api: 'sys', collections: [], handle };
